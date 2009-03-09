@@ -1,0 +1,13 @@
+*.cache
+*.status
+*.gz
+*.la
+*.lo
+*.log
+*.o
+*.sw?
+*.tab
+.deps
+.libs
+Makefile
+libtool
