@@ -93,7 +93,7 @@ static void png_info_cb(png_structp png, png_infop info)
 
   png_get_IHDR(png, info, &width, &height, &bit_depth, &color_type, 0, 0, 0);
 
-  //png_set_bgr(png);
+  png_set_bgr(png);
 
   if(color_type == PNG_COLOR_TYPE_PALETTE)
     png_set_palette_to_rgb(png);
@@ -111,8 +111,6 @@ static void png_info_cb(png_structp png, png_infop info)
 
   if(!(color_type & PNG_COLOR_MASK_ALPHA))
     png_set_add_alpha(png, 0xff, PNG_FILLER_AFTER);
-  else
-    png_set_swap_alpha(png);
 
   png_set_interlace_handling(png);
 
@@ -451,11 +449,11 @@ static void update_image(struct cnt_image* img, void* data, size_t data_size, in
        * Yes, this is weird. */
       for(i = 0; i < img->width * img->height * 4; i += 4)
       {
-        if(!img->data[i + 0])
+        if(!img->data[i + 3])
         {
+          img->data[i + 0] = 0;
           img->data[i + 1] = 0;
           img->data[i + 2] = 0;
-          img->data[i + 3] = 0;
         }
       }
 
@@ -466,9 +464,9 @@ static void update_image(struct cnt_image* img, void* data, size_t data_size, in
       temp_image.format = ZPixmap;
       temp_image.data = (char*) img->data;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-      temp_image.byte_order = MSBFirst;
-#else
       temp_image.byte_order = LSBFirst;
+#else
+      temp_image.byte_order = MSBFirst;
 #endif
       temp_image.bitmap_bit_order = MSBFirst;
       temp_image.bitmap_unit = 32;
