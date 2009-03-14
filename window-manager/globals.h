@@ -56,6 +56,9 @@ extern XWindowAttributes root_window_attr;
 extern int window_width;
 extern int window_height;
 
+extern Display* display;
+extern Window window;
+
 extern XRenderColor xrpalette[];
 extern Picture picpalette[];
 

@@ -23,10 +23,17 @@
 #include "font.h"
 #include "globals.h"
 
-static int show_help;
 static struct picture background;
 
 #define FLAG_TERMINAL 0x0001
+
+struct picture
+{
+  struct cnt_image* image;
+  Picture pic;
+  size_t width;
+  size_t height;
+};
 
 struct menu_item
 {
@@ -326,6 +333,26 @@ static void* loading_thread_entry(void* arg)
   }
 
   qsort(menu_items, menu_item_count, sizeof(struct menu_item), menu_item_cmp);
+
+  return 0;
+}
+
+static int image_load(const char* path, struct picture* img)
+{
+  void* readctx;
+
+  /* XXX: Implement cache */
+
+  readctx = cnt_file_callback_init(path);
+
+  if(!readctx)
+    return -1;
+
+  img->image = cnt_image_alloc();
+  cnt_image_set_data_callback(img->image, cnt_file_callback, readctx);
+  img->pic = cnt_image_load(&img->width, &img->height, img->image);
+
+  free(readctx);
 
   return 0;
 }

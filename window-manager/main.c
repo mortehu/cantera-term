@@ -91,6 +91,9 @@ struct inferior
 struct inferior inferiors[128];
 int inferior_count = 0;
 
+void run_command(int fd, const char* command, const char* arg);
+void init_ximage(XImage* image, int width, int height, void* data);
+
 void add_inferior(Window window)
 {
   int i = inferior_count++;
@@ -1051,7 +1054,7 @@ int main(int argc, char** argv)
   signal(SIGALRM, SIG_IGN);
 
 #ifndef TERMINAL
-  setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin", 1);
+  setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/games:~/bin", 1);
 #endif
   setenv("TERM", "xterm", 1);
 
@@ -1816,6 +1819,55 @@ int main(int argc, char** argv)
   }
 
   return EXIT_SUCCESS;
+}
+
+void run_command(int fd, const char* command, const char* arg)
+{
+  char path[4096];
+  sprintf(path, ".potty/commands/%s", command);
+
+  if(-1 == access(path, X_OK))
+    sprintf(path, PKGDATADIR "/commands/%s", command);
+
+  if(-1 == access(path, X_OK))
+    return;
+
+  if(!fork())
+  {
+    char* args[3];
+
+    if(fd != -1)
+      dup2(fd, 1);
+
+    args[0] = path;
+    args[1] = (char*) arg;
+    args[2] = 0;
+
+    execve(args[0], args, environ);
+
+    exit(EXIT_FAILURE);
+  }
+}
+
+void init_ximage(XImage* image, int width, int height, void* data)
+{
+    memset(image, 0, sizeof(XImage));
+    image->width = width;
+    image->height = height;
+    image->format = ZPixmap;
+    image->data = (char*) data;
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    image->byte_order = LSBFirst;
+    image->bitmap_bit_order = LSBFirst;
+#else
+    image->byte_order = MSBFirst;
+    image->bitmap_bit_order = MSBFirst;
+#endif
+    image->bitmap_unit = 32;
+    image->bitmap_pad = 32;
+    image->depth = 32;
+    image->bytes_per_line = width * 4;
+    image->bits_per_pixel = 32;
 }
 
 // vim: ts=2 sw=2 et sts=2
