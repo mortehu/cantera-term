@@ -13,3 +13,5 @@
 .libs
 Makefile
 libtool
+config.h
+stamp-h1
