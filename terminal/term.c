@@ -1364,6 +1364,7 @@ static void process_data(unsigned char* buf, int count)
             case 0xD0C:
 
               terminal.document = 1;
+              terminal.escape = 0;
 
               if(j + 1 < count)
                 append_doc_data(&buf[j + 1], count - j - 1);
@@ -1388,6 +1389,17 @@ static void process_data(unsigned char* buf, int count)
 
               if(terminal.curscreen != 0)
                 setscreen(0);
+
+              break;
+
+            case 0xD0C:
+
+              free(terminal.doc_buf);
+              terminal.doc_buf = 0;
+              terminal.doc_buf_size = 0;
+              terminal.doc_buf_payload = 0;
+              terminal.doc_buf_alloc = 0;
+              terminal.document = 0;
 
               break;
             }
@@ -1863,6 +1875,7 @@ static void append_doc_data(void* data, size_t size)
 
       while(lines--)
       {
+        terminal.cursorx = 0;
         ++terminal.cursory;
 
         while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
@@ -1879,7 +1892,7 @@ static void append_doc_data(void* data, size_t size)
       cnt_image_free(&image);
     }
 
-    process_data(end + 8, old_buf_size - old_buf_payload - 8);
+    process_data(end, old_buf_size - old_buf_payload);
 
     free(old_buf);
   }
