@@ -1,0 +1,112 @@
+cantera-wm 25
+
+ * Renamed potty to Canetera.
+ * Split into several applications.
+
+potty 20, 2007-07-10
+
+ * Movable desktops (Ctrl-Super-Arrows).
+ * Filemanager not showing garbage as often.
+ * potty-fm places a lock file in the data directory before updating.
+
+potty 19, 2007-07-08
+
+ * Asynchronous search.
+ * Display version number along with desktsops.
+ * Show desktop list when holding Ctrl-Super.
+ * Calculate font skips based on data in font file.
+
+potty 18, 2007-06-08
+
+ * Correct grab.
+
+potty 17, 2007-05-31
+
+ * Support for adding own URLs to filemanager.
+
+potty 16, 2007-05-21
+
+ * Fix placement of new windows in Xinerama configurations.
+ * Brightened colors.
+
+potty 15, 2007-05-13
+
+ * Send synthetic XConfigureEvents when ConfigureRequest is received, as
+   required by ICCCM.
+ * Start file manager commands from correct directory.
+ * Support ALSA volume control by default.
+ * Improved placement of transient windows.
+ * Start xkill on Ctrl-Alt-Esc.
+ * Limit terminal write size to MAX_INPUT.
+ * Added support for calculator button.
+ * Support non-UTF8 pastes.
+
+potty 14, 2007-05-12
+
+ * Fall back to DATADIR/potty/file-commands if none are defined.
+ * Added Debian package files.
+
+potty 13, 2007-05-10
+
+ * Send WM_DELETE_WINDOW on Alt-F4.
+
+potty 12, 2007-05-02
+
+ * Support Xinerama (multi-head).
+
+potty 11, 2007-05-02
+
+ * Support compose keys.
+
+potty 10, 2007-05-02
+
+ * Configure script actually checks for dependencies.
+ * Show transient windows (monolog and dialog boxes) on same desktop as
+   transient-for.
+
+potty 9, 2007-04-26
+
+ * Read file-commands from ~/.potty/file-commands/
+
+potty 8, 2007-04-17
+
+ * Don't try to save session.
+
+potty 7, 2007-02-06
+
+ * Crash less.
+
+potty 6, 2007-02-06
+
+ * Correct icon colors.
+ * Window does not try to attach to desktop based on PID anymore.
+
+potty 5, 2007-02-04
+
+ * Added support for F keys.
+ * Fixed optimized drawing.
+ * Removed memory leaks.
+ * Removed Mozilla branding.
+ * Support varying character widths better.
+
+potty 4, 2007-02-02
+
+ * Removed printing of control characters.
+ * Faster processing of plain data in text terminal.
+ * Clip characters to fit in grid, to avoid lint (applies to R).
+ * Selection is now WYSIWYG.
+ * Draw RGBA icons as thumbnails for X11 applications, when available.
+
+potty 3, 2007-01-30
+
+ * Fixed broken file name search.
+ * Fixed update rate of main menu.
+
+potty 2, 2007-01-30
+
+ * Avoid using lots of CPU in menu mode.
+ * Grab functions keys even if Num Lock is enabled (wtf behavior from X11).
+
+potty 1, 2007-01-29
+
+ * Initial release.

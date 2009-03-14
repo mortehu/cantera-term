@@ -1,0 +1,15 @@
+AC_INIT(cantera-wm,25,morten@rashbox.org)
+AM_INIT_AUTOMAKE
+
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_MAKE_SET
+
+AC_CHECK_LIB([freetype], [FT_Load_Glyph], [], [AC_MSG_ERROR([libfreetype6 is required (apt-get install libfreetype6-dev])])
+
+AC_CHECK_HEADER([X11/extensions/Xdamage.h], [], [AC_MSG_ERROR([libxdamage required (apt-get install libxdamage-dev])])
+AC_CHECK_HEADER([X11/extensions/Xrender.h], [], [AC_MSG_ERROR([libxrender required (apt-get install libxrender-dev])])
+AC_CHECK_HEADER([X11/extensions/Xinerama.h], [], [AC_MSG_ERROR([libxinerama required (apt-get install libxinerama-dev])])
+
+AC_CONFIG_HEADERS(config.h)
+AC_OUTPUT(Makefile)

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=cantera-wm
+Comment=Fullscreen X11 Window manager
+Exec=/usr/bin/cantera-wm
+Terminal=False
+TryExec=/usr/bin/cantera-wm
+Type=Application
+
+[Window Manager]
+SessionManaged=false
