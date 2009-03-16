@@ -535,7 +535,7 @@ int launch(const char* command)
 
   if(!pid)
   {
-    char* args[5];
+    char* args[4];
     char histfile[32];
 
     sprintf(histfile, ".potty/bash-history-%02d", active_terminal);
@@ -543,11 +543,12 @@ int launch(const char* command)
 
     args[0] = "/bin/sh";
     args[1] = "-c";
-    args[2] = "exec";
-    args[3] = (char*) command;
-    args[4] = 0;
+    asprintf(&args[2], "exec %s", command);
+    args[3] = 0;
 
     execve(args[0], args, environ);
+
+    exit(EXIT_FAILURE);
   }
 
   return pid;
