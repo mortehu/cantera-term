@@ -634,7 +634,9 @@ void menu_draw_desktops(Picture buffer, int height)
 
 static void launch_item(int n)
 {
-  char* cmd;
+  char command[4096];
+  const char* in;
+  char* out;
   int i;
 
   if(n < 0 || n >= menu_item_count)
@@ -647,11 +649,22 @@ static void launch_item(int n)
 
     if(!n--)
     {
-      asprintf(&cmd, "exec %s", menu_items[i].command);
+      in = menu_items[i].command;
+      out = command;
 
-      launch(cmd);
+      while(*in)
+      {
+        if(*in == '%')
+        {
+          in += 2;
+        }
+        else
+          *out++ = *in++;
+      }
 
-      free(cmd);
+      *out = 0;
+
+      launch(command);
     }
   }
 }

@@ -1887,7 +1887,8 @@ static void append_doc_data(void* data, size_t size)
     }
     else
     {
-      process_data(old_buf, old_buf_payload);
+      static const char* message = "[Unrecognized document]\r\n";
+      process_data((unsigned char*) message, strlen(message));
 
       cnt_image_free(&image);
     }
@@ -2010,6 +2011,7 @@ int main(int argc, char** argv)
     fd_set readset;
     int maxfd;
 
+    FD_ZERO(&readset);
     FD_SET(xfd, &readset);
     maxfd = xfd;
     FD_SET(terminal.fd, &readset);
@@ -2218,7 +2220,6 @@ int main(int argc, char** argv)
           mod1_pressed = (event.xkey.state & Mod1Mask);
           super_pressed = (event.xkey.state & Mod4Mask);
           shift_pressed = (event.xkey.state & ShiftMask);
-
         }
 
         break;
