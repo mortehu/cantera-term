@@ -535,11 +535,17 @@ int launch(const char* command)
 
   if(!pid)
   {
-    char* args[4];
+    char* args[5];
+    char histfile[32];
+
+    sprintf(histfile, ".potty/bash-history-%02d", active_terminal);
+    setenv("HISTFILE", histfile, 1);
+
     args[0] = "/bin/sh";
     args[1] = "-c";
-    args[2] = (char*) command;
-    args[3] = 0;
+    args[2] = "exec";
+    args[3] = (char*) command;
+    args[4] = 0;
 
     execve(args[0], args, environ);
   }
