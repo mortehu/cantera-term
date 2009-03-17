@@ -19924,19 +19924,19 @@ _ACEOF
   LIBS="-lfreetype $LIBS"
 
 else
-  { { echo "$as_me:$LINENO: error: libfreetype6 is required (apt-get install libfreetype6-dev" >&5
-echo "$as_me: error: libfreetype6 is required (apt-get install libfreetype6-dev" >&2;}
+  { { echo "$as_me:$LINENO: error: libfreetype6 is required (apt-get install libfreetype6-dev)" >&5
+echo "$as_me: error: libfreetype6 is required (apt-get install libfreetype6-dev)" >&2;}
    { (exit 1); exit 1; }; }
 fi
 
 
-{ echo "$as_me:$LINENO: checking for FT_Load_Glyph in -lfreetype" >&5
-echo $ECHO_N "checking for FT_Load_Glyph in -lfreetype... $ECHO_C" >&6; }
-if test "${ac_cv_lib_freetype_FT_Load_Glyph+set}" = set; then
+{ echo "$as_me:$LINENO: checking for png_read_info in -lpng" >&5
+echo $ECHO_N "checking for png_read_info in -lpng... $ECHO_C" >&6; }
+if test "${ac_cv_lib_png_png_read_info+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
   ac_check_lib_save_LIBS=$LIBS
-LIBS="-lfreetype  $LIBS"
+LIBS="-lpng  $LIBS"
 cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
@@ -19950,11 +19950,11 @@ cat >>conftest.$ac_ext <<_ACEOF
 #ifdef __cplusplus
 extern "C"
 #endif
-char FT_Load_Glyph ();
+char png_read_info ();
 int
 main ()
 {
-return FT_Load_Glyph ();
+return png_read_info ();
   ;
   return 0;
 }
@@ -19977,30 +19977,180 @@ eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
 	 test ! -s conftest.err
        } && test -s conftest$ac_exeext &&
        $as_test_x conftest$ac_exeext; then
-  ac_cv_lib_freetype_FT_Load_Glyph=yes
+  ac_cv_lib_png_png_read_info=yes
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-	ac_cv_lib_freetype_FT_Load_Glyph=no
+	ac_cv_lib_png_png_read_info=no
 fi
 
 rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
       conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ echo "$as_me:$LINENO: result: $ac_cv_lib_freetype_FT_Load_Glyph" >&5
-echo "${ECHO_T}$ac_cv_lib_freetype_FT_Load_Glyph" >&6; }
-if test $ac_cv_lib_freetype_FT_Load_Glyph = yes; then
+{ echo "$as_me:$LINENO: result: $ac_cv_lib_png_png_read_info" >&5
+echo "${ECHO_T}$ac_cv_lib_png_png_read_info" >&6; }
+if test $ac_cv_lib_png_png_read_info = yes; then
   cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBFREETYPE 1
+#define HAVE_LIBPNG 1
 _ACEOF
 
-  LIBS="-lfreetype $LIBS"
+  LIBS="-lpng $LIBS"
 
 else
-  { { echo "$as_me:$LINENO: error: libfreetype6 is required (apt-get install libfreetype6-dev" >&5
-echo "$as_me: error: libfreetype6 is required (apt-get install libfreetype6-dev" >&2;}
+  { { echo "$as_me:$LINENO: error: libpng is required (apt-get install libpng12-dev)" >&5
+echo "$as_me: error: libpng is required (apt-get install libpng12-dev)" >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
+
+{ echo "$as_me:$LINENO: checking for DGifOpen in -lgif" >&5
+echo $ECHO_N "checking for DGifOpen in -lgif... $ECHO_C" >&6; }
+if test "${ac_cv_lib_gif_DGifOpen+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lgif  $LIBS"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char DGifOpen ();
+int
+main ()
+{
+return DGifOpen ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (ac_try="$ac_link"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_link") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest$ac_exeext &&
+       $as_test_x conftest$ac_exeext; then
+  ac_cv_lib_gif_DGifOpen=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_cv_lib_gif_DGifOpen=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
+      conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_lib_gif_DGifOpen" >&5
+echo "${ECHO_T}$ac_cv_lib_gif_DGifOpen" >&6; }
+if test $ac_cv_lib_gif_DGifOpen = yes; then
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBGIF 1
+_ACEOF
+
+  LIBS="-lgif $LIBS"
+
+else
+  { { echo "$as_me:$LINENO: error: libgif is required (apt-get install libgif-dev)" >&5
+echo "$as_me: error: libgif is required (apt-get install libgif-dev)" >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
+
+{ echo "$as_me:$LINENO: checking for jpeg_read_header in -ljpeg" >&5
+echo $ECHO_N "checking for jpeg_read_header in -ljpeg... $ECHO_C" >&6; }
+if test "${ac_cv_lib_jpeg_jpeg_read_header+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ljpeg  $LIBS"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char jpeg_read_header ();
+int
+main ()
+{
+return jpeg_read_header ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (ac_try="$ac_link"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_link") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest$ac_exeext &&
+       $as_test_x conftest$ac_exeext; then
+  ac_cv_lib_jpeg_jpeg_read_header=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_cv_lib_jpeg_jpeg_read_header=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
+      conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_lib_jpeg_jpeg_read_header" >&5
+echo "${ECHO_T}$ac_cv_lib_jpeg_jpeg_read_header" >&6; }
+if test $ac_cv_lib_jpeg_jpeg_read_header = yes; then
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBJPEG 1
+_ACEOF
+
+  LIBS="-ljpeg $LIBS"
+
+else
+  { { echo "$as_me:$LINENO: error: libjpeg is required (apt-get install libjpeg62-dev)" >&5
+echo "$as_me: error: libjpeg is required (apt-get install libjpeg62-dev)" >&2;}
    { (exit 1); exit 1; }; }
 fi
 
@@ -20133,8 +20283,8 @@ fi
 if test $ac_cv_header_X11_extensions_Xdamage_h = yes; then
   :
 else
-  { { echo "$as_me:$LINENO: error: libxdamage required (apt-get install libxdamage-dev" >&5
-echo "$as_me: error: libxdamage required (apt-get install libxdamage-dev" >&2;}
+  { { echo "$as_me:$LINENO: error: libxdamage required (apt-get install libxdamage-dev)" >&5
+echo "$as_me: error: libxdamage required (apt-get install libxdamage-dev)" >&2;}
    { (exit 1); exit 1; }; }
 fi
 
@@ -20267,8 +20417,8 @@ fi
 if test $ac_cv_header_X11_extensions_Xrender_h = yes; then
   :
 else
-  { { echo "$as_me:$LINENO: error: libxrender required (apt-get install libxrender-dev" >&5
-echo "$as_me: error: libxrender required (apt-get install libxrender-dev" >&2;}
+  { { echo "$as_me:$LINENO: error: libxrender required (apt-get install libxrender-dev)" >&5
+echo "$as_me: error: libxrender required (apt-get install libxrender-dev)" >&2;}
    { (exit 1); exit 1; }; }
 fi
 
@@ -20401,8 +20551,8 @@ fi
 if test $ac_cv_header_X11_extensions_Xinerama_h = yes; then
   :
 else
-  { { echo "$as_me:$LINENO: error: libxinerama required (apt-get install libxinerama-dev" >&5
-echo "$as_me: error: libxinerama required (apt-get install libxinerama-dev" >&2;}
+  { { echo "$as_me:$LINENO: error: libxinerama required (apt-get install libxinerama-dev)" >&5
+echo "$as_me: error: libxinerama required (apt-get install libxinerama-dev)" >&2;}
    { (exit 1); exit 1; }; }
 fi
 
