@@ -188,7 +188,6 @@ XVisualInfo* visual_info;
 XSetWindowAttributes window_attr;
 Window window;
 Atom prop_paste;
-Atom xa_potty_play;
 Atom xa_utf8_string;
 Atom xa_compound_text;
 Atom xa_targets;
@@ -800,11 +799,10 @@ static void x11_connect(const char* display_name)
 
   window = XCreateWindow(display, RootWindow(display, screenidx), 0, 0, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWColormap | CWEventMask | CWCursor, &window_attr);
 
-  XStoreName(display, window, "potty-term");
+  XStoreName(display, window, "cantera-term");
   XMapWindow(display, window);
 
-  prop_paste = XInternAtom(display, "POTTY_PASTE", False);
-  xa_potty_play = XInternAtom(display, "POTTY_PLAY", False);
+  prop_paste = XInternAtom(display, "CANTERA_PASTE", False);
   xa_utf8_string = XInternAtom(display, "UTF8_STRING", False);
   xa_compound_text = XInternAtom(display, "COMPOUND_TEXT", False);
   xa_targets = XInternAtom(display, "TARGETS", False);
@@ -1939,7 +1937,7 @@ void term_write(const char* data)
 void run_command(int fd, const char* command, const char* arg)
 {
   char path[4096];
-  sprintf(path, ".potty/commands/%s", command);
+  sprintf(path, ".cantera/commands/%s", command);
 
   if(-1 == access(path, X_OK))
     sprintf(path, PKGDATADIR "/commands/%s", command);
@@ -1982,10 +1980,10 @@ int main(int argc, char** argv)
 
   chdir(getenv("HOME"));
 
-  mkdir(".potty", 0777);
-  mkdir(".potty/commands", 0777);
-  mkdir(".potty/file-commands", 0777);
-  mkdir(".potty/filemanager", 0777);
+  mkdir(".cantera", 0777);
+  mkdir(".cantera/commands", 0777);
+  mkdir(".cantera/file-commands", 0777);
+  mkdir(".cantera/filemanager", 0777);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);

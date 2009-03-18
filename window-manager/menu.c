@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -13,6 +14,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
@@ -56,6 +58,8 @@ static int page_height = 1;
 
 static wchar_t query[256];
 
+static void* config;
+
 void menu_draw_desktops(Picture buffer, int height);
 
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
@@ -76,8 +80,8 @@ static int range_str_eq(const char* lhs, const char* rhs_begin, const char* rhs_
 
 static void desktop_parse(const char* path)
 {
-  int fd;
-  const char* data;
+  int fd, res;
+  char* data;
   const char* end;
   const char* ch;
   off_t size;
@@ -100,13 +104,39 @@ static void desktop_parse(const char* path)
     return;
   }
 
-  data = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
-
-  if(data == MAP_FAILED)
+  if(size < 16384)
   {
-    fprintf(stderr, "Failed to mmap '%s': %s\n", path, strerror(errno));
+    data = alloca(size);
 
-    return;
+    res = pread(fd, data, size, 0);
+
+    if(res == -1)
+    {
+      fprintf(stderr, "Failed to read %zu bytes from '%s': %s\n", size, path, strerror(errno));
+
+      close(fd);
+
+      return;
+    }
+    else if(res < size)
+    {
+      fprintf(stderr, "Got %d bytes reading '%s', wanted %zu\n", res, path, size);
+
+      close(fd);
+
+      return;
+    }
+  }
+  else
+  {
+    data = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
+
+    if(data == MAP_FAILED)
+    {
+      fprintf(stderr, "Failed to mmap '%s': %s\n", path, strerror(errno));
+
+      return;
+    }
   }
 
   ch = data;
@@ -247,7 +277,8 @@ static void desktop_parse(const char* path)
 
 done:
 
-  munmap((void*) data, size);
+  if(size >= 16384)
+    munmap((void*) data, size);
   close(fd);
 }
 
@@ -324,12 +355,40 @@ int menu_item_cmp(const void* vlhs, const void* vrhs)
 
 static void* loading_thread_entry(void* arg)
 {
-  if(0 == access(".potty/applications/", X_OK | R_OK))
-    desktop_recursive_scan(".potty/applications/");
+  struct stat st_config, st_config_so;
+
+  if(0 == access(".cantera/applications/", X_OK | R_OK))
+    desktop_recursive_scan(".cantera/applications/");
   else
   {
     desktop_recursive_scan("/usr/share/applications/");
     desktop_recursive_scan("/usr/local/share/applications/");
+  }
+
+  if(0 == stat(".cantera/config.c", &st_config))
+  {
+    char config_so_path[64];
+    struct utsname un;
+
+    uname(&un);
+
+    sprintf(config_so_path, ".cantera/config-%s.so", un.machine);
+
+    if(-1 == stat(config_so_path, &st_config_so)
+    || st_config_so.st_mtime < st_config.st_mtime)
+    {
+      char cmd[128];
+
+      fprintf(stderr, "Compiling configuration...\n");
+
+      sprintf(cmd, "gcc -x c -fPIC -std=c99 .cantera/config.c -shared -o %s", config_so_path);
+      system(cmd);
+    }
+
+    config = dlopen(config_so_path, RTLD_NOW | RTLD_LOCAL);
+
+    if(!config)
+      fprintf(stderr, "Failed to load '%s': %s\n", config_so_path, dlerror());
   }
 
   qsort(menu_items, menu_item_count, sizeof(struct menu_item), menu_item_cmp);
@@ -409,14 +468,7 @@ void menu_init()
 {
   pthread_t loading_thread;
 
-#if 0
-  int i;
-
-  for(i = 0; i < sizeof(menu_items) / sizeof(menu_items[0]); ++i)
-    menu_items[i].picture = image_load(menu_items[i].icon_path);
-#endif
-
-  image_load(".potty/background.png", &background);
+  image_load(".cantera/background.png", &background);
 
   pthread_create(&loading_thread, 0, loading_thread_entry, 0);
   pthread_detach(loading_thread);
@@ -803,66 +855,12 @@ int menu_handle_char(int ch)
   return 0;
 }
 
-#if 0
-  pid_t pid;
-  char histfile[32];
-  char* args[5];
+int menu_handle_hotkey(int ch)
+{
+  void (*handler)(int ch) = dlsym(config, "handle_hotkey");
 
-  switch(ch)
-  {
-  case 'b':
-
-    pid = fork();
-
-    if(pid == -1)
-      return -1;
-
-    if(!pid)
-    {
-      sprintf(histfile, ".potty/bash-history-%02d", active_terminal);
-      setenv("HISTFILE", histfile, 1);
-
-      args[0] = "/bin/sh";
-      args[1] = "-c";
-      args[2] = "exec potty-term";
-      args[3] = 0;
-
-      execve(args[0], args, environ);
-    }
-
-    break;
-
-  case 'm':
-
-    launch("exec potty-fmgui");
-
-    break;
-
-  case 'a':
-
-    launch("exec abiword --nosplash");
-
-    break;
-
-  case 'i':
-
-    launch("exec firefox");
-
-    break;
-
-  case 'l':
-
-    launch("exec xlock -erasemode no_fade");
-
-    break;
-
-  default:
-
-    return -1;
-  }
+  if(handler)
+    handler(ch);
 
   return 0;
-
-  return -1;
 }
-#endif

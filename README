@@ -1,3 +1,35 @@
-cantera-wm -- A fullscreen X11 window manager
+ABOUT
 
-Made by Morten Hustveit 2006-2009
+  Cantera is a group of programs for X11
+
+COPYRIGHT
+
+  Morten Hustveit 2006, 2007, 2008, 2009
+
+CONFIGURATION
+
+  The path of the configuration file is ``.cantera/config.c''
+
+  The C programming language is used for configuration files.  The
+  configuration is compiled automatically by cantera-wm when it starts.  For
+  configuration to work at all, you need GNU GCC installed.  On Debian systems,
+  you can install this using ``apt-get install build-essential''.
+
+  Here's an example configuration file:
+
+    #include <cantera-config.h>
+
+    void handle_hotkey(int ch)
+    {
+      switch(ch)
+      {
+      case 'b': launch("cantera-term"); break;
+      case 'l': launch("xlock -erasemode no_fade"); break;
+      case 'i': launch("iceweasel"); break;
+      }
+    }
+
+  If you'd like to compile the configuration file yourself (for example to
+  verify that there are no syntax errors), run:
+
+    gcc -x c -fPIC -std=c99 ~/.cantera/config.c -shared -o ~/.cantera/config-`uname -m`.so

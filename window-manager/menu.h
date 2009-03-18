@@ -9,5 +9,6 @@ void menu_draw();
 void menu_keypress(int key_sym, const char* text, int textlen);
 void menu_keyrelease(int key_sym);
 int menu_handle_char(int ch);
+int menu_handle_hotkey(int ch);
 
 #endif /* !MENU_H_ */

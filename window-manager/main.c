@@ -526,7 +526,7 @@ static void set_active_terminal(int terminal)
   at->dirty = 1;
 }
 
-int launch(const char* command)
+pid_t launch(const char* command)
 {
   pid_t pid = fork();
 
@@ -538,7 +538,7 @@ int launch(const char* command)
     char* args[4];
     char histfile[32];
 
-    sprintf(histfile, ".potty/bash-history-%02d", active_terminal);
+    sprintf(histfile, ".cantera/bash-history-%02d", active_terminal);
     setenv("HISTFILE", histfile, 1);
 
     args[0] = "/bin/sh";
@@ -1050,10 +1050,10 @@ int main(int argc, char** argv)
 
   chdir(getenv("HOME"));
 
-  mkdir(".potty", 0777);
-  mkdir(".potty/commands", 0777);
-  mkdir(".potty/file-commands", 0777);
-  mkdir(".potty/filemanager", 0777);
+  mkdir(".cantera", 0777);
+  mkdir(".cantera/commands", 0777);
+  mkdir(".cantera/file-commands", 0777);
+  mkdir(".cantera/filemanager", 0777);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -1297,7 +1297,7 @@ int main(int argc, char** argv)
               run_command(-1, "coffee", 0);
 
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
-              menu_handle_char(key_sym);
+              menu_handle_hotkey(key_sym);
             else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
               int new_terminal;
@@ -1831,7 +1831,7 @@ int main(int argc, char** argv)
 void run_command(int fd, const char* command, const char* arg)
 {
   char path[4096];
-  sprintf(path, ".potty/commands/%s", command);
+  sprintf(path, ".cantera/commands/%s", command);
 
   if(-1 == access(path, X_OK))
     sprintf(path, PKGDATADIR "/commands/%s", command);
