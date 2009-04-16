@@ -29,7 +29,6 @@
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
 #include <X11/extensions/Xdamage.h>
-#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrender.h>
 #include <X11/keysym.h>
@@ -528,9 +527,7 @@ static void paint(int x, int y, int width, int height)
   if(root_buffer != root_picture)
   {
     XRenderComposite(display, PictOpSrc, root_buffer, None, root_picture,
-                     minx, miny,
-                     0, 0,
-                     minx, miny, maxx - minx, maxy - miny);
+                     x, y, 0, 0, x, y, width, height);
   }
 }
 
