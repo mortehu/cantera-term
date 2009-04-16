@@ -389,6 +389,13 @@ static void* loading_thread_entry(void* arg)
 
     if(!config)
       fprintf(stderr, "Failed to load '%s': %s\n", config_so_path, dlerror());
+    else
+    {
+      void (*init_handler)() = dlsym(config, "init");
+
+      if(init_handler)
+        init_handler();
+    }
   }
 
   qsort(menu_items, menu_item_count, sizeof(struct menu_item), menu_item_cmp);
