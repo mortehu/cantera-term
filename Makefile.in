@@ -178,7 +178,7 @@ sysconfdir = @sysconfdir@
 target_alias = @target_alias@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-SUBDIRS = common terminal window-manager
+SUBDIRS = common terminal window-manager file-manager
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 

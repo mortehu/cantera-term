@@ -10,10 +10,11 @@ AC_CHECK_LIB([freetype], [FT_Load_Glyph], [], [AC_MSG_ERROR([libfreetype6 is req
 AC_CHECK_LIB([png], [png_read_info], [], [AC_MSG_ERROR([libpng is required (apt-get install libpng12-dev)])])
 AC_CHECK_LIB([gif], [DGifOpen], [], [AC_MSG_ERROR([libgif is required (apt-get install libgif-dev)])])
 AC_CHECK_LIB([jpeg], [jpeg_read_header], [], [AC_MSG_ERROR([libjpeg is required (apt-get install libjpeg62-dev)])])
+AC_CHECK_LIB([Xpm], [XpmReadFileToImage], [], [AC_MSG_ERROR([libxpm is required (apt-get install libxpm-dev)])])
 
 AC_CHECK_HEADER([X11/extensions/Xdamage.h], [], [AC_MSG_ERROR([libxdamage required (apt-get install libxdamage-dev)])])
 AC_CHECK_HEADER([X11/extensions/Xrender.h], [], [AC_MSG_ERROR([libxrender required (apt-get install libxrender-dev)])])
 AC_CHECK_HEADER([X11/extensions/Xinerama.h], [], [AC_MSG_ERROR([libxinerama required (apt-get install libxinerama-dev)])])
 
 AC_CONFIG_HEADERS(config.h)
-AC_OUTPUT(Makefile common/Makefile terminal/Makefile window-manager/Makefile)
+AC_OUTPUT(Makefile common/Makefile terminal/Makefile window-manager/Makefile file-manager/Makefile)

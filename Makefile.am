@@ -1,1 +1,1 @@
-SUBDIRS = common terminal window-manager
+SUBDIRS = common terminal window-manager file-manager
