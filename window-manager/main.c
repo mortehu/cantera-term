@@ -63,7 +63,6 @@ XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picgradients[256];
 
-#ifndef TERMINAL
 XineramaScreenInfo* screens;
 Window* screen_windows;
 terminal** screen_terms;
@@ -72,11 +71,6 @@ int screen_count = 0;
 int terminal_list_width;
 int terminal_list_height;
 Window terminal_list_popup = 0;
-
-Window player_window = 0;
-int player_window_width = 640;
-int player_window_height = 20;
-#endif
 
 int window_width, window_height;
 
@@ -439,35 +433,6 @@ static void set_focus(terminal* t)
   }
 }
 
-static void configure_player_window()
-{
-  XWindowChanges wc;
-
-  const int margin_y = window_height * 75 / 1000;
-  const int thumb_height = window_height / 16;
-  const int thumb_margin = 6;
-
-  terminal_list_width = window_width;
-  terminal_list_height = 2 * thumb_height + 5 * thumb_margin + 2 * yskips[SMALL];
-
-  wc.x = screens[0].x_org + window_width - player_window_width - window_width * 75 / 1000;
-  wc.y = screens[0].y_org + window_height - terminal_list_height - margin_y + thumb_margin - player_window_height;
-  wc.width = player_window_width;
-  wc.height = player_window_height;
-
-  XConfigureWindow(display, player_window, CWX | CWY | CWWidth | CWHeight, &wc);
-}
-
-static void show_player_window()
-{
-  if(player_window)
-  {
-    configure_player_window();
-
-    XMapWindow(display, player_window);
-  }
-}
-
 static void set_active_terminal(int terminal)
 {
   int i;
@@ -476,12 +441,6 @@ static void set_active_terminal(int terminal)
     grab_thumbnail();
 
   set_focus(&terminals[terminal]);
-
-  if(terminals[terminal].mode != mode_menu)
-  {
-    if(player_window)
-      XUnmapWindow(display, player_window);
-  }
 
   if(terminal == active_terminal)
     return;
@@ -509,19 +468,13 @@ static void set_active_terminal(int terminal)
         t = t->next;
       }
     }
-
-    XUnmapWindow(display, at->window);
-    set_map_state(at->window, 0);
   }
 
   active_terminal = terminal;
   at = &terminals[active_terminal];
 
   if(at->mode == mode_menu)
-  {
     destroy_terminal_list_popup();
-    show_player_window();
-  }
 
   at->dirty = 1;
 }
@@ -933,10 +886,7 @@ static void enter_menu_mode(int termidx)
   }
 
   if(t == at)
-  {
-    show_player_window();
     destroy_terminal_list_popup();
-  }
 }
 
 static int find_window(Window w, terminal** term, struct transient** trans)
@@ -1003,35 +953,6 @@ static void get_transient_for(Window w, Window* transient_for)
   XSync(display, False);
   XSetErrorHandler(xerror_handler);
 }
-
-#ifndef TERMINAL
-int is_player_window(Window w)
-{
-  unsigned char* prop;
-  unsigned long nitems, bytes_after;
-  Atom type;
-  int result, format;
-
-  if(player_window)
-    return w == player_window;
-
-  result = XGetWindowProperty(display, w, xa_potty_play, 0, 0, False,
-      AnyPropertyType, &type, &format, &nitems, &bytes_after,
-      &prop);
-
-  if(result != Success)
-    return 0;
-
-  if(!prop)
-    return 0;
-
-  XFree(prop);
-
-  player_window = w;
-
-  return 1;
-}
-#endif
 
 int main(int argc, char** argv)
 {
@@ -1481,13 +1402,6 @@ int main(int argc, char** argv)
             terminal* term;
             struct transient* trans;
 
-            if(event.xdestroywindow.window == player_window)
-            {
-              player_window = 0;
-
-              break;
-            }
-
             if(-1 == find_window(event.xdestroywindow.window, &term, &trans))
               break;
 
@@ -1626,17 +1540,6 @@ int main(int argc, char** argv)
             struct transient* trans;
             int mask;
 
-            if(is_player_window(event.xconfigurerequest.window))
-            {
-              player_window_width = event.xconfigurerequest.width;
-              player_window_height = event.xconfigurerequest.height;
-
-              if(at->mode == mode_menu)
-                configure_player_window();
-
-              break;
-            }
-
             memset(&wc, 0, sizeof(wc));
 
             find_window(request->window, &term, &trans);
@@ -1745,12 +1648,6 @@ int main(int argc, char** argv)
           {
             terminal* term;
             struct transient* trans;
-
-            if(is_player_window(event.xmaprequest.window))
-              break;
-
-            if(player_window)
-              XUnmapWindow(display, player_window);
 
             find_window(event.xmaprequest.window, &term, &trans);
 
