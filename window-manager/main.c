@@ -1518,10 +1518,10 @@ int main(int argc, char** argv)
 
             if(!cwe->override_redirect && (cwe->x != 0 || cwe->y != 0 || cwe->width != window_width || cwe->height != window_height))
             {
-              wc.x = 0;
-              wc.y = 0;
-              wc.width = window_width;
-              wc.height = window_height;
+              wc.x = screens[0].x_org;
+              wc.y = screens[0].y_org;
+              wc.width = screens[0].width;
+              wc.height = screens[0].height;
 
               XConfigureWindow(display, cwe->window, CWX | CWY | CWWidth | CWHeight, &wc);
             }
