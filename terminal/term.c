@@ -42,7 +42,7 @@ extern char** environ;
 
 int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
-int font_sizes[] = { 14, 36 };
+int font_sizes[] = { 12, 36 };
 
 unsigned int palette[] =
 {
