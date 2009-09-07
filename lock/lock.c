@@ -184,5 +184,5 @@ void game_process_frame(float width, float height, double delta_time)
 
   draw_flush();
 
-  usleep(10000);
+  usleep(20000);
 }
