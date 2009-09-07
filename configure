@@ -10616,7 +10616,7 @@ fi
 
 ac_config_headers="$ac_config_headers config.h"
 
-ac_config_files="$ac_config_files Makefile common/Makefile terminal/Makefile window-manager/Makefile file-manager/Makefile"
+ac_config_files="$ac_config_files Makefile common/Makefile terminal/Makefile window-manager/Makefile lock/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -11578,7 +11578,7 @@ do
     "common/Makefile") CONFIG_FILES="$CONFIG_FILES common/Makefile" ;;
     "terminal/Makefile") CONFIG_FILES="$CONFIG_FILES terminal/Makefile" ;;
     "window-manager/Makefile") CONFIG_FILES="$CONFIG_FILES window-manager/Makefile" ;;
-    "file-manager/Makefile") CONFIG_FILES="$CONFIG_FILES file-manager/Makefile" ;;
+    "lock/Makefile") CONFIG_FILES="$CONFIG_FILES lock/Makefile" ;;
 
   *) as_fn_error "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac
