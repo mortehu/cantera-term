@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1897,17 +1898,34 @@ static void append_doc_data(void* data, size_t size)
 void read_data()
 {
   unsigned char buf[4096];
+  int fill = 0, ready;
   int result;
 
-  result = read(terminal.fd, buf, sizeof(buf));
+  /* This loop is designed for single-core computers, in case the data source is
+   * doing a series of small writes */
+  do
+  {
+    result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
 
-  if(result < 0)
-    exit(EXIT_SUCCESS);
+    if(result == -1)
+      exit(EXIT_SUCCESS);
+
+    fill += result;
+
+    if(fill < sizeof(buf))
+    {
+      sched_yield();
+
+      if(-1 == ioctl(terminal.fd, FIONREAD, &ready))
+        ready = 0;
+    }
+  }
+  while(ready && fill < sizeof(buf));
 
   if(terminal.document)
-    append_doc_data(buf, result);
+    append_doc_data(buf, fill);
   else
-    process_data(buf, result);
+    process_data(buf, fill);
 }
 
 void term_writen(const char* data, size_t len)
