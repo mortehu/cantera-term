@@ -16,5 +16,7 @@ AC_CHECK_HEADER([X11/extensions/Xdamage.h], [], [AC_MSG_ERROR([libxdamage requir
 AC_CHECK_HEADER([X11/extensions/Xrender.h], [], [AC_MSG_ERROR([libxrender required (apt-get install libxrender-dev)])])
 AC_CHECK_HEADER([X11/extensions/Xinerama.h], [], [AC_MSG_ERROR([libxinerama required (apt-get install libxinerama-dev)])])
 
+AC_C_BIGENDIAN
+
 AC_CONFIG_HEADERS(config.h)
 AC_OUTPUT(Makefile common/Makefile terminal/Makefile window-manager/Makefile lock/Makefile)
