@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1897,17 +1898,32 @@ static void append_doc_data(void* data, size_t size)
 void read_data()
 {
   unsigned char buf[4096];
-  int result;
+  int result, more, fill = 0;
 
-  result = read(terminal.fd, buf, sizeof(buf));
+  do
+  {
+    result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
+  
+    if(result < 0)
+      exit(EXIT_SUCCESS);
 
-  if(result < 0)
-    exit(EXIT_SUCCESS);
+    fill += result;
+
+    if(fill < sizeof(buf))
+    {
+      sched_yield();
+
+      ioctl(terminal.fd, FIONREAD, &more);
+    }
+    else
+      more = 0;
+  }
+  while(more);
 
   if(terminal.document)
-    append_doc_data(buf, result);
+    append_doc_data(buf, fill);
   else
-    process_data(buf, result);
+    process_data(buf, fill);
 }
 
 void term_writen(const char* data, size_t len)
@@ -2040,7 +2056,7 @@ int main(int argc, char** argv)
       {
       case KeyPress:
 
-        if(!XFilterEvent(&event, window))
+        /* if(!XFilterEvent(&event, window)) */
         {
           char text[32];
           Status status;
