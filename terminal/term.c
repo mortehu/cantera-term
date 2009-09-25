@@ -1898,8 +1898,7 @@ static void append_doc_data(void* data, size_t size)
 void read_data()
 {
   unsigned char buf[4096];
-  int fill = 0, ready;
-  int result;
+  int result, more, fill = 0;
 
   /* This loop is designed for single-core computers, in case the data source is
    * doing a series of small writes */
@@ -1916,11 +1915,12 @@ void read_data()
     {
       sched_yield();
 
-      if(-1 == ioctl(terminal.fd, FIONREAD, &ready))
-        ready = 0;
+      ioctl(terminal.fd, FIONREAD, &more);
     }
+    else
+      more = 0;
   }
-  while(ready && fill < sizeof(buf));
+  while(more);
 
   if(terminal.document)
     append_doc_data(buf, fill);
@@ -2058,7 +2058,7 @@ int main(int argc, char** argv)
       {
       case KeyPress:
 
-        if(!XFilterEvent(&event, window))
+        /* if(!XFilterEvent(&event, window)) */
         {
           char text[32];
           Status status;

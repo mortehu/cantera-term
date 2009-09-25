@@ -619,6 +619,7 @@ int main(int argc, char** argv)
     }
 #endif
 
+    #if 0
     if(r_waitvblank->vfloat)
     {
       unsigned int retrace_count;
@@ -630,6 +631,7 @@ int main(int argc, char** argv)
       else
         prev_retrace_count = retrace_count;
     }
+    #endif
 
     glXSwapBuffers(display, window);
 
