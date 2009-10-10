@@ -15,4 +15,4 @@ EXTRA_DIST = cantera-term.desktop
 
 install-data-local:
 	install -m 0755 -d $(DESTDIR)$(datadir)/applications
-	install -m 0644 cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop
+	install -m 0644 $(srcdir)/cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop

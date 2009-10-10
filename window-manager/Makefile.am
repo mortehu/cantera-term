@@ -15,4 +15,4 @@ EXTRA_DIST = cantera-wm.desktop
 
 install-data-local:
 	install -m 0755 -d $(DESTDIR)$(datadir)/xsessions
-	install -m 0644 cantera-wm.desktop $(DESTDIR)$(datadir)/xsessions/cantera-wm.desktop
+	install -m 0644 $(srcdir)/cantera-wm.desktop $(DESTDIR)$(datadir)/xsessions/cantera-wm.desktop
