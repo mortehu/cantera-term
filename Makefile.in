@@ -181,6 +181,19 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 SUBDIRS = common terminal window-manager lock
+EXTRA_DIST = \
+  debian/compat \
+  debian/dirs \
+  debian/copyright \
+  debian/rules \
+  debian/docs \
+  debian/cantera-doc.docs \
+  debian/cantera-doc.install \
+  debian/changelog \
+  debian/control \
+  debian/files \
+  debian/cantera.substvars
+
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 
