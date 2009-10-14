@@ -1046,6 +1046,9 @@ int main(int argc, char** argv)
 #endif
     }
 
+    if(x11_connected && XPending(display))
+      goto process_events;
+
     FD_ZERO(&readset);
     FD_ZERO(&writeset);
 
@@ -1107,6 +1110,8 @@ int main(int argc, char** argv)
       FD_ZERO(&writeset);
       FD_ZERO(&readset);
     }
+
+process_events:
 
     if(x11_connected && FD_ISSET(xfd, &readset))
     {
