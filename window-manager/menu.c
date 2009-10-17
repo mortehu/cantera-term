@@ -362,6 +362,7 @@ static void* loading_thread_entry(void* arg)
   else
   {
     desktop_recursive_scan("/usr/share/applications/");
+    desktop_recursive_scan("/home/larsod/share/applications/");
     desktop_recursive_scan("/usr/local/share/applications/");
   }
 
