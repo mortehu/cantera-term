@@ -50,8 +50,8 @@ var main_variables[] =
   { "fullscreen",   var_archive, var_float, 0, 1.0f },
   { "r_enable",     var_archive, var_float, 0, 1.0f },
   { "r_waitvblank", var_archive, var_float, 0, 0.0f },
-  { "width",        var_archive, var_float, 0, 640.0f },
-  { "height",       var_archive, var_float, 0, 480.0f },
+  { "width",        var_archive, var_float, 0, 0.0f },
+  { "height",       var_archive, var_float, 0, 0.0f },
 };
 
 extern void game_process_frame(float width, float height, double delta_time);
