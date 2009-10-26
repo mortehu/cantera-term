@@ -54,7 +54,7 @@ void game_process_frame(float width, float height, double delta_time)
 
   now_tt = time(0);
 
-  now += delta_time;
+  now += delta_time * 0.2;
 
   devices = input_get_device_states(&device_count);
 
@@ -108,30 +108,25 @@ void game_process_frame(float width, float height, double delta_time)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE);
   draw_bind_texture(0);
 
-  glLineWidth(2.0);
+  glLineWidth(8.0);
 
-  for(j = 0; j < 20; ++j)
+  glColor4f(0.6, 0.8, 1.0, 0.5);
+
+  glBegin(GL_LINE_STRIP);
+
+  for(i = 0; i <= 200; ++i)
     {
-      glColor4f(1.0f / (j * 0.3 + 1),
-                1.0f / (j * 0.1 + 1),
-                1.0f, 0.3f);
+      x = i * width / 200.0;
+      y = 0.1 * sin(i * 0.07
+                    + cos(i * 0.03 + now + sin(i * 0.09 + now) * 0.2));
 
-      glBegin(GL_LINE_STRIP);
+      y = y * height
+        + height * 0.5;
 
-      for(i = 0; i <= 200; ++i)
-        {
-          x = i * width / 200.0;
-          y = 0.1 * sin(i * 0.05
-                        + cos(i * 0.03 + now + j * 0.05 + sin(i * 0.09 + now) * 0.2));
-
-          y = y * height
-            + height * 0.5;
-
-          glVertex2f(x, y);
-        }
-
-      glEnd();
+      glVertex2f(x, y);
     }
+
+  glEnd();
 
   if(now_tt < hide_hud)
     {
