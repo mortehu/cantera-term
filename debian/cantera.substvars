@@ -1,0 +1,1 @@
+shlibs:Depends=libc6 (>= 2.4), libfreetype6 (>= 2.2.1), libgif4 (>= 4.1.6), libgl1-mesa | libgl1, libgl1-mesa-glx | libgl1, libglu1-mesa | libglu1, libjpeg62, libpng12-0 (>= 1.2.13-4), libx11-6, libxdamage1 (>= 1:1.1), libxfixes3 (>= 1:4.0.1), libxinerama1, libxpm4, libxrender1, libxxf86vm1, zlib1g (>= 1:1.1.4)

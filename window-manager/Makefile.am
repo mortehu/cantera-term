@@ -11,7 +11,7 @@ cantera_wm_SOURCES = font.c font.h globals.h main.c menu.c menu.h utf8.c
 cantera_wm_LDFLAGS = -L/usr/X11R6/lib -lX11 -lfreetype -lXrender -lpng -lutil -lm -lXdamage -lXinerama -lXpm -ljpeg -lgif -rdynamic
 cantera_wm_LDADD = ../common/libcommon.a
 
-EXTRA_DIST = cantera-wm.desktop
+EXTRA_DIST = cantera-wm.desktop doc/cantera-wm.1
 
 install-data-local:
 	install -m 0755 -d $(DESTDIR)$(datadir)/xsessions

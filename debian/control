@@ -1,0 +1,17 @@
+Source: cantera
+Section: x11
+Priority: extra
+Maintainer: Morten Hustveit <morten@debian.org>
+Build-Depends: debhelper (>= 7), autotools-dev, libxxf86vm-dev, libfreetype6-dev, libpng12-dev, libgif-dev, libjpeg62-dev, libxpm-dev, libxdamage-dev, libxrender-dev, libxinerama-dev, mesa-common-dev, libgl1-mesa-dev, libglu1-mesa-dev
+Standards-Version: 3.8.0
+
+Package: cantera
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: The Canetera Desktop Environment
+ Full screen window manager and associated programs.
+
+Package: cantera-doc
+Architecture: all
+Description: The Canetera Desktop Environment - Documentation
+ Documentation.  Does not exist.

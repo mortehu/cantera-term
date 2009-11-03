@@ -16,4 +16,6 @@ cantera_lock_SOURCES = \
   input.h main_x11.c \
   lock.c
 
+EXTRA_DIST = gfx/fonts/vera-sans-mono.dat gfx/fonts/vera-sans-mono_0.png
+
 cantera_lock_LDADD = -lX11 -lGL -lGLU -lm -lXxf86vm -lpng -lXinerama -lcrypt
