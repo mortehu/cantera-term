@@ -980,8 +980,8 @@ static void save_session()
   write(fd, &terminal.size, sizeof(terminal.size));
   write(fd, &terminal.cursorx, sizeof(terminal.cursorx));
   write(fd, &terminal.cursory, sizeof(terminal.cursory));
-  write(fd, screenchars, size * sizeof(*screenchars));
-  write(fd, screenattrs, size * sizeof(*screenattrs));
+  write(fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
+  write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
   close(fd);
 }
