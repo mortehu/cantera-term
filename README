@@ -21,7 +21,17 @@ CONFIGURATION
   Example Palettes
   ================
 
-    ANSI: "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+    ANSI colors:
+
+      terminal.palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+
+    Linux Console (according to gnome-terminal):
+
+      terminal.palette "000000 0000aa 00aa00 00aaaa aa0000 aa00aa aaaa00 aaaaaa 555555 5555ff 55ff55 55ffff ff5555 ff55ff ffff55 ffffff"
+
+    Tango (modified to gray on black):
+
+      terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2 555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
 
 
   The C programming language is used for ``.cantera/config.c.  The
