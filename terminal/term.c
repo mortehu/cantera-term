@@ -51,14 +51,7 @@ int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
 int font_sizes[] = { 12, 36 };
 
-unsigned int palette[] =
-{
-  /* ANSI colors */
-  0xff000000, 0xff1818c2, 0xff18c218, 0xff18c2c2,
-  0xffc21818, 0xffc218c2, 0xffc2c218, 0xffc2c2c2,
-  0xff686868, 0xff7474ff, 0xff54ff54, 0xff54ffff,
-  0xffff5454, 0xffff54ff, 0xffffff54, 0xffffffff,
-};
+unsigned int palette[16];
 
 struct terminal
 {
@@ -2051,6 +2044,8 @@ int main(int argc, char** argv)
   int xfd;
   int result;
   int session_fd;
+  char* palette_str;
+  char* token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -2075,6 +2070,14 @@ int main(int argc, char** argv)
 
   config = tree_load_cfg(".cantera/config");
 
+  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
+
+  for(i = 0, token = strtok(palette_str, " "); token;
+      ++i, token = strtok(0, " "))
+    {
+      if(palette[i] < 16)
+        palette[i] = 0xff000000 | strtol(token, 0, 16);
+    }
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
   font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
   font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
@@ -2132,7 +2135,7 @@ int main(int argc, char** argv)
           read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
           terminal.cursorx = 0;
-          terminal.cursory;
+          ++terminal.cursory;
 
           while(terminal.cursory >= terminal.size.ws_row)
             {
