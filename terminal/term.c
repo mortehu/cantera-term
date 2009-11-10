@@ -973,8 +973,6 @@ static void save_session()
   int fd;
   size_t size;
 
-  fprintf(stderr, "How about saving to %s?\n", session_path);
-
   if(!session_path)
     return;
 
@@ -2101,8 +2099,6 @@ int main(int argc, char** argv)
         }
     }
 
-  fprintf(stderr, "Window size: %d x %d\n", window_width, window_height);
-
   x11_connect(getenv("DISPLAY"));
 
   args[0] = "/bin/bash";
@@ -2129,19 +2125,16 @@ int main(int argc, char** argv)
         }
       else
         {
-          read(session_fd, terminal.chars[0], size * sizeof(*screenchars));
-          read(session_fd, terminal.attr[0], size * sizeof(*screenattrs));
+          read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
+          read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
-          if(terminal.cursorx)
+          terminal.cursorx = 0;
+          terminal.cursory;
+
+          while(terminal.cursory >= terminal.size.ws_row)
             {
-              terminal.cursorx = 0;
-              ++terminal.cursory;
-
-              while(terminal.cursory >= terminal.size.ws_row)
-                {
-                  scroll(0);
-                  --terminal.cursory;
-                }
+              scroll(0);
+              --terminal.cursory;
             }
         }
 
@@ -2373,7 +2366,18 @@ int main(int argc, char** argv)
             }
             else if(key_sym == XK_Home)
             {
-              if(terminal.appcursor)
+              if(shift_pressed)
+                {
+                  history_scroll_reset = 0;
+
+                  if(terminal.history_scroll != scroll_extra)
+                    {
+                      terminal.history_scroll = scroll_extra;
+
+                      XClearArea(display, window, 0, 0, window_width, window_height, True);
+                    }
+                }
+              else if(terminal.appcursor)
                 term_write("\033OH");
               else
                 term_write("\033[H");
