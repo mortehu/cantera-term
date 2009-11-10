@@ -43,6 +43,7 @@
 struct tree* config = 0;
 
 unsigned int scroll_extra;
+const char* font_name;
 
 extern char** environ;
 
@@ -2075,6 +2076,8 @@ int main(int argc, char** argv)
   config = tree_load_cfg(".cantera/config");
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
+  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
+  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
