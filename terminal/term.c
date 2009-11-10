@@ -116,6 +116,9 @@ struct terminal
   size_t image_count;
 };
 
+static int done;
+static const char* session_path;
+
 XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picgradients[256];
@@ -819,8 +822,6 @@ static void x11_connect(const char* display_name)
 
   memset(&window_attr, 0, sizeof(window_attr));
   window_attr.cursor = XCreateFontCursor(display, XC_left_ptr);
-  window_width = 800;
-  window_height = 600;
 
   window_attr.colormap = DefaultColormap(display, 0);
   window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask;
@@ -967,11 +968,43 @@ static void x11_connect(const char* display_name)
   XSynchronize(display, False);
 }
 
-static int done;
+static void save_session()
+{
+  int fd;
+  size_t size;
+
+  fprintf(stderr, "How about saving to %s?\n", session_path);
+
+  if(!session_path)
+    return;
+
+  fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+
+  if(fd == -1)
+    return;
+
+  size = terminal.size.ws_row * terminal.size.ws_col;
+
+  write(fd, &terminal.size, sizeof(terminal.size));
+  write(fd, &terminal.cursorx, sizeof(terminal.cursorx));
+  write(fd, &terminal.cursory, sizeof(terminal.cursory));
+  write(fd, screenchars, size * sizeof(*screenchars));
+  write(fd, screenattrs, size * sizeof(*screenattrs));
+
+  close(fd);
+}
 
 static void sighandler(int signal)
 {
+  static int first = 1;
+
   fprintf(stderr, "Got signal %d\n", signal);
+
+  if(first)
+    {
+      first = 0;
+      save_session();
+    }
 
   exit(EXIT_SUCCESS);
 }
@@ -1938,7 +1971,11 @@ void read_data()
     result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
 
     if(result == -1)
-      exit(EXIT_SUCCESS);
+      {
+        save_session();
+
+        exit(EXIT_SUCCESS);
+      }
 
     fill += result;
 
@@ -2014,6 +2051,7 @@ int main(int argc, char** argv)
   int i;
   int xfd;
   int result;
+  int session_fd;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -2023,6 +2061,11 @@ int main(int argc, char** argv)
 
     return EXIT_FAILURE;
   }
+
+  session_path = getenv("SESSION_PATH");
+
+  if(session_path)
+    unsetenv("SESSION_PATH");
 
   chdir(getenv("HOME"));
 
@@ -2042,12 +2085,69 @@ int main(int argc, char** argv)
 
   setenv("TERM", "xterm", 1);
 
+  window_width = 800;
+  window_height = 600;
+
+  session_fd = open(session_path, O_RDONLY);
+
+  if(session_fd != -1)
+    {
+      struct winsize ws;
+
+      if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+        {
+          window_width = ws.ws_xpixel;
+          window_height = ws.ws_ypixel;
+        }
+    }
+
+  fprintf(stderr, "Window size: %d x %d\n", window_width, window_height);
+
   x11_connect(getenv("DISPLAY"));
 
   args[0] = "/bin/bash";
   args[1] = 0;
 
   init_session(args);
+
+  if(session_fd != -1)
+    {
+      size_t size;
+
+      size = terminal.size.ws_col * terminal.size.ws_row;
+
+      read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
+      read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
+
+      if(terminal.cursorx >= terminal.size.ws_col
+         || terminal.cursory >= terminal.size.ws_row
+         || terminal.cursorx < 0
+         || terminal.cursory < 0)
+        {
+          terminal.cursorx = 0;
+          terminal.cursory = 0;
+        }
+      else
+        {
+          read(session_fd, terminal.chars[0], size * sizeof(*screenchars));
+          read(session_fd, terminal.attr[0], size * sizeof(*screenattrs));
+
+          if(terminal.cursorx)
+            {
+              terminal.cursorx = 0;
+              ++terminal.cursory;
+
+              while(terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
+            }
+        }
+
+      close(session_fd);
+      unlink(session_path);
+    }
 
   xfd = ConnectionNumber(display);
 
@@ -2082,7 +2182,11 @@ int main(int argc, char** argv)
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
       if(pid == terminal.pid)
-        return EXIT_SUCCESS;
+        {
+          save_session();
+
+          return EXIT_SUCCESS;
+        }
     }
 
     while(XPending(display))

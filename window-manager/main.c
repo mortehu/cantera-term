@@ -489,10 +489,13 @@ pid_t launch(const char* command)
   if(!pid)
   {
     char* args[4];
-    char histfile[32];
+    char buf[32];
 
-    sprintf(histfile, ".cantera/bash-history-%02d", active_terminal);
-    setenv("HISTFILE", histfile, 1);
+    sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
+    setenv("HISTFILE", buf, 1);
+
+    sprintf(buf, ".cantera/session-%02d", active_terminal);
+    setenv("SESSION_PATH", buf, 1);
 
     args[0] = "/bin/sh";
     args[1] = "-c";
