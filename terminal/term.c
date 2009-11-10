@@ -975,6 +975,8 @@ static void save_session()
   if(fd == -1)
     return;
 
+  normalize_offset();
+
   size = terminal.size.ws_row * terminal.size.ws_col;
 
   write(fd, &terminal.size, sizeof(terminal.size));
