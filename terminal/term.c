@@ -2094,18 +2094,23 @@ int main(int argc, char** argv)
   window_width = 800;
   window_height = 600;
 
-  session_fd = open(session_path, O_RDONLY);
-
-  if(session_fd != -1)
+  if(session_path)
     {
-      struct winsize ws;
+      session_fd = open(session_path, O_RDONLY);
 
-      if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+      if(session_fd != -1)
         {
-          window_width = ws.ws_xpixel;
-          window_height = ws.ws_ypixel;
+          struct winsize ws;
+
+          if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+            {
+              window_width = ws.ws_xpixel;
+              window_height = ws.ws_ypixel;
+            }
         }
     }
+  else
+    session_fd = -1;
 
   x11_connect(getenv("DISPLAY"));
 
