@@ -564,19 +564,25 @@ static void normalize_offset()
   {
     int size = terminal.size.ws_col * terminal.history_size;
     int offset = terminal.offset[i];
-    wchar_t* tmpchars = alloca(sizeof(wchar_t) * size);
-    uint16_t* tmpattrs = alloca(sizeof(uint16_t) * size);
+    wchar_t* tmpchars = malloc(sizeof(wchar_t) * size);
+    uint16_t* tmpattrs = malloc(sizeof(uint16_t) * size);
 
-    memcpy(tmpchars, terminal.chars[i] + offset, sizeof(wchar_t) * (size - offset));
-    memcpy(tmpchars + (size - offset), terminal.chars[i], sizeof(wchar_t) * offset);
+    assert(offset >= 0);
+    assert(offset < size);
 
-    memcpy(tmpattrs, terminal.attr[i] + offset, sizeof(uint16_t) * (size - offset));
-    memcpy(tmpattrs + (size - offset), terminal.attr[i], sizeof(uint16_t) * offset);
+    memcpy(tmpchars, terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
+    memcpy(tmpchars + (size - offset), terminal.chars[i], sizeof(*tmpchars) * offset);
 
-    memcpy(terminal.chars[i], tmpchars, sizeof(wchar_t) * size);
-    memcpy(terminal.attr[i], tmpattrs, sizeof(uint16_t) * size);
+    memcpy(tmpattrs, terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
+    memcpy(tmpattrs + (size - offset), terminal.attr[i], sizeof(*tmpattrs) * offset);
+
+    memcpy(terminal.chars[i], tmpchars, sizeof(*terminal.chars[0]) * size);
+    memcpy(terminal.attr[i], tmpattrs, sizeof(*terminal.attr[0]) * size);
 
     terminal.offset[i] = 0;
+
+    free(tmpchars);
+    free(tmpattrs);
   }
 }
 
