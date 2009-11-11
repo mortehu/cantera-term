@@ -8,9 +8,33 @@ COPYRIGHT
 
 CONFIGURATION
 
-  The path of the configuration file is ``.cantera/config.c''
+  The path of the configuration files are ``.cantera/config'' and
+  ``.cantera/config.c''
 
-  The C programming language is used for configuration files.  The
+  Options in ``.canterea/config'':
+
+    terminal.history-size <history-size>
+    terminal.font <font-path>
+    terminal.font-size <font-size>
+    terminal.palette <palette>
+
+  Example Palettes
+  ================
+
+    ANSI colors:
+
+      terminal.palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+
+    Linux Console (according to gnome-terminal):
+
+      terminal.palette "000000 0000aa 00aa00 00aaaa aa0000 aa00aa aaaa00 aaaaaa 555555 5555ff 55ff55 55ffff ff5555 ff55ff ffff55 ffffff"
+
+    Tango (modified to gray on black):
+
+      terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2 555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
+
+
+  The C programming language is used for ``.cantera/config.c.  The
   configuration is compiled automatically by cantera-wm when it starts.  For
   configuration to work at all, you need GNU GCC installed.  On Debian systems,
   you can install this using ``apt-get install build-essential''.
