@@ -610,8 +610,8 @@ static void scroll(int fromcursor)
     memset(terminal.curchars + clear_offset, 0, sizeof(*terminal.curchars) * terminal.size.ws_col);
     memset16(terminal.curattrs + clear_offset, terminal.curattr, sizeof(*terminal.curattrs) * terminal.size.ws_col);
 
-    (*terminal.curoffset) += terminal.size.ws_col;
-    (*terminal.curoffset) %= (terminal.size.ws_col * terminal.history_size);
+    *terminal.curoffset += terminal.size.ws_col;
+    *terminal.curoffset %= terminal.size.ws_col * terminal.history_size;
 
     return;
   }
@@ -1592,12 +1592,24 @@ static void process_data(unsigned char* buf, int count)
             }
             else if(terminal.param[0] == 2)
             {
-              size_t count = terminal.size.ws_col * terminal.size.ws_row;
+              size_t screen_size, history_size;
 
-              normalize_offset();
+              screen_size = terminal.size.ws_col * terminal.size.ws_row;
+              history_size = terminal.size.ws_col * terminal.history_size;
 
-              memset(terminal.curchars, 0, count * sizeof(wchar_t));
-              memset(terminal.curattrs, 0x07, count * sizeof(uint16_t));
+              if(*terminal.curoffset + screen_size > history_size)
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
+                  memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
+                  memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                }
+              else
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                }
 
               terminal.cursory = 0;
               terminal.cursorx = 0;
