@@ -1589,26 +1589,27 @@ static void process_data(unsigned char* buf, int count)
             }
             else if(terminal.param[0] == 2)
             {
-              /* Clear entire screen */
+              size_t count = terminal.size.ws_col * terminal.size.ws_row;
+
               normalize_offset();
 
-              memset(terminal.curchars, 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-              memset(terminal.curattrs, 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
+              memset(terminal.curchars, 0, count * sizeof(wchar_t));
+              memset(terminal.curattrs, 0x07, count * sizeof(uint16_t));
+
               terminal.cursory = 0;
               terminal.cursorx = 0;
-              *terminal.curoffset = 0;
 
               for(k = 0; k < terminal.image_count; )
-              {
-                if(terminal.images[k].screen == terminal.curscreen)
                 {
-                  --terminal.image_count;
-                  cnt_image_free(&terminal.images[k].image);
-                  memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                  if(terminal.images[k].screen == terminal.curscreen)
+                    {
+                      --terminal.image_count;
+                      cnt_image_free(&terminal.images[k].image);
+                      memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                    }
+                  else
+                    ++k;
                 }
-                else
-                  ++k;
-              }
             }
 
             break;
