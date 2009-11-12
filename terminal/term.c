@@ -553,6 +553,7 @@ static void paint(int x, int y, int width, int height)
 
 static void normalize_offset()
 {
+  int size = terminal.size.ws_col * terminal.history_size;
   int i;
 
   if(!*terminal.curoffset)
@@ -562,27 +563,29 @@ static void normalize_offset()
 
   for(i = 0; i < 2; ++i)
   {
-    int size = terminal.size.ws_col * terminal.history_size;
     int offset = terminal.offset[i];
-    wchar_t* tmpchars = malloc(sizeof(wchar_t) * size);
-    uint16_t* tmpattrs = malloc(sizeof(uint16_t) * size);
+    wchar_t* tmpchars;
+    uint16_t* tmpattrs;
 
     assert(offset >= 0);
     assert(offset < size);
 
-    memcpy(tmpchars, terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
-    memcpy(tmpchars + (size - offset), terminal.chars[i], sizeof(*tmpchars) * offset);
+    tmpchars = malloc(sizeof(wchar_t) * offset);
+    tmpattrs = malloc(sizeof(uint16_t) * offset);
 
-    memcpy(tmpattrs, terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
-    memcpy(tmpattrs + (size - offset), terminal.attr[i], sizeof(*tmpattrs) * offset);
+    memcpy(tmpchars, terminal.chars[i], sizeof(*tmpchars) * offset);
+    memcpy(tmpattrs, terminal.attr[i], sizeof(*tmpattrs) * offset);
 
-    memcpy(terminal.chars[i], tmpchars, sizeof(*terminal.chars[0]) * size);
-    memcpy(terminal.attr[i], tmpattrs, sizeof(*terminal.attr[0]) * size);
+    memmove(terminal.chars[i], terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
+    memmove(terminal.attr[i], terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
+
+    memmove(terminal.chars[i] + (size - offset), tmpchars, sizeof(*tmpchars) * offset);
+    memmove(terminal.attr[i] + (size - offset), tmpattrs, sizeof(*tmpattrs) * offset);
 
     terminal.offset[i] = 0;
 
-    free(tmpchars);
     free(tmpattrs);
+    free(tmpchars);
   }
 }
 
