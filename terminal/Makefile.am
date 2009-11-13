@@ -8,7 +8,7 @@ AM_CPPFLAGS = -I$(srcdir)/../common -I/usr/include/freetype2 -I/usr/include/libx
 XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lfreetype -lXrender -lpng -ljpeg -lgif
 
 cantera_term_SOURCES = font.h term.c font.c globals.h
-cantera_term_LDFLAGS = $(XLDFLAGS) -lutil -lXpm
+cantera_term_LDFLAGS = $(XLDFLAGS) -lutil -lXpm -lm
 cantera_term_LDADD = ../common/libcommon.a
 
 EXTRA_DIST = cantera-term.desktop doc/cantera-term.1
