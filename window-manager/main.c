@@ -984,9 +984,7 @@ int main(int argc, char** argv)
   signal(SIGPIPE, SIG_IGN);
   signal(SIGALRM, SIG_IGN);
 
-#ifndef TERMINAL
   setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/games:~/bin", 1);
-#endif
   setenv("TERM", "xterm", 1);
 
   x11_connect(getenv("DISPLAY"));
@@ -994,23 +992,11 @@ int main(int argc, char** argv)
   if(!x11_connected)
     return EXIT_FAILURE;
 
-#ifndef TERMINAL
   for(i = 0; i < TERMINAL_COUNT; ++i)
   {
     terminals[i].mode = mode_menu;
     terminals[i].return_mode = mode_menu;
   }
-
-#else
-  {
-    char* args[2];
-
-    args[0] = "/bin/bash";
-    args[1] = 0;
-
-    init_session(at, args);
-  }
-#endif
 
   while(!done)
   {
@@ -1022,7 +1008,6 @@ int main(int argc, char** argv)
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
-#ifndef TERMINAL
       for(i = 0; i < TERMINAL_COUNT; ++i)
       {
         if(terminals[i].pid == pid)
@@ -1043,10 +1028,6 @@ int main(int argc, char** argv)
           break;
         }
       }
-#else
-      if(pid == terminals[0].pid)
-        return EXIT_SUCCESS;
-#endif
     }
 
     if(x11_connected && XPending(display))
@@ -1114,17 +1095,16 @@ int main(int argc, char** argv)
       FD_ZERO(&readset);
     }
 
-process_events:
-
     if(x11_connected && FD_ISSET(xfd, &readset))
     {
       XEvent event;
+
+process_events:
 
       while(XPending(display))
       {
         XNextEvent(display, &event);
 
-#ifndef TERMINAL
         if(event.type == damage_eventbase + XDamageNotify)
         {
           XDamageNotifyEvent* e = (XDamageNotifyEvent*) &event;
@@ -1162,7 +1142,6 @@ process_events:
 
           continue;
         }
-#endif
 
         switch(event.type)
         {
@@ -1270,7 +1249,7 @@ process_events:
                   last_set_terminal = active_terminal = new_terminal;
                   at = &terminals[active_terminal];
 
-				  at->dirty = 1;
+                  at->dirty = 1;
                 }
                 else
                 {
