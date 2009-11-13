@@ -1,5 +1,5 @@
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include "../config.h"
 #endif
 
 #include <assert.h>
@@ -969,6 +969,8 @@ static void x11_connect(const char* display_name)
   screenattrs = calloc(cols * rows, sizeof(*screenattrs));
 
   XSynchronize(display, False);
+
+  XClearArea(display, window, 0, 0, window_width, window_height, True);
 }
 
 static void save_session()
@@ -986,7 +988,7 @@ static void save_session()
 
   normalize_offset();
 
-  size = terminal.size.ws_row * terminal.size.ws_col;
+  size = terminal.history_size * terminal.size.ws_col;
 
   write(fd, &terminal.size, sizeof(terminal.size));
   write(fd, &terminal.cursorx, sizeof(terminal.cursorx));
@@ -2145,7 +2147,7 @@ int main(int argc, char** argv)
     {
       size_t size;
 
-      size = terminal.size.ws_col * terminal.size.ws_row;
+      size = terminal.size.ws_col * terminal.history_size;
 
       read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
       read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
@@ -2736,8 +2738,8 @@ int main(int argc, char** argv)
 
             free(screenchars);
             free(screenattrs);
-            screenchars = malloc(cols * rows * sizeof(*screenchars));
-            screenattrs = malloc(cols * rows * sizeof(*screenattrs));
+            screenchars = calloc(sizeof(*screenchars), cols * rows);
+            screenattrs = calloc(sizeof(*screenattrs), cols * rows);
 
             terminal.cursory = terminal.cursory - srcoff;
             terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
