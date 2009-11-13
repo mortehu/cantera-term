@@ -553,6 +553,7 @@ static void paint(int x, int y, int width, int height)
 
 static void normalize_offset()
 {
+  int size = terminal.size.ws_col * terminal.history_size;
   int i;
 
   if(!*terminal.curoffset)
@@ -562,27 +563,29 @@ static void normalize_offset()
 
   for(i = 0; i < 2; ++i)
   {
-    int size = terminal.size.ws_col * terminal.history_size;
     int offset = terminal.offset[i];
-    wchar_t* tmpchars = malloc(sizeof(wchar_t) * size);
-    uint16_t* tmpattrs = malloc(sizeof(uint16_t) * size);
+    wchar_t* tmpchars;
+    uint16_t* tmpattrs;
 
     assert(offset >= 0);
     assert(offset < size);
 
-    memcpy(tmpchars, terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
-    memcpy(tmpchars + (size - offset), terminal.chars[i], sizeof(*tmpchars) * offset);
+    tmpchars = malloc(sizeof(wchar_t) * offset);
+    tmpattrs = malloc(sizeof(uint16_t) * offset);
 
-    memcpy(tmpattrs, terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
-    memcpy(tmpattrs + (size - offset), terminal.attr[i], sizeof(*tmpattrs) * offset);
+    memcpy(tmpchars, terminal.chars[i], sizeof(*tmpchars) * offset);
+    memcpy(tmpattrs, terminal.attr[i], sizeof(*tmpattrs) * offset);
 
-    memcpy(terminal.chars[i], tmpchars, sizeof(*terminal.chars[0]) * size);
-    memcpy(terminal.attr[i], tmpattrs, sizeof(*terminal.attr[0]) * size);
+    memmove(terminal.chars[i], terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
+    memmove(terminal.attr[i], terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
+
+    memmove(terminal.chars[i] + (size - offset), tmpchars, sizeof(*tmpchars) * offset);
+    memmove(terminal.attr[i] + (size - offset), tmpattrs, sizeof(*tmpattrs) * offset);
 
     terminal.offset[i] = 0;
 
-    free(tmpchars);
     free(tmpattrs);
+    free(tmpchars);
   }
 }
 
@@ -607,8 +610,8 @@ static void scroll(int fromcursor)
     memset(terminal.curchars + clear_offset, 0, sizeof(*terminal.curchars) * terminal.size.ws_col);
     memset16(terminal.curattrs + clear_offset, terminal.curattr, sizeof(*terminal.curattrs) * terminal.size.ws_col);
 
-    (*terminal.curoffset) += terminal.size.ws_col;
-    (*terminal.curoffset) %= (terminal.size.ws_col * terminal.history_size);
+    *terminal.curoffset += terminal.size.ws_col;
+    *terminal.curoffset %= terminal.size.ws_col * terminal.history_size;
 
     return;
   }
@@ -1589,26 +1592,39 @@ static void process_data(unsigned char* buf, int count)
             }
             else if(terminal.param[0] == 2)
             {
-              /* Clear entire screen */
-              normalize_offset();
+              size_t screen_size, history_size;
 
-              memset(terminal.curchars, 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-              memset(terminal.curattrs, 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
+              screen_size = terminal.size.ws_col * terminal.size.ws_row;
+              history_size = terminal.size.ws_col * terminal.history_size;
+
+              if(*terminal.curoffset + screen_size > history_size)
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
+                  memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
+                  memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                }
+              else
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                }
+
               terminal.cursory = 0;
               terminal.cursorx = 0;
-              *terminal.curoffset = 0;
 
               for(k = 0; k < terminal.image_count; )
-              {
-                if(terminal.images[k].screen == terminal.curscreen)
                 {
-                  --terminal.image_count;
-                  cnt_image_free(&terminal.images[k].image);
-                  memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                  if(terminal.images[k].screen == terminal.curscreen)
+                    {
+                      --terminal.image_count;
+                      cnt_image_free(&terminal.images[k].image);
+                      memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                    }
+                  else
+                    ++k;
                 }
-                else
-                  ++k;
-              }
             }
 
             break;

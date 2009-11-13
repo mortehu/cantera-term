@@ -252,7 +252,7 @@ int main(int argc, char** argv)
     XGrabPointer(display, window, True,
                  ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                  GrabModeAsync, GrabModeAsync, window, None, CurrentTime);
-    XGrabKeyboard(display, window, True, GrabModeAsync, GrabModeAsync,
+    XGrabKeyboard(display, DefaultRootWindow(display), True, GrabModeAsync, GrabModeAsync,
                   CurrentTime);
     XSetInputFocus(display, window, RevertToParent, CurrentTime);
   }
