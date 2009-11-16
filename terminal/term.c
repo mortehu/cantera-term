@@ -332,8 +332,7 @@ static void paint(int x, int y, int width, int height)
   if(terminal.image_count)
   {
     XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-    memset(screenchars, 0, cols * rows * sizeof(wchar_t));
-    memset(screenattrs, 0, cols * rows * sizeof(screenattrs[0]));
+    memset(screenchars, 0xff, cols * rows * sizeof(wchar_t));
   }
 
   {
@@ -967,6 +966,7 @@ static void x11_connect(const char* display_name)
 
   screenchars = calloc(cols * rows, sizeof(*screenchars));
   screenattrs = calloc(cols * rows, sizeof(*screenattrs));
+  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
 
   XSynchronize(display, False);
 
@@ -2770,8 +2770,7 @@ int main(int argc, char** argv)
           XFreePixmap(display, pmap);
 
           XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-          memset(screenchars, 0, cols * rows * sizeof(*screenchars));
-          memset(screenattrs, 0, cols * rows * sizeof(*screenattrs));
+          memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
           XClearArea(display, window, 0, 0, window_width, window_height, True);
         }
 
