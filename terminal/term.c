@@ -2541,22 +2541,20 @@ int main(int argc, char** argv)
 
         case 4: /* Up */
 
+          if(terminal.history_scroll < scroll_extra)
             {
-              if(terminal.appcursor)
-                term_write("\033OA");
-              else
-                term_write("\033[A");
+              ++terminal.history_scroll;
+              XClearArea(display, window, 0, 0, window_width, window_height, True);
             }
 
           break;
 
         case 5: /* Down */
 
+          if(terminal.history_scroll)
             {
-              if(terminal.appcursor)
-                term_write("\033OB");
-              else
-                term_write("\033[B");
+              --terminal.history_scroll;
+              XClearArea(display, window, 0, 0, window_width, window_height, True);
             }
 
           break;
