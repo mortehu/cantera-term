@@ -558,8 +558,6 @@ static void normalize_offset()
   if(!*terminal.curoffset)
     return;
 
-  terminal.history_scroll = 0;
-
   for(i = 0; i < 2; ++i)
   {
     int offset = terminal.offset[i];
