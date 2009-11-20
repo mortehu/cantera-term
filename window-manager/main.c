@@ -407,7 +407,7 @@ static void set_focus(terminal* t)
 
     Window focus = t->window;
     clear_screen();
-    XMapWindow(display, t->window);
+    XMapRaised(display, t->window);
     set_map_state(t->window, 1);
 
     while(trans)
@@ -1503,7 +1503,7 @@ process_events:
             if(transient_for)
               break;
 
-            if(!cwe->override_redirect && (cwe->x != 0 || cwe->y != 0 || cwe->width != window_width || cwe->height != window_height))
+            if(!cwe->override_redirect && (cwe->x != screens[0].x_org || cwe->y != screens[0].y_org || cwe->width != window_width || cwe->height != window_height))
             {
               wc.x = screens[0].x_org;
               wc.y = screens[0].y_org;
@@ -1644,6 +1644,7 @@ process_events:
 
               term = &terminals[first_available_terminal()];
 
+              memset(term, 0, sizeof(*term));
               term->mode = mode_x11;
               term->window = event.xmaprequest.window;
             }
