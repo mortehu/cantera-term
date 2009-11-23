@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -24,8 +23,10 @@
 #include "common.h"
 #include "font.h"
 #include "globals.h"
+#include "tree.h"
 
 static struct picture background;
+static struct tree* config;
 
 #define FLAG_TERMINAL 0x0001
 
@@ -39,8 +40,6 @@ struct picture
 
 static wchar_t query[256];
 
-static void* config;
-
 void menu_draw_desktops(Picture buffer, int height);
 
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
@@ -51,46 +50,6 @@ static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x,
   XRenderFillRectangle(display, PictOpOver, target, &xrpalette[19],
                        x - 2, y, len * xskips[SMALL] + 4, yskips[SMALL]);
   drawtext(target, text, len, x, y, 15, SMALL);
-}
-
-static void* loading_thread_entry(void* arg)
-{
-  struct stat st_config, st_config_so;
-
-  if(0 == stat(".cantera/config.c", &st_config))
-  {
-    char config_so_path[64];
-    struct utsname un;
-
-    uname(&un);
-
-    sprintf(config_so_path, ".cantera/config-%s.so", un.machine);
-
-    if(-1 == stat(config_so_path, &st_config_so)
-    || st_config_so.st_mtime < st_config.st_mtime)
-    {
-      char cmd[128];
-
-      fprintf(stderr, "Compiling configuration...\n");
-
-      sprintf(cmd, "gcc -x c -fPIC -std=c99 .cantera/config.c -shared -o %s", config_so_path);
-      system(cmd);
-    }
-
-    config = dlopen(config_so_path, RTLD_NOW | RTLD_LOCAL);
-
-    if(!config)
-      fprintf(stderr, "Failed to load '%s': %s\n", config_so_path, dlerror());
-    else
-    {
-      void (*init_handler)() = dlsym(config, "init");
-
-      if(init_handler)
-        init_handler();
-    }
-  }
-
-  return 0;
 }
 
 static int image_load(const char* path, struct picture* img)
@@ -115,12 +74,17 @@ static int image_load(const char* path, struct picture* img)
 
 void menu_init()
 {
-  pthread_t loading_thread;
+  char* init_commands;
+  size_t i, init_command_count;
 
   image_load(".cantera/background.png", &background);
 
-  pthread_create(&loading_thread, 0, loading_thread_entry, 0);
-  pthread_detach(loading_thread);
+  config = tree_load_cfg(".cantera/config");
+
+  tree_get_strings(config, "menu.init", &init_commands, &init_command_count);
+
+  for(i = 0; i < init_command_count; ++i)
+    system(init_commands[i]);
 }
 
 void menu_thumbnail_dimensions(int* width, int* height, int* margin)
@@ -303,10 +267,15 @@ int menu_handle_char(int ch)
 
 int menu_handle_hotkey(int ch)
 {
-  void (*handler)(int ch) = dlsym(config, "handle_hotkey");
+  char key[10];
+  const char* command;
 
-  if(handler)
-    handler(ch);
+  sprintf(key, "hotkey.%c", ch);
+
+  command = tree_get_string_default(config, key, 0);
+
+  if(command)
+    launch(command);
 
   return 0;
 }

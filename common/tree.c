@@ -198,6 +198,24 @@ tree_get_string(const struct tree* t, const char* path)
   errx(EXIT_FAILURE, "%s: could not find symbol '%s'", t->name, path);
 }
 
+size_t
+tree_get_strings(const struct tree* t, const char* path, char** result)
+{
+  size_t i, count = 0;
+
+  for(i = 0; i < t->node_count; ++i)
+    {
+      if(!strcmp(t->nodes[i].path, path))
+        {
+          *result = realloc(*result, sizeof(*result) * (count + 1));
+
+          result[count++] = t->nodes[i].value;
+        }
+    }
+
+  return count;
+}
+
 const char*
 tree_get_string_default(const struct tree* t, const char* path, const char* def)
 {
