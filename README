@@ -8,8 +8,7 @@ COPYRIGHT
 
 CONFIGURATION
 
-  The path of the configuration files are ``.cantera/config'' and
-  ``.cantera/config.c''
+  The path of the configuration files is ``.cantera/config''.
 
   Options in ``.canterea/config'':
 
@@ -17,6 +16,10 @@ CONFIGURATION
     terminal.font <font-path>
     terminal.font-size <font-size>
     terminal.palette <palette>
+
+    hotkey.<character> <command>
+
+    menu.init <command>
 
   Example Palettes
   ================
@@ -33,27 +36,23 @@ CONFIGURATION
 
       terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2 555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
 
+  Example Hotkeys
+  ===============
 
-  The C programming language is used for ``.cantera/config.c.  The
-  configuration is compiled automatically by cantera-wm when it starts.  For
-  configuration to work at all, you need GNU GCC installed.  On Debian systems,
-  you can install this using ``apt-get install build-essential''.
+    hotkey.f "firefox"
+    hotkey.b "cantera-term"
 
-  Here's an example configuration file:
+  Example Initialization
+  ======================
 
-    #include <cantera-config.h>
+    menu.init "setxkbmap us"
+    menu.init "setxkbmap -option terminate:ctrl_alt_bksp"
 
-    void handle_hotkey(int ch)
+  Curly braces may be used instead of providing the full name of the key in
+  every case:
+
+    menu
     {
-      switch(ch)
-      {
-      case 'b': launch("cantera-term"); break;
-      case 'l': launch("xlock -erasemode no_fade"); break;
-      case 'i': launch("iceweasel"); break;
-      }
+      init "setxkbmap us"
+      init "setxkbmap -option terminate:ctrl_alt_bksp"
     }
-
-  If you'd like to compile the configuration file yourself (for example to
-  verify that there are no syntax errors), run:
-
-    gcc -x c -fPIC -std=c99 ~/.cantera/config.c -shared -o ~/.cantera/config-`uname -m`.so
