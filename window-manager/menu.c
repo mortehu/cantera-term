@@ -26,7 +26,7 @@
 #include "tree.h"
 
 static struct picture background;
-static struct tree* config;
+struct tree* config;
 
 #define FLAG_TERMINAL 0x0001
 
@@ -74,17 +74,17 @@ static int image_load(const char* path, struct picture* img)
 
 void menu_init()
 {
-  char* init_commands;
+  char** init_commands;
   size_t i, init_command_count;
 
   image_load(".cantera/background.png", &background);
 
-  config = tree_load_cfg(".cantera/config");
-
-  tree_get_strings(config, "menu.init", &init_commands, &init_command_count);
+  init_command_count = tree_get_strings(config, "menu.init", &init_commands);
 
   for(i = 0; i < init_command_count; ++i)
     system(init_commands[i]);
+
+  free(init_commands);
 }
 
 void menu_thumbnail_dimensions(int* width, int* height, int* margin)
@@ -261,21 +261,6 @@ int menu_handle_char(int ch)
   }
 
   XClearArea(display, window, 0, 0, window_width, window_height, True);
-
-  return 0;
-}
-
-int menu_handle_hotkey(int ch)
-{
-  char key[10];
-  const char* command;
-
-  sprintf(key, "hotkey.%c", ch);
-
-  command = tree_get_string_default(config, key, 0);
-
-  if(command)
-    launch(command);
 
   return 0;
 }

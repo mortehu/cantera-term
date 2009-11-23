@@ -32,6 +32,7 @@
 #include "font.h"
 #include "globals.h"
 #include "menu.h"
+#include "tree.h"
 
 #define PARTIAL_REPAINT 1
 
@@ -957,11 +958,15 @@ static void get_transient_for(Window w, Window* transient_for)
   XSetErrorHandler(xerror_handler);
 }
 
+extern struct tree* config;
+
 int main(int argc, char** argv)
 {
   int i;
   int result;
   struct timeval now;
+
+  config = tree_load_cfg(".cantera/config");
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -1205,7 +1210,17 @@ process_events:
               run_command(-1, "coffee", 0);
 
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
-              menu_handle_hotkey(key_sym);
+              {
+                char key[10];
+                const char* command;
+
+                sprintf(key, "hotkey.%c", (int) key_sym);
+
+                command = tree_get_string_default(config, key, 0);
+
+                if(command)
+                  launch(command);
+              }
             else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
               int new_terminal;
