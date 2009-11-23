@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include <pwd.h>
+#include <shadow.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
@@ -92,6 +93,30 @@ char* user_name;
 char* host_name;
 char* password_hash;
 
+void
+get_password_hash()
+{
+  struct passwd* p;
+  struct spwd* s;
+
+  p = getpwnam(user_name);
+
+  if(!p)
+    exit(EXIT_FAILURE);
+
+  password_hash = p->pw_passwd;
+
+  if(!strcmp(password_hash, "x"))
+    {
+      s = getspnam(user_name);
+
+      if(!s)
+        exit(EXIT_FAILURE);
+
+      password_hash = s->sp_pwdp;
+    }
+}
+
 int main(int argc, char** argv)
 {
   int i, j;
@@ -109,11 +134,7 @@ int main(int argc, char** argv)
   user_name = get_user_name();
   host_name = get_host_name();
 
-    {
-      struct passwd* p;
-      p = getpwnam(user_name);
-      password_hash = p->pw_passwd;
-    }
+  get_password_hash();
 
   display = XOpenDisplay(0);
 
