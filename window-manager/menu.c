@@ -77,14 +77,14 @@ void menu_init()
   char** init_commands;
   size_t i, init_command_count;
 
-  image_load(".cantera/background.png", &background);
-
   init_command_count = tree_get_strings(config, "menu.init", &init_commands);
 
   for(i = 0; i < init_command_count; ++i)
     system(init_commands[i]);
 
   free(init_commands);
+
+  image_load(".cantera/background.png", &background);
 }
 
 void menu_thumbnail_dimensions(int* width, int* height, int* margin)
