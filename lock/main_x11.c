@@ -676,7 +676,7 @@ static char* get_user_name()
   uid_t euid;
   struct passwd* pwent;
 
-  euid = geteuid();
+  euid = getuid();
 
   while(0 != (pwent = getpwent()))
   {
