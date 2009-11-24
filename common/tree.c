@@ -204,6 +204,8 @@ tree_get_strings(const struct tree* t, const char* path, char*** result)
 {
   size_t i, count = 0;
 
+  *result = 0;
+
   for(i = 0; i < t->node_count; ++i)
     {
       if(!strcmp(t->nodes[i].path, path))
