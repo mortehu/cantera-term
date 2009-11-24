@@ -328,6 +328,9 @@ static void paint(int x, int y, int width, int height)
   int miny = y;
   int maxx = x + width;
   int maxy = y + height;
+  unsigned int size;
+
+  size = terminal.history_size * terminal.size.ws_col;
 
   if(terminal.image_count)
   {
@@ -347,9 +350,12 @@ static void paint(int x, int y, int width, int height)
       selend = select_begin;
     }
 
+    selbegin %= size;
+    selend %= size;
+
     for(row = 0; row < terminal.size.ws_row; ++row)
     {
-      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + (*terminal.curoffset)) % (terminal.size.ws_col * terminal.history_size);
+      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + (*terminal.curoffset)) % size;
       wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
       uint16_t* screenattrline = &screenattrs[row * terminal.size.ws_col];
       const wchar_t* line = &terminal.curchars[pos];
@@ -374,6 +380,7 @@ static void paint(int x, int y, int width, int height)
 
         printable = (line[start] != 0);
 
+        /* XXX: Doesn't work for buffer edges */
         if(row * terminal.size.ws_col + start >= selbegin
         && row * terminal.size.ws_col + start < selend)
         {
@@ -2484,11 +2491,17 @@ int main(int argc, char** argv)
           if(event.xbutton.state & Button1Mask)
           {
             int x, y, new_select_end;
+            unsigned int size;
+
+            size = terminal.history_size * terminal.size.ws_col;
 
             x = event.xbutton.x / terminal.xskip;
             y = event.xbutton.y / terminal.yskip;
 
             new_select_end = y * terminal.size.ws_col + x;
+
+            if(terminal.history_scroll)
+              new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
 
             if(ctrl_pressed)
             {
@@ -2518,6 +2531,9 @@ int main(int argc, char** argv)
 
           {
             int x, y;
+            unsigned int size;
+
+            size = terminal.history_size * terminal.size.ws_col;
 
             button1_pressed = 1;
 
@@ -2525,6 +2541,10 @@ int main(int argc, char** argv)
             y = event.xbutton.y / terminal.yskip;
 
             select_begin = y * terminal.size.ws_col + x;
+
+            if(terminal.history_scroll)
+              select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
+
             select_end = select_begin;
 
             if(ctrl_pressed)

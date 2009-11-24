@@ -1,6 +1,5 @@
 bin_PROGRAMS = cantera-wm
 man1_MANS = doc/cantera-wm.1
-include_HEADERS = cantera-config.h
 
 CONVERT = @CONVERT@
 
