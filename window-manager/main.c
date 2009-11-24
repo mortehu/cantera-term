@@ -33,6 +33,7 @@
 #include "font.h"
 #include "globals.h"
 #include "menu.h"
+#include "tree.h"
 
 #define PARTIAL_REPAINT 1
 
@@ -277,7 +278,8 @@ static void grab_thumbnail()
 
     if(result != Success)
     {
-      fprintf(stderr, "No success\n");
+      fprintf(stderr, "XGetWindowProperty failed\n");
+
       return;
     }
 
@@ -966,14 +968,6 @@ int main(int argc, char** argv)
   int i;
   int result;
   struct timeval now;
-
-  config = tree_load_cfg(".cantera/config");
-
-  inotify_fd = inotify_init();
-
-  if(inotify_fd != -1)
-    inotify_add_watch(inotify_fd, ".cantera/config", IN_CLOSE_WRITE);
-
   setlocale(LC_ALL, "en_US.UTF-8");
 
   if(!getenv("DISPLAY"))
@@ -984,6 +978,17 @@ int main(int argc, char** argv)
   }
 
   chdir(getenv("HOME"));
+
+  config = tree_load_cfg(".cantera/config");
+
+  inotify_fd = inotify_init1(IN_CLOEXEC);
+
+  if(inotify_fd != -1)
+    {
+      if(-1 == inotify_add_watch(inotify_fd, ".cantera", IN_ALL_EVENTS | IN_ONLYDIR))
+        fprintf(stderr, "inotify_add_watch failed: %s\n", strerror(errno));
+    }
+
 
   mkdir(".cantera", 0777);
   mkdir(".cantera/commands", 0777);
@@ -1060,7 +1065,7 @@ int main(int argc, char** argv)
         FD_SET(inotify_fd, &readset);
 
         if(inotify_fd > maxfd)
-          maxfde = inotify_fd;
+          maxfd = inotify_fd;
       }
 
     if(!x11_connected)
@@ -1116,6 +1121,68 @@ int main(int argc, char** argv)
 
     if(inotify_fd && FD_ISSET(inotify_fd, &readset))
       {
+        struct inotify_event* ev;
+        char* buf;
+        size_t size;
+        int available = 0;
+
+        result = ioctl(inotify_fd, FIONREAD, &available);
+
+        if(available > 0)
+          {
+            buf = alloca(result);
+
+            result = read(inotify_fd, buf, available);
+
+            if(result < 0)
+              {
+                fprintf(stderr, "Read error from inotify file descriptor: %s\n",
+                        strerror(errno));
+
+                close(inotify_fd);
+
+                inotify_fd = -1;
+              }
+            else if(result < sizeof(struct inotify_event))
+              {
+                fprintf(stderr, "Short read from inotify\n");
+
+                close(inotify_fd);
+
+                inotify_fd =-1;
+              }
+            else
+              {
+                ev = (struct inotify_event*) buf;
+
+                while(available)
+                  {
+                    size = sizeof(struct inotify_event) + ev->len;
+
+                    if(size > available)
+                      {
+                        fprintf(stderr, "Corrupt data in inotify stream\n");
+
+                        close(inotify_fd);
+
+                        inotify_fd = -1;
+
+                        break;
+                      }
+
+                    if(!strcmp(ev->name, "config")
+                       && (ev->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)))
+                      {
+                        tree_destroy(config);
+                        config = tree_load_cfg(".cantera/config");
+                      }
+
+                    available -= size;
+                    buf += size;
+                    ev = (struct inotify_event*) ((char*) ev + size);
+                  }
+              }
+          }
       }
 
     if(x11_connected && FD_ISSET(xfd, &readset))

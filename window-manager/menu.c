@@ -74,15 +74,17 @@ static int image_load(const char* path, struct picture* img)
 
 void menu_init()
 {
-  char* init_commands;
+  char** init_commands;
   size_t i, init_command_count;
 
   image_load(".cantera/background.png", &background);
 
-  tree_get_strings(config, "menu.init", &init_commands, &init_command_count);
+  init_command_count = tree_get_strings(config, "menu.init", &init_commands);
 
   for(i = 0; i < init_command_count; ++i)
     system(init_commands[i]);
+
+  free(init_commands);
 }
 
 void menu_thumbnail_dimensions(int* width, int* height, int* margin)

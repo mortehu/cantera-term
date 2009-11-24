@@ -46,7 +46,8 @@ tree_create(const char* name)
 void
 tree_destroy(struct tree* t)
 {
-  arena_free(&t->arena);
+  /* XXX: bugfix this arena_free(&t->arena); */
+  memset(t, 0, sizeof(*t));
 }
 
 void
@@ -199,9 +200,11 @@ tree_get_string(const struct tree* t, const char* path)
 }
 
 size_t
-tree_get_strings(const struct tree* t, const char* path, char** result)
+tree_get_strings(const struct tree* t, const char* path, char*** result)
 {
   size_t i, count = 0;
+
+  *result = 0;
 
   for(i = 0; i < t->node_count; ++i)
     {
@@ -209,7 +212,7 @@ tree_get_strings(const struct tree* t, const char* path, char** result)
         {
           *result = realloc(*result, sizeof(*result) * (count + 1));
 
-          result[count++] = t->nodes[i].value;
+          (*result)[count++] = t->nodes[i].value;
         }
     }
 
