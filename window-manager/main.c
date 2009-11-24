@@ -485,7 +485,7 @@ static void set_active_terminal(int terminal)
   at->dirty = 1;
 }
 
-pid_t launch(const char* command)
+pid_t launch(const char* command, Time time)
 {
   pid_t pid = fork();
 
@@ -496,6 +496,9 @@ pid_t launch(const char* command)
   {
     char* args[4];
     char buf[32];
+
+    sprintf(buf, "%llu", (unsigned long long int) time);
+    setenv("DESKTOP_START_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
     setenv("HISTFILE", buf, 1);
@@ -963,11 +966,14 @@ static void get_transient_for(Window w, Window* transient_for)
   XSetErrorHandler(xerror_handler);
 }
 
+extern struct tree* config;
+
 int main(int argc, char** argv)
 {
   int i;
   int result;
   struct timeval now;
+
   setlocale(LC_ALL, "en_US.UTF-8");
 
   if(!getenv("DISPLAY"))
@@ -988,7 +994,6 @@ int main(int argc, char** argv)
       if(-1 == inotify_add_watch(inotify_fd, ".cantera", IN_ALL_EVENTS | IN_ONLYDIR))
         fprintf(stderr, "inotify_add_watch failed: %s\n", strerror(errno));
     }
-
 
   mkdir(".cantera", 0777);
   mkdir(".cantera/commands", 0777);
@@ -1295,7 +1300,17 @@ process_events:
               run_command(-1, "coffee", 0);
 
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
-              menu_handle_hotkey(key_sym);
+              {
+                char key[10];
+                const char* command;
+
+                sprintf(key, "hotkey.%c", (int) key_sym);
+
+                command = tree_get_string_default(config, key, 0);
+
+                if(command)
+                  launch(command, event.xkey.time);
+              }
             else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
               int new_terminal;
@@ -1397,7 +1412,7 @@ process_events:
             }
             else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
             {
-              launch("exec xkill");
+              launch("xkill", event.xkey.time);
             }
             else if(mod1_pressed && key_sym == XK_F4)
             {

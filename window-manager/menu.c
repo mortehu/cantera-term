@@ -203,7 +203,7 @@ void menu_keypress(int key_sym, const char* text, int textlen)
 
         wcstombs(command, query, sizeof(command));
 
-        launch(command);
+        launch(command, CurrentTime);
 
         query[0] = 0;
       }
@@ -261,21 +261,6 @@ int menu_handle_char(int ch)
   }
 
   XClearArea(display, window, 0, 0, window_width, window_height, True);
-
-  return 0;
-}
-
-int menu_handle_hotkey(int ch)
-{
-  char key[10];
-  const char* command;
-
-  sprintf(key, "hotkey.%c", ch);
-
-  command = tree_get_string_default(config, key, 0);
-
-  if(command)
-    launch(command);
 
   return 0;
 }

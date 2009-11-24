@@ -810,6 +810,9 @@ static void x11_connect(const char* display_name)
   int i;
   int nitems;
   char* c;
+  long pid;
+
+  pid = getpid();
 
   XInitThreads();
 
@@ -850,6 +853,9 @@ static void x11_connect(const char* display_name)
   xa_wm_transient_for = XInternAtom(display, "WM_TRANSIENT_FOR", False);
   xa_wm_protocols = XInternAtom(display, "WM_PROTOCOLS", False);
   xa_wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+
+  XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
+                  PropModeReplace, (unsigned char *) &pid, 1);
 
   xim = 0;
 

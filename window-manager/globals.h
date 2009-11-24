@@ -70,7 +70,7 @@ extern terminal terminals[];
 
 void init_session(terminal* t, char* const* args);
 
-int launch(const char* command);
+int launch(const char* command, Time time);
 
 size_t utf8_to_ucs(wchar_t* result, const char* input, size_t avail);
 
