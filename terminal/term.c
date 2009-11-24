@@ -667,8 +667,10 @@ enum range_type
 static int find_range(int range, int* begin, int* end)
 {
   int i, ch;
+  unsigned int offset, size;
 
-  normalize_offset();
+  size = terminal.history_size * terminal.size.ws_col;
+  offset = *terminal.curoffset;
 
   if(range == range_word_or_url)
   {
@@ -679,7 +681,7 @@ static int find_range(int range, int* begin, int* end)
       if(!(i % terminal.size.ws_col))
         break;
 
-      ch = terminal.curchars[i - 1];
+      ch = terminal.curchars[(offset + i - 1) % size];
 
       if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
@@ -693,7 +695,7 @@ static int find_range(int range, int* begin, int* end)
 
     while((i % terminal.size.ws_col) < terminal.size.ws_col)
     {
-      ch = terminal.curchars[i];
+      ch = terminal.curchars[(offset + i) % size];
 
       if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
@@ -715,7 +717,7 @@ static int find_range(int range, int* begin, int* end)
 
     while(i > 0)
     {
-      ch = terminal.curchars[i];
+      ch = terminal.curchars[(offset + i) % size];
 
       if((!ch || ((i + 1) % terminal.size.ws_col == 0) || isspace(ch)) && !paren_level)
       {
@@ -742,7 +744,7 @@ static int find_range(int range, int* begin, int* end)
 
     if(*end > i + 1)
     {
-      if(terminal.curchars[*end - 1] == '=')
+      if(terminal.curchars[(offset + *end - 1) % size] == '=')
         --*end;
     }
 
@@ -1015,9 +1017,13 @@ static void sighandler(int signal)
 static void update_selection(Time time)
 {
   int i;
+  unsigned int size, offset;
 
   if(select_begin == select_end)
     return;
+
+  size = terminal.size.ws_col * terminal.history_size;
+  offset = *terminal.curoffset;
 
   if(select_text)
   {
@@ -1042,7 +1048,7 @@ static void update_selection(Time time)
 
   while(i != select_end)
   {
-    int ch = terminal.curchars[i];
+    int ch = terminal.curchars[(i + offset) % size];
     int width = terminal.size.ws_col;
 
     if(ch == 0 || ch == 0xffff)
@@ -2567,8 +2573,6 @@ int main(int argc, char** argv)
         case 1: /* Left button */
 
           {
-            normalize_offset();
-
             button1_pressed = 0;
 
             update_selection(event.xbutton.time);
