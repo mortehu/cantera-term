@@ -1325,7 +1325,7 @@ process_events:
             }
             else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
             {
-              launch("exec xkill", event.xkey.time);
+              launch("xkill", event.xkey.time);
             }
             else if(mod1_pressed && key_sym == XK_F4)
             {
