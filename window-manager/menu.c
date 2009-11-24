@@ -26,7 +26,7 @@
 #include "tree.h"
 
 static struct picture background;
-static struct tree* config;
+extern struct tree* config;
 
 #define FLAG_TERMINAL 0x0001
 
@@ -78,8 +78,6 @@ void menu_init()
   size_t i, init_command_count;
 
   image_load(".cantera/background.png", &background);
-
-  config = tree_load_cfg(".cantera/config");
 
   tree_get_strings(config, "menu.init", &init_commands, &init_command_count);
 

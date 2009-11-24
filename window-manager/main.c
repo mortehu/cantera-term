@@ -13,6 +13,7 @@
 #include <utmp.h>
 #include <wchar.h>
 
+#include <sys/inotify.h>
 #include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -36,6 +37,9 @@
 #define PARTIAL_REPAINT 1
 
 extern char** environ;
+
+struct tree* config;
+int inotify_fd = -1;
 
 int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
@@ -963,6 +967,13 @@ int main(int argc, char** argv)
   int result;
   struct timeval now;
 
+  config = tree_load_cfg(".cantera/config");
+
+  inotify_fd = inotify_init();
+
+  if(inotify_fd != -1)
+    inotify_add_watch(inotify_fd, ".cantera/config", IN_CLOSE_WRITE);
+
   setlocale(LC_ALL, "en_US.UTF-8");
 
   if(!getenv("DISPLAY"))
@@ -1044,6 +1055,14 @@ int main(int argc, char** argv)
         maxfd = xfd;
     }
 
+    if(inotify_fd != -1)
+      {
+        FD_SET(inotify_fd, &readset);
+
+        if(inotify_fd > maxfd)
+          maxfde = inotify_fd;
+      }
+
     if(!x11_connected)
     {
       result = select(maxfd + 1, &readset, &writeset, 0, 0);
@@ -1094,6 +1113,10 @@ int main(int argc, char** argv)
       FD_ZERO(&writeset);
       FD_ZERO(&readset);
     }
+
+    if(inotify_fd && FD_ISSET(inotify_fd, &readset))
+      {
+      }
 
     if(x11_connected && FD_ISSET(xfd, &readset))
     {
