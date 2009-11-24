@@ -203,7 +203,7 @@ void menu_keypress(int key_sym, const char* text, int textlen)
 
         wcstombs(command, query, sizeof(command));
 
-        launch(command);
+        launch(command, CurrentTime);
 
         query[0] = 0;
       }

@@ -480,7 +480,7 @@ static void set_active_terminal(int terminal)
   at->dirty = 1;
 }
 
-pid_t launch(const char* command)
+pid_t launch(const char* command, Time time)
 {
   pid_t pid = fork();
 
@@ -491,6 +491,9 @@ pid_t launch(const char* command)
   {
     char* args[4];
     char buf[32];
+
+    sprintf(buf, "%llu", (unsigned long long int) time);
+    setenv("DESKTOP_START_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
     setenv("HISTFILE", buf, 1);
@@ -1219,7 +1222,7 @@ process_events:
                 command = tree_get_string_default(config, key, 0);
 
                 if(command)
-                  launch(command);
+                  launch(command, event.xkey.time);
               }
             else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
@@ -1322,7 +1325,7 @@ process_events:
             }
             else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
             {
-              launch("exec xkill");
+              launch("exec xkill", event.xkey.time);
             }
             else if(mod1_pressed && key_sym == XK_F4)
             {
