@@ -329,6 +329,7 @@ static void paint(int x, int y, int width, int height)
   int maxx = x + width;
   int maxy = y + height;
   unsigned int size;
+  int in_selection = 0;
 
   size = terminal.history_size * terminal.size.ws_col;
 
@@ -350,8 +351,8 @@ static void paint(int x, int y, int width, int height)
       selend = select_begin;
     }
 
-    selbegin %= size;
-    selend %= size;
+    selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
+    selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
 
     for(row = 0; row < terminal.size.ws_row; ++row)
     {
@@ -380,18 +381,23 @@ static void paint(int x, int y, int width, int height)
 
         printable = (line[start] != 0);
 
-        /* XXX: Doesn't work for buffer edges */
-        if(row * terminal.size.ws_col + start >= selbegin
-        && row * terminal.size.ws_col + start < selend)
-        {
-          if(line[start] != screenline[start] && !button1_pressed)
+        if(row * terminal.size.ws_col + start == selbegin)
+          in_selection = 1;
+
+        if(row * terminal.size.ws_col + start == selend)
+          in_selection = 0;
+
+        if(in_selection)
           {
-            selbegin = select_begin = -1;
-            selend = select_end = -1;
+            if(line[start] != screenline[start] && !button1_pressed)
+              {
+                in_selection = 0;
+                select_begin = -1;
+                select_end = -1;
+              }
+            else
+              attr = REVERSE(attr);
           }
-          else
-            attr = REVERSE(attr);
-        }
 
 #if PARTIAL_REPAINT
         update = (line[start] != screenline[start]) || (attr != screenattrline[start]);
