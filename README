@@ -21,6 +21,10 @@ CONFIGURATION
 
     menu.init <command>
 
+    auto-launch.ctrl-f1 <command>
+    ...
+    auto-launch.super-f12 <command>
+
   Example Palettes
   ================
 
@@ -47,6 +51,11 @@ CONFIGURATION
 
     menu.init "setxkbmap us"
     menu.init "setxkbmap -option terminate:ctrl_alt_bksp"
+
+  Example Auto-launch
+  ===================
+
+    auto-launch.ctrl-f5 "firefox"
 
   Curly braces may be used instead of providing the full name of the key in
   every case:

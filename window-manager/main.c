@@ -213,6 +213,29 @@ static void paint(int x, int y, int width, int height)
   }
 }
 
+int get_int_property(Window window, Atom property, int* result)
+{
+  Atom type;
+  int format;
+  unsigned long nitems;
+  unsigned long bytes_after;
+  uint32_t* prop;
+
+  if(Success != XGetWindowProperty(display, window, property, 0, 4, False,
+                                   AnyPropertyType, &type, &format, &nitems,
+                                   &bytes_after, (unsigned char**) &prop))
+    return -1;
+
+  if(!prop)
+    return -1;
+
+  *result = *prop;
+
+  XFree(prop);
+
+  return 0;
+}
+
 static int first_available_terminal()
 {
   int i;
@@ -481,6 +504,8 @@ pid_t launch(const char* command, Time time)
     char* args[4];
     char buf[32];
 
+    setsid();
+
     sprintf(buf, "%llu", (unsigned long long int) time);
     setenv("DESKTOP_START_ID", buf, 1);
 
@@ -499,6 +524,9 @@ pid_t launch(const char* command, Time time)
 
     exit(EXIT_FAILURE);
   }
+
+  if(at->mode == mode_menu)
+    at->pid = pid;
 
   return pid;
 }
@@ -560,7 +588,7 @@ static int xerror_handler(Display* display, XErrorEvent* error)
   fprintf(stderr, "X error: %s (request: %d, minor: %d)  ID: %08X\n", errorbuf,
           error->request_code, error->minor_code, (unsigned int) error->resourceid);
 
-  // abort();
+  /*abort();*/
 
   return 0;
 }
@@ -894,6 +922,7 @@ static int find_window(Window w, terminal** term, struct transient** trans)
     if(terminals[i].window == w)
     {
       *term = &terminals[i];
+
       if(trans)
         *trans = 0;
 
@@ -920,10 +949,24 @@ static int find_window(Window w, terminal** term, struct transient** trans)
   }
 
   *term = 0;
+
   if(trans)
     *trans = 0;
 
   return -1;
+}
+
+static terminal* find_pid(pid_t pid)
+{
+  int i;
+
+  for(i = 0; i < TERMINAL_COUNT; ++i)
+    {
+      if(terminals[i].pid == pid)
+        return &terminals[i];
+    }
+
+  return 0;
 }
 
 static void add_transient(terminal* term, Window window, struct transient** trans)
@@ -999,9 +1042,26 @@ int main(int argc, char** argv)
 
   for(i = 0; i < TERMINAL_COUNT; ++i)
   {
-    terminals[i].mode = mode_menu;
-    terminals[i].return_mode = mode_menu;
+    char buf[32];
+    const char* command;
+
+    at = &terminals[i];
+
+    if(i < 24)
+      {
+        sprintf(buf,
+                "auto-launch.%s-f%d", (i < 12) ? "ctrl" : "super",
+                (i % 12) + 1);
+
+        if(0 != (command = tree_get_string_default(config, buf, 0)))
+          launch(command, 0);
+      }
+
+    at->mode = mode_menu;
+    at->return_mode = mode_menu;
   }
+
+  at = &terminals[0];
 
   while(!done)
   {
@@ -1108,7 +1168,7 @@ int main(int argc, char** argv)
       FD_ZERO(&readset);
     }
 
-    if(inotify_fd && FD_ISSET(inotify_fd, &readset))
+    if(inotify_fd != -1 && FD_ISSET(inotify_fd, &readset))
       {
         struct inotify_event* ev;
         char* buf;
@@ -1431,7 +1491,7 @@ process_events:
             {
               if(0 != menu_handle_char(text[0]))
               {
-                menu_keypress(key_sym, text, len);
+                menu_keypress(key_sym, text, len, event.xkey.time);
                 at->dirty |= 1;
               }
             }
@@ -1451,23 +1511,17 @@ process_events:
             super_pressed = (event.xkey.state & Mod4Mask);
             shift_pressed = (event.xkey.state & ShiftMask);
 
-			if(key_sym == XK_Control_L || key_sym == XK_Control_R)
+            if(key_sym == XK_Control_L || key_sym == XK_Control_R)
               ctrl_pressed = 0;
 
-			if(key_sym == XK_Super_L || key_sym == XK_Super_R)
+            if(key_sym == XK_Super_L || key_sym == XK_Super_R)
               super_pressed = 0;
 
-			if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+            if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
               mod1_pressed = 0;
 
             if(!super_pressed || !(mod1_pressed ^ ctrl_pressed))
               destroy_terminal_list_popup();
-
-            if(at->mode == mode_menu)
-            {
-              menu_keyrelease(key_sym);
-              at->dirty |= 1;
-            }
           }
 
           break;
@@ -1584,7 +1638,7 @@ process_events:
 
           {
             XWindowChanges wc;
-            XCreateWindowEvent* cwe = &event.xcreatewindow;
+            const XCreateWindowEvent* cwe = &event.xcreatewindow;
             Window transient_for = 0;
 
             get_transient_for(cwe->window, &transient_for);
@@ -1724,13 +1778,28 @@ process_events:
           {
             terminal* term;
             struct transient* trans;
+            int pid;
 
             find_window(event.xmaprequest.window, &term, &trans);
 
+            if(!term && 0 == get_int_property(event.xmaprequest.window, xa_net_wm_pid, &pid))
+              {
+                pid = getsid(pid);
+
+                if(0 != (term = find_pid(pid)))
+                  {
+                    if(term->mode != mode_menu)
+                      term = 0;
+                    else
+                      {
+                        term->mode = mode_x11;
+                        term->window = event.xmaprequest.window;
+                      }
+                  }
+              }
+
             if(!term)
             {
-              trans = 0;
-
               term = &terminals[first_available_terminal()];
 
               memset(term, 0, sizeof(*term));
@@ -1746,9 +1815,7 @@ process_events:
               add_transient(term, event.xmaprequest.window, 0);
             }
 
-            if(!trans || term != at)
-              set_active_terminal(term - terminals);
-            else if(trans)
+            if(term == at)
             {
               XMapRaised(display, event.xmaprequest.window);
               XSetInputFocus(display, event.xmaprequest.window, RevertToPointerRoot, CurrentTime);

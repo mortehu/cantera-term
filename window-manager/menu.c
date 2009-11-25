@@ -182,7 +182,7 @@ void menu_draw_desktops(Picture buffer, int height)
   }
 }
 
-void menu_keypress(int key_sym, const char* text, int textlen)
+void menu_keypress(int key_sym, const char* text, int textlen, Time time)
 {
   switch(key_sym)
   {
@@ -199,7 +199,7 @@ void menu_keypress(int key_sym, const char* text, int textlen)
 
         wcstombs(command, query, sizeof(command));
 
-        launch(command, CurrentTime);
+        launch(command, time);
 
         query[0] = 0;
       }
@@ -219,10 +219,6 @@ void menu_keypress(int key_sym, const char* text, int textlen)
   }
 
   XClearArea(display, window, 0, 0, window_width, window_height, True);
-}
-
-void menu_keyrelease(int key_sym)
-{
 }
 
 int menu_handle_char(int ch)
