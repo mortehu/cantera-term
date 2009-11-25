@@ -394,6 +394,8 @@ static void paint(int x, int y, int width, int height)
                 in_selection = 0;
                 select_begin = -1;
                 select_end = -1;
+
+                XClearArea(display, window, 0, 0, window_width, window_height, True);
               }
             else
               attr = REVERSE(attr);
