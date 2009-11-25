@@ -175,14 +175,10 @@ void menu_draw_desktops(Picture buffer, int height)
     XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y + thumb_height, thumb_width + 2, 1);
 
     if(!terminals[i].thumbnail)
-    {
       XRenderFillRectangle(display, PictOpOver, buffer, &xrpalette[19],
                            x, y, thumb_width, thumb_height);
-    }
     else
-    {
       XRenderComposite(display, PictOpSrc, terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
-    }
   }
 }
 

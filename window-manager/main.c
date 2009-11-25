@@ -245,7 +245,6 @@ static void mark_terminal_dirty()
 
 static void grab_thumbnail()
 {
-  Pixmap pmap;
   int thumb_width, thumb_height;
 
   menu_thumbnail_dimensions(&thumb_width, &thumb_height, 0);
@@ -290,16 +289,24 @@ static void grab_thumbnail()
                                 AnyPropertyType, &type, &format, &nitems, &bytes_after,
                                 &prop);
 
-    if(prop)
+    if(prop && format == 32)
     {
-      unsigned int* buf = (unsigned int*) prop;
+      uint64_t* buf = (uint64_t*) prop;
       unsigned int width = buf[0];
       unsigned int height = buf[1];
+      unsigned int x, y;
+      uint32_t* colors;
+
+      colors = alloca(sizeof(*colors) * width * height);
+
+      for(y = 0; y < height; ++y)
+        for(x = 0; x < width; ++x)
+          colors[y * width + x] = buf[y * width + x + 2]/* >> 32*/;
 
       XImage temp_image;
-      init_ximage(&temp_image, width, height, (char*) prop + 8);
+      init_ximage(&temp_image, width, height, colors);
 
-      Pixmap temp_pixmap = XCreatePixmap(display, window, thumb_width, thumb_height, 32);
+      Pixmap temp_pixmap = XCreatePixmap(display, window, thumb_width, thumb_height, format);
 
       GC tmp_gc = XCreateGC(display, temp_pixmap, 0, 0);
       XFillRectangle(display, temp_pixmap, tmp_gc, 0, 0, thumb_width, thumb_height);
@@ -307,7 +314,10 @@ static void grab_thumbnail()
                 thumb_width / 2 - width / 2, thumb_height / 2 - height / 2, width, height);
       XFreeGC(display, tmp_gc);
 
-      at->thumbnail = XRenderCreatePicture(display, temp_pixmap, XRenderFindStandardFormat(display, PictStandardARGB32), 0, 0);
+      at->thumbnail
+        = XRenderCreatePicture(display, temp_pixmap,
+                               XRenderFindStandardFormat(display, PictStandardARGB32),
+                               0, 0);
 
       XFreePixmap(display, temp_pixmap);
 
@@ -316,32 +326,6 @@ static void grab_thumbnail()
 
     return;
   }
-
-  if(!at->thumbnail)
-  {
-    pmap = XCreatePixmap(display, root_window, window_width / 16, window_height / 16, xrenderpictformat->depth);
-
-    at->thumbnail = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-    XFreePixmap(display, pmap);
-  }
-
-  XTransform xform =
-  {
-    {
-      { XDoubleToFixed(1.0), XDoubleToFixed(0.0), XDoubleToFixed(0.0) },
-      { XDoubleToFixed(0.0), XDoubleToFixed(1.0), XDoubleToFixed(0.0) },
-      { XDoubleToFixed(0.0), XDoubleToFixed(0.0), XDoubleToFixed(1.0 / 16.0) }
-    }
-  };
-
-  XRenderSetPictureTransform(display, root_buffer, &xform);
-  XRenderSetPictureFilter(display, root_buffer, FilterBilinear, 0, 0);
-  XRenderComposite(display, PictOpSrc, root_buffer, None, at->thumbnail, 0, 0, 0, 0, 0, 0, window_width, window_height);
-
-  xform.matrix[2][2] = XDoubleToFixed(1.0);
-  XRenderSetPictureTransform(display, root_buffer, &xform);
-  XRenderSetPictureFilter(display, root_buffer, FilterNearest, 0, 0);
 }
 
 static void paint_terminal_list_popup();
