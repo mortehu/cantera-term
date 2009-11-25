@@ -1805,6 +1805,8 @@ process_events:
               memset(term, 0, sizeof(*term));
               term->mode = mode_x11;
               term->window = event.xmaprequest.window;
+
+              set_active_terminal(term - terminals);
             }
             else if(!trans)
             {
