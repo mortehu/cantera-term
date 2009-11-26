@@ -19,5 +19,4 @@ AC_CHECK_HEADER([X11/extensions/Xinerama.h], [], [AC_MSG_ERROR([libxinerama requ
 
 AC_C_BIGENDIAN
 
-AC_CONFIG_HEADERS(config.h)
 AC_OUTPUT(Makefile common/Makefile terminal/Makefile window-manager/Makefile lock/Makefile)

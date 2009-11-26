@@ -8,28 +8,60 @@ COPYRIGHT
 
 CONFIGURATION
 
-  The path of the configuration file is ``.cantera/config.c''
+  The path of the configuration files is ``.cantera/config''.
 
-  The C programming language is used for configuration files.  The
-  configuration is compiled automatically by cantera-wm when it starts.  For
-  configuration to work at all, you need GNU GCC installed.  On Debian systems,
-  you can install this using ``apt-get install build-essential''.
+  Options in ``.canterea/config'':
 
-  Here's an example configuration file:
+    terminal.history-size <history-size>
+    terminal.font <font-path>
+    terminal.font-size <font-size>
+    terminal.palette <palette>
 
-    #include <cantera-config.h>
+    hotkey.<character> <command>
 
-    void handle_hotkey(int ch)
+    menu.init <command>
+
+    auto-launch.ctrl-f1 <command>
+    ...
+    auto-launch.super-f12 <command>
+
+  Example Palettes
+  ================
+
+    ANSI colors:
+
+      terminal.palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+
+    Linux Console (according to gnome-terminal):
+
+      terminal.palette "000000 0000aa 00aa00 00aaaa aa0000 aa00aa aaaa00 aaaaaa 555555 5555ff 55ff55 55ffff ff5555 ff55ff ffff55 ffffff"
+
+    Tango (modified to gray on black):
+
+      terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2 555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
+
+  Example Hotkeys
+  ===============
+
+    hotkey.f "firefox"
+    hotkey.b "cantera-term"
+
+  Example Initialization
+  ======================
+
+    menu.init "setxkbmap us"
+    menu.init "setxkbmap -option terminate:ctrl_alt_bksp"
+
+  Example Auto-launch
+  ===================
+
+    auto-launch.ctrl-f5 "firefox"
+
+  Curly braces may be used instead of providing the full name of the key in
+  every case:
+
+    menu
     {
-      switch(ch)
-      {
-      case 'b': launch("cantera-term"); break;
-      case 'l': launch("xlock -erasemode no_fade"); break;
-      case 'i': launch("iceweasel"); break;
-      }
+      init "setxkbmap us"
+      init "setxkbmap -option terminate:ctrl_alt_bksp"
     }
-
-  If you'd like to compile the configuration file yourself (for example to
-  verify that there are no syntax errors), run:
-
-    gcc -x c -fPIC -std=c99 ~/.cantera/config.c -shared -o ~/.cantera/config-`uname -m`.so

@@ -1,5 +1,5 @@
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include "../config.h"
 #endif
 
 #include <assert.h>
@@ -43,6 +43,7 @@
 struct tree* config = 0;
 
 unsigned int scroll_extra;
+const char* font_name;
 
 extern char** environ;
 
@@ -50,14 +51,7 @@ int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
 int font_sizes[] = { 12, 36 };
 
-unsigned int palette[] =
-{
-  /* ANSI colors */
-  0xff000000, 0xff1818c2, 0xff18c218, 0xff18c2c2,
-  0xffc21818, 0xffc218c2, 0xffc2c218, 0xffc2c2c2,
-  0xff686868, 0xff7474ff, 0xff54ff54, 0xff54ffff,
-  0xffff5454, 0xffff54ff, 0xffffff54, 0xffffffff,
-};
+unsigned int palette[16];
 
 struct terminal
 {
@@ -334,12 +328,15 @@ static void paint(int x, int y, int width, int height)
   int miny = y;
   int maxx = x + width;
   int maxy = y + height;
+  unsigned int size;
+  int in_selection = 0;
+
+  size = terminal.history_size * terminal.size.ws_col;
 
   if(terminal.image_count)
   {
     XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-    memset(screenchars, 0, cols * rows * sizeof(wchar_t));
-    memset(screenattrs, 0, cols * rows * sizeof(screenattrs[0]));
+    memset(screenchars, 0xff, cols * rows * sizeof(wchar_t));
   }
 
   {
@@ -354,9 +351,12 @@ static void paint(int x, int y, int width, int height)
       selend = select_begin;
     }
 
+    selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
+    selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
+
     for(row = 0; row < terminal.size.ws_row; ++row)
     {
-      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + (*terminal.curoffset)) % (terminal.size.ws_col * terminal.history_size);
+      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + (*terminal.curoffset)) % size;
       wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
       uint16_t* screenattrline = &screenattrs[row * terminal.size.ws_col];
       const wchar_t* line = &terminal.curchars[pos];
@@ -381,17 +381,25 @@ static void paint(int x, int y, int width, int height)
 
         printable = (line[start] != 0);
 
-        if(row * terminal.size.ws_col + start >= selbegin
-        && row * terminal.size.ws_col + start < selend)
-        {
-          if(line[start] != screenline[start] && !button1_pressed)
+        if(row * terminal.size.ws_col + start == selbegin)
+          in_selection = 1;
+
+        if(row * terminal.size.ws_col + start == selend)
+          in_selection = 0;
+
+        if(in_selection)
           {
-            selbegin = select_begin = -1;
-            selend = select_end = -1;
+            if(line[start] != screenline[start] && !button1_pressed)
+              {
+                in_selection = 0;
+                select_begin = -1;
+                select_end = -1;
+
+                XClearArea(display, window, 0, 0, window_width, window_height, True);
+              }
+            else
+              attr = REVERSE(attr);
           }
-          else
-            attr = REVERSE(attr);
-        }
 
 #if PARTIAL_REPAINT
         update = (line[start] != screenline[start]) || (attr != screenattrline[start]);
@@ -559,30 +567,37 @@ static void paint(int x, int y, int width, int height)
 
 static void normalize_offset()
 {
+  int size = terminal.size.ws_col * terminal.history_size;
   int i;
 
   if(!*terminal.curoffset)
     return;
 
-  terminal.history_scroll = 0;
-
   for(i = 0; i < 2; ++i)
   {
-    int size = terminal.size.ws_col * terminal.history_size;
     int offset = terminal.offset[i];
-    wchar_t* tmpchars = alloca(sizeof(wchar_t) * size);
-    uint16_t* tmpattrs = alloca(sizeof(uint16_t) * size);
+    wchar_t* tmpchars;
+    uint16_t* tmpattrs;
 
-    memcpy(tmpchars, terminal.chars[i] + offset, sizeof(wchar_t) * (size - offset));
-    memcpy(tmpchars + (size - offset), terminal.chars[i], sizeof(wchar_t) * offset);
+    assert(offset >= 0);
+    assert(offset < size);
 
-    memcpy(tmpattrs, terminal.attr[i] + offset, sizeof(uint16_t) * (size - offset));
-    memcpy(tmpattrs + (size - offset), terminal.attr[i], sizeof(uint16_t) * offset);
+    tmpchars = malloc(sizeof(wchar_t) * offset);
+    tmpattrs = malloc(sizeof(uint16_t) * offset);
 
-    memcpy(terminal.chars[i], tmpchars, sizeof(wchar_t) * size);
-    memcpy(terminal.attr[i], tmpattrs, sizeof(uint16_t) * size);
+    memcpy(tmpchars, terminal.chars[i], sizeof(*tmpchars) * offset);
+    memcpy(tmpattrs, terminal.attr[i], sizeof(*tmpattrs) * offset);
+
+    memmove(terminal.chars[i], terminal.chars[i] + offset, sizeof(*tmpchars) * (size - offset));
+    memmove(terminal.attr[i], terminal.attr[i] + offset, sizeof(*tmpattrs) * (size - offset));
+
+    memmove(terminal.chars[i] + (size - offset), tmpchars, sizeof(*tmpchars) * offset);
+    memmove(terminal.attr[i] + (size - offset), tmpattrs, sizeof(*tmpattrs) * offset);
 
     terminal.offset[i] = 0;
+
+    free(tmpattrs);
+    free(tmpchars);
   }
 }
 
@@ -607,8 +622,8 @@ static void scroll(int fromcursor)
     memset(terminal.curchars + clear_offset, 0, sizeof(*terminal.curchars) * terminal.size.ws_col);
     memset16(terminal.curattrs + clear_offset, terminal.curattr, sizeof(*terminal.curattrs) * terminal.size.ws_col);
 
-    (*terminal.curoffset) += terminal.size.ws_col;
-    (*terminal.curoffset) %= (terminal.size.ws_col * terminal.history_size);
+    *terminal.curoffset += terminal.size.ws_col;
+    *terminal.curoffset %= terminal.size.ws_col * terminal.history_size;
 
     return;
   }
@@ -667,8 +682,10 @@ enum range_type
 static int find_range(int range, int* begin, int* end)
 {
   int i, ch;
+  unsigned int offset, size;
 
-  normalize_offset();
+  size = terminal.history_size * terminal.size.ws_col;
+  offset = *terminal.curoffset;
 
   if(range == range_word_or_url)
   {
@@ -679,7 +696,7 @@ static int find_range(int range, int* begin, int* end)
       if(!(i % terminal.size.ws_col))
         break;
 
-      ch = terminal.curchars[i - 1];
+      ch = terminal.curchars[(offset + i - 1) % size];
 
       if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
@@ -693,7 +710,7 @@ static int find_range(int range, int* begin, int* end)
 
     while((i % terminal.size.ws_col) < terminal.size.ws_col)
     {
-      ch = terminal.curchars[i];
+      ch = terminal.curchars[(offset + i) % size];
 
       if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
@@ -715,7 +732,7 @@ static int find_range(int range, int* begin, int* end)
 
     while(i > 0)
     {
-      ch = terminal.curchars[i];
+      ch = terminal.curchars[(offset + i) % size];
 
       if((!ch || ((i + 1) % terminal.size.ws_col == 0) || isspace(ch)) && !paren_level)
       {
@@ -742,7 +759,7 @@ static int find_range(int range, int* begin, int* end)
 
     if(*end > i + 1)
     {
-      if(terminal.curchars[*end - 1] == '=')
+      if(terminal.curchars[(offset + *end - 1) % size] == '=')
         --*end;
     }
 
@@ -801,6 +818,9 @@ static void x11_connect(const char* display_name)
   int i;
   int nitems;
   char* c;
+  long pid;
+
+  pid = getpid();
 
   XInitThreads();
 
@@ -841,6 +861,9 @@ static void x11_connect(const char* display_name)
   xa_wm_transient_for = XInternAtom(display, "WM_TRANSIENT_FOR", False);
   xa_wm_protocols = XInternAtom(display, "WM_PROTOCOLS", False);
   xa_wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+
+  XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
+                  PropModeReplace, (unsigned char *) &pid, 1);
 
   xim = 0;
 
@@ -964,8 +987,11 @@ static void x11_connect(const char* display_name)
 
   screenchars = calloc(cols * rows, sizeof(*screenchars));
   screenattrs = calloc(cols * rows, sizeof(*screenattrs));
+  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
 
   XSynchronize(display, False);
+
+  XClearArea(display, window, 0, 0, window_width, window_height, True);
 }
 
 static void save_session()
@@ -981,13 +1007,15 @@ static void save_session()
   if(fd == -1)
     return;
 
-  size = terminal.size.ws_row * terminal.size.ws_col;
+  normalize_offset();
+
+  size = terminal.history_size * terminal.size.ws_col;
 
   write(fd, &terminal.size, sizeof(terminal.size));
   write(fd, &terminal.cursorx, sizeof(terminal.cursorx));
   write(fd, &terminal.cursory, sizeof(terminal.cursory));
-  write(fd, screenchars, size * sizeof(*screenchars));
-  write(fd, screenattrs, size * sizeof(*screenattrs));
+  write(fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
+  write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
   close(fd);
 }
@@ -1010,9 +1038,13 @@ static void sighandler(int signal)
 static void update_selection(Time time)
 {
   int i;
+  unsigned int size, offset;
 
   if(select_begin == select_end)
     return;
+
+  size = terminal.size.ws_col * terminal.history_size;
+  offset = *terminal.curoffset;
 
   if(select_text)
   {
@@ -1037,7 +1069,7 @@ static void update_selection(Time time)
 
   while(i != select_end)
   {
-    int ch = terminal.curchars[i];
+    int ch = terminal.curchars[(i + offset) % size];
     int width = terminal.size.ws_col;
 
     if(ch == 0 || ch == 0xffff)
@@ -1587,26 +1619,39 @@ static void process_data(unsigned char* buf, int count)
             }
             else if(terminal.param[0] == 2)
             {
-              /* Clear entire screen */
-              normalize_offset();
+              size_t screen_size, history_size;
 
-              memset(terminal.curchars, 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-              memset(terminal.curattrs, 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
+              screen_size = terminal.size.ws_col * terminal.size.ws_row;
+              history_size = terminal.size.ws_col * terminal.history_size;
+
+              if(*terminal.curoffset + screen_size > history_size)
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
+                  memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
+                  memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                }
+              else
+                {
+                  memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
+                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                }
+
               terminal.cursory = 0;
               terminal.cursorx = 0;
-              *terminal.curoffset = 0;
 
               for(k = 0; k < terminal.image_count; )
-              {
-                if(terminal.images[k].screen == terminal.curscreen)
                 {
-                  --terminal.image_count;
-                  cnt_image_free(&terminal.images[k].image);
-                  memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                  if(terminal.images[k].screen == terminal.curscreen)
+                    {
+                      --terminal.image_count;
+                      cnt_image_free(&terminal.images[k].image);
+                      memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                    }
+                  else
+                    ++k;
                 }
-                else
-                  ++k;
-              }
             }
 
             break;
@@ -2050,6 +2095,8 @@ int main(int argc, char** argv)
   int xfd;
   int result;
   int session_fd;
+  char* palette_str;
+  char* token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -2074,7 +2121,17 @@ int main(int argc, char** argv)
 
   config = tree_load_cfg(".cantera/config");
 
+  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
+
+  for(i = 0, token = strtok(palette_str, " "); token;
+      ++i, token = strtok(0, " "))
+    {
+      if(palette[i] < 16)
+        palette[i] = 0xff000000 | strtol(token, 0, 16);
+    }
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
+  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
+  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -2086,18 +2143,23 @@ int main(int argc, char** argv)
   window_width = 800;
   window_height = 600;
 
-  session_fd = open(session_path, O_RDONLY);
-
-  if(session_fd != -1)
+  if(session_path)
     {
-      struct winsize ws;
+      session_fd = open(session_path, O_RDONLY);
 
-      if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+      if(session_fd != -1)
         {
-          window_width = ws.ws_xpixel;
-          window_height = ws.ws_ypixel;
+          struct winsize ws;
+
+          if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+            {
+              window_width = ws.ws_xpixel;
+              window_height = ws.ws_ypixel;
+            }
         }
     }
+  else
+    session_fd = -1;
 
   x11_connect(getenv("DISPLAY"));
 
@@ -2110,7 +2172,7 @@ int main(int argc, char** argv)
     {
       size_t size;
 
-      size = terminal.size.ws_col * terminal.size.ws_row;
+      size = terminal.size.ws_col * terminal.history_size;
 
       read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
       read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
@@ -2129,7 +2191,7 @@ int main(int argc, char** argv)
           read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
           terminal.cursorx = 0;
-          terminal.cursory;
+          ++terminal.cursory;
 
           while(terminal.cursory >= terminal.size.ws_row)
             {
@@ -2443,11 +2505,17 @@ int main(int argc, char** argv)
           if(event.xbutton.state & Button1Mask)
           {
             int x, y, new_select_end;
+            unsigned int size;
+
+            size = terminal.history_size * terminal.size.ws_col;
 
             x = event.xbutton.x / terminal.xskip;
             y = event.xbutton.y / terminal.yskip;
 
             new_select_end = y * terminal.size.ws_col + x;
+
+            if(terminal.history_scroll)
+              new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
 
             if(ctrl_pressed)
             {
@@ -2477,6 +2545,9 @@ int main(int argc, char** argv)
 
           {
             int x, y;
+            unsigned int size;
+
+            size = terminal.history_size * terminal.size.ws_col;
 
             button1_pressed = 1;
 
@@ -2484,6 +2555,10 @@ int main(int argc, char** argv)
             y = event.xbutton.y / terminal.yskip;
 
             select_begin = y * terminal.size.ws_col + x;
+
+            if(terminal.history_scroll)
+              select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
+
             select_end = select_begin;
 
             if(ctrl_pressed)
@@ -2504,22 +2579,20 @@ int main(int argc, char** argv)
 
         case 4: /* Up */
 
+          if(terminal.history_scroll < scroll_extra)
             {
-              if(terminal.appcursor)
-                term_write("\033OA");
-              else
-                term_write("\033[A");
+              ++terminal.history_scroll;
+              XClearArea(display, window, 0, 0, window_width, window_height, True);
             }
 
           break;
 
         case 5: /* Down */
 
+          if(terminal.history_scroll)
             {
-              if(terminal.appcursor)
-                term_write("\033OB");
-              else
-                term_write("\033[B");
+              --terminal.history_scroll;
+              XClearArea(display, window, 0, 0, window_width, window_height, True);
             }
 
           break;
@@ -2534,8 +2607,6 @@ int main(int argc, char** argv)
         case 1: /* Left button */
 
           {
-            normalize_offset();
-
             button1_pressed = 0;
 
             update_selection(event.xbutton.time);
@@ -2701,8 +2772,8 @@ int main(int argc, char** argv)
 
             free(screenchars);
             free(screenattrs);
-            screenchars = malloc(cols * rows * sizeof(*screenchars));
-            screenattrs = malloc(cols * rows * sizeof(*screenattrs));
+            screenchars = calloc(sizeof(*screenchars), cols * rows);
+            screenattrs = calloc(sizeof(*screenattrs), cols * rows);
 
             terminal.cursory = terminal.cursory - srcoff;
             terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
@@ -2733,8 +2804,7 @@ int main(int argc, char** argv)
           XFreePixmap(display, pmap);
 
           XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-          memset(screenchars, 0, cols * rows * sizeof(*screenchars));
-          memset(screenattrs, 0, cols * rows * sizeof(*screenattrs));
+          memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
           XClearArea(display, window, 0, 0, window_width, window_height, True);
         }
 

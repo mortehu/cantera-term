@@ -10,14 +10,6 @@
 #include "globals.h"
 #include "font.h"
 
-char const* font_names[] =
-{
-  "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf",
-  "/usr/share/fonts/bitstream-vera/VeraMono.ttf",
-  "/usr/share/fonts/truetype/ttf-bitstream-vera/VeraMono.ttf",
-  "/usr/share/fonts/truetype/freefont/FreeMono.ttf"
-};
-
 #ifndef TERMINAL
 #define SIZE_COUNT 2
 #else
@@ -25,7 +17,9 @@ char const* font_names[] =
 #endif
 
 FT_Library ft_library;
-FT_Face ft_faces[SIZE_COUNT][sizeof(font_names) / sizeof(font_names[0])];
+FT_Face ft_faces[SIZE_COUNT][1];
+
+extern const char* font_name;
 
 int ft_facecount = 0;
 
@@ -173,23 +167,25 @@ void font_init()
     exit(EXIT_FAILURE);
   }
 
+  /*
   for(i = 0; i < sizeof(font_names) / sizeof(font_names[0]); ++i)
+  */
   {
     for(j = 0; j < SIZE_COUNT; ++j)
     {
-      result = FT_New_Face(ft_library, font_names[i], 0, &ft_faces[j][ft_facecount]);
+      result = FT_New_Face(ft_library, font_name, 0, &ft_faces[j][ft_facecount]);
 
       if(result == FT_Err_Unknown_File_Format)
       {
         fprintf(stderr, "Error opening font '%s': Unsupported file format.\n",
-                font_names[i]);
+                font_name);
 
         break;
       }
 
       if(result)
       {
-        fprintf(stderr, "Error opening font '%s': %d\n", font_names[i], result);
+        fprintf(stderr, "Error opening font '%s': %d\n", font_name, result);
 
         break;
       }

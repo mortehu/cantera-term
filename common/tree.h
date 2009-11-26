@@ -30,6 +30,9 @@ tree_get_bool_default(const struct tree* t, const char* path, int def);
 const char*
 tree_get_string_default(const struct tree* t, const char* path, const char* def);
 
+size_t
+tree_get_strings(const struct tree* t, const char* path, char*** result);
+
 struct tree*
 tree_load_cfg(const char* path);
 

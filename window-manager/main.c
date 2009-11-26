@@ -13,6 +13,7 @@
 #include <utmp.h>
 #include <wchar.h>
 
+#include <sys/inotify.h>
 #include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,10 +33,14 @@
 #include "font.h"
 #include "globals.h"
 #include "menu.h"
+#include "tree.h"
 
 #define PARTIAL_REPAINT 1
 
 extern char** environ;
+
+struct tree* config;
+int inotify_fd = -1;
 
 int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
@@ -208,6 +213,29 @@ static void paint(int x, int y, int width, int height)
   }
 }
 
+int get_int_property(Window window, Atom property, int* result)
+{
+  Atom type;
+  int format;
+  unsigned long nitems;
+  unsigned long bytes_after;
+  uint32_t* prop;
+
+  if(Success != XGetWindowProperty(display, window, property, 0, 4, False,
+                                   AnyPropertyType, &type, &format, &nitems,
+                                   &bytes_after, (unsigned char**) &prop))
+    return -1;
+
+  if(!prop)
+    return -1;
+
+  *result = *prop;
+
+  XFree(prop);
+
+  return 0;
+}
+
 static int first_available_terminal()
 {
   int i;
@@ -240,7 +268,6 @@ static void mark_terminal_dirty()
 
 static void grab_thumbnail()
 {
-  Pixmap pmap;
   int thumb_width, thumb_height;
 
   menu_thumbnail_dimensions(&thumb_width, &thumb_height, 0);
@@ -273,7 +300,8 @@ static void grab_thumbnail()
 
     if(result != Success)
     {
-      fprintf(stderr, "No success\n");
+      fprintf(stderr, "XGetWindowProperty failed\n");
+
       return;
     }
 
@@ -284,16 +312,24 @@ static void grab_thumbnail()
                                 AnyPropertyType, &type, &format, &nitems, &bytes_after,
                                 &prop);
 
-    if(prop)
+    if(prop && format == 32)
     {
-      unsigned int* buf = (unsigned int*) prop;
+      uint64_t* buf = (uint64_t*) prop;
       unsigned int width = buf[0];
       unsigned int height = buf[1];
+      unsigned int x, y;
+      uint32_t* colors;
+
+      colors = alloca(sizeof(*colors) * width * height);
+
+      for(y = 0; y < height; ++y)
+        for(x = 0; x < width; ++x)
+          colors[y * width + x] = buf[y * width + x + 2]/* >> 32*/;
 
       XImage temp_image;
-      init_ximage(&temp_image, width, height, (char*) prop + 8);
+      init_ximage(&temp_image, width, height, colors);
 
-      Pixmap temp_pixmap = XCreatePixmap(display, window, thumb_width, thumb_height, 32);
+      Pixmap temp_pixmap = XCreatePixmap(display, window, thumb_width, thumb_height, format);
 
       GC tmp_gc = XCreateGC(display, temp_pixmap, 0, 0);
       XFillRectangle(display, temp_pixmap, tmp_gc, 0, 0, thumb_width, thumb_height);
@@ -301,7 +337,10 @@ static void grab_thumbnail()
                 thumb_width / 2 - width / 2, thumb_height / 2 - height / 2, width, height);
       XFreeGC(display, tmp_gc);
 
-      at->thumbnail = XRenderCreatePicture(display, temp_pixmap, XRenderFindStandardFormat(display, PictStandardARGB32), 0, 0);
+      at->thumbnail
+        = XRenderCreatePicture(display, temp_pixmap,
+                               XRenderFindStandardFormat(display, PictStandardARGB32),
+                               0, 0);
 
       XFreePixmap(display, temp_pixmap);
 
@@ -310,32 +349,6 @@ static void grab_thumbnail()
 
     return;
   }
-
-  if(!at->thumbnail)
-  {
-    pmap = XCreatePixmap(display, root_window, window_width / 16, window_height / 16, xrenderpictformat->depth);
-
-    at->thumbnail = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-    XFreePixmap(display, pmap);
-  }
-
-  XTransform xform =
-  {
-    {
-      { XDoubleToFixed(1.0), XDoubleToFixed(0.0), XDoubleToFixed(0.0) },
-      { XDoubleToFixed(0.0), XDoubleToFixed(1.0), XDoubleToFixed(0.0) },
-      { XDoubleToFixed(0.0), XDoubleToFixed(0.0), XDoubleToFixed(1.0 / 16.0) }
-    }
-  };
-
-  XRenderSetPictureTransform(display, root_buffer, &xform);
-  XRenderSetPictureFilter(display, root_buffer, FilterBilinear, 0, 0);
-  XRenderComposite(display, PictOpSrc, root_buffer, None, at->thumbnail, 0, 0, 0, 0, 0, 0, window_width, window_height);
-
-  xform.matrix[2][2] = XDoubleToFixed(1.0);
-  XRenderSetPictureTransform(display, root_buffer, &xform);
-  XRenderSetPictureFilter(display, root_buffer, FilterNearest, 0, 0);
 }
 
 static void paint_terminal_list_popup();
@@ -407,7 +420,7 @@ static void set_focus(terminal* t)
 
     Window focus = t->window;
     clear_screen();
-    XMapWindow(display, t->window);
+    XMapRaised(display, t->window);
     set_map_state(t->window, 1);
 
     while(trans)
@@ -479,7 +492,7 @@ static void set_active_terminal(int terminal)
   at->dirty = 1;
 }
 
-pid_t launch(const char* command)
+pid_t launch(const char* command, Time time)
 {
   pid_t pid = fork();
 
@@ -490,6 +503,11 @@ pid_t launch(const char* command)
   {
     char* args[4];
     char buf[32];
+
+    setsid();
+
+    sprintf(buf, "%llu", (unsigned long long int) time);
+    setenv("DESKTOP_START_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
     setenv("HISTFILE", buf, 1);
@@ -506,6 +524,9 @@ pid_t launch(const char* command)
 
     exit(EXIT_FAILURE);
   }
+
+  if(at->mode == mode_menu)
+    at->pid = pid;
 
   return pid;
 }
@@ -567,7 +588,7 @@ static int xerror_handler(Display* display, XErrorEvent* error)
   fprintf(stderr, "X error: %s (request: %d, minor: %d)  ID: %08X\n", errorbuf,
           error->request_code, error->minor_code, (unsigned int) error->resourceid);
 
-  // abort();
+  /*abort();*/
 
   return 0;
 }
@@ -901,6 +922,7 @@ static int find_window(Window w, terminal** term, struct transient** trans)
     if(terminals[i].window == w)
     {
       *term = &terminals[i];
+
       if(trans)
         *trans = 0;
 
@@ -927,10 +949,24 @@ static int find_window(Window w, terminal** term, struct transient** trans)
   }
 
   *term = 0;
+
   if(trans)
     *trans = 0;
 
   return -1;
+}
+
+static terminal* find_pid(pid_t pid)
+{
+  int i;
+
+  for(i = 0; i < TERMINAL_COUNT; ++i)
+    {
+      if(terminals[i].pid == pid)
+        return &terminals[i];
+    }
+
+  return 0;
 }
 
 static void add_transient(terminal* term, Window window, struct transient** trans)
@@ -957,6 +993,8 @@ static void get_transient_for(Window w, Window* transient_for)
   XSetErrorHandler(xerror_handler);
 }
 
+extern struct tree* config;
+
 int main(int argc, char** argv)
 {
   int i;
@@ -974,6 +1012,16 @@ int main(int argc, char** argv)
 
   chdir(getenv("HOME"));
 
+  config = tree_load_cfg(".cantera/config");
+
+  inotify_fd = inotify_init1(IN_CLOEXEC);
+
+  if(inotify_fd != -1)
+    {
+      if(-1 == inotify_add_watch(inotify_fd, ".cantera", IN_ALL_EVENTS | IN_ONLYDIR))
+        fprintf(stderr, "inotify_add_watch failed: %s\n", strerror(errno));
+    }
+
   mkdir(".cantera", 0777);
   mkdir(".cantera/commands", 0777);
   mkdir(".cantera/file-commands", 0777);
@@ -984,9 +1032,7 @@ int main(int argc, char** argv)
   signal(SIGPIPE, SIG_IGN);
   signal(SIGALRM, SIG_IGN);
 
-#ifndef TERMINAL
   setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/games:~/bin", 1);
-#endif
   setenv("TERM", "xterm", 1);
 
   x11_connect(getenv("DISPLAY"));
@@ -994,23 +1040,28 @@ int main(int argc, char** argv)
   if(!x11_connected)
     return EXIT_FAILURE;
 
-#ifndef TERMINAL
   for(i = 0; i < TERMINAL_COUNT; ++i)
   {
-    terminals[i].mode = mode_menu;
-    terminals[i].return_mode = mode_menu;
+    char buf[32];
+    const char* command;
+
+    at = &terminals[i];
+
+    if(i < 24)
+      {
+        sprintf(buf,
+                "auto-launch.%s-f%d", (i < 12) ? "ctrl" : "super",
+                (i % 12) + 1);
+
+        if(0 != (command = tree_get_string_default(config, buf, 0)))
+          launch(command, 0);
+      }
+
+    at->mode = mode_menu;
+    at->return_mode = mode_menu;
   }
 
-#else
-  {
-    char* args[2];
-
-    args[0] = "/bin/bash";
-    args[1] = 0;
-
-    init_session(at, args);
-  }
-#endif
+  at = &terminals[0];
 
   while(!done)
   {
@@ -1022,7 +1073,6 @@ int main(int argc, char** argv)
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
-#ifndef TERMINAL
       for(i = 0; i < TERMINAL_COUNT; ++i)
       {
         if(terminals[i].pid == pid)
@@ -1043,10 +1093,6 @@ int main(int argc, char** argv)
           break;
         }
       }
-#else
-      if(pid == terminals[0].pid)
-        return EXIT_SUCCESS;
-#endif
     }
 
     if(x11_connected && XPending(display))
@@ -1062,6 +1108,14 @@ int main(int argc, char** argv)
       if(xfd > maxfd)
         maxfd = xfd;
     }
+
+    if(inotify_fd != -1)
+      {
+        FD_SET(inotify_fd, &readset);
+
+        if(inotify_fd > maxfd)
+          maxfd = inotify_fd;
+      }
 
     if(!x11_connected)
     {
@@ -1114,17 +1168,82 @@ int main(int argc, char** argv)
       FD_ZERO(&readset);
     }
 
-process_events:
+    if(inotify_fd != -1 && FD_ISSET(inotify_fd, &readset))
+      {
+        struct inotify_event* ev;
+        char* buf;
+        size_t size;
+        int available = 0;
+
+        result = ioctl(inotify_fd, FIONREAD, &available);
+
+        if(available > 0)
+          {
+            buf = alloca(result);
+
+            result = read(inotify_fd, buf, available);
+
+            if(result < 0)
+              {
+                fprintf(stderr, "Read error from inotify file descriptor: %s\n",
+                        strerror(errno));
+
+                close(inotify_fd);
+
+                inotify_fd = -1;
+              }
+            else if(result < sizeof(struct inotify_event))
+              {
+                fprintf(stderr, "Short read from inotify\n");
+
+                close(inotify_fd);
+
+                inotify_fd =-1;
+              }
+            else
+              {
+                ev = (struct inotify_event*) buf;
+
+                while(available)
+                  {
+                    size = sizeof(struct inotify_event) + ev->len;
+
+                    if(size > available)
+                      {
+                        fprintf(stderr, "Corrupt data in inotify stream\n");
+
+                        close(inotify_fd);
+
+                        inotify_fd = -1;
+
+                        break;
+                      }
+
+                    if(!strcmp(ev->name, "config")
+                       && (ev->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)))
+                      {
+                        tree_destroy(config);
+                        config = tree_load_cfg(".cantera/config");
+                      }
+
+                    available -= size;
+                    buf += size;
+                    ev = (struct inotify_event*) ((char*) ev + size);
+                  }
+              }
+          }
+      }
 
     if(x11_connected && FD_ISSET(xfd, &readset))
     {
       XEvent event;
 
+process_events:
+
       while(XPending(display))
       {
         XNextEvent(display, &event);
 
-#ifndef TERMINAL
         if(event.type == damage_eventbase + XDamageNotify)
         {
           XDamageNotifyEvent* e = (XDamageNotifyEvent*) &event;
@@ -1162,7 +1281,6 @@ process_events:
 
           continue;
         }
-#endif
 
         switch(event.type)
         {
@@ -1226,7 +1344,17 @@ process_events:
               run_command(-1, "coffee", 0);
 
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
-              menu_handle_hotkey(key_sym);
+              {
+                char key[10];
+                const char* command;
+
+                sprintf(key, "hotkey.%c", (int) key_sym);
+
+                command = tree_get_string_default(config, key, 0);
+
+                if(command)
+                  launch(command, event.xkey.time);
+              }
             else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
               int new_terminal;
@@ -1270,7 +1398,7 @@ process_events:
                   last_set_terminal = active_terminal = new_terminal;
                   at = &terminals[active_terminal];
 
-				  at->dirty = 1;
+                  at->dirty = 1;
                 }
                 else
                 {
@@ -1328,7 +1456,7 @@ process_events:
             }
             else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
             {
-              launch("exec xkill");
+              launch("xkill", event.xkey.time);
             }
             else if(mod1_pressed && key_sym == XK_F4)
             {
@@ -1363,7 +1491,7 @@ process_events:
             {
               if(0 != menu_handle_char(text[0]))
               {
-                menu_keypress(key_sym, text, len);
+                menu_keypress(key_sym, text, len, event.xkey.time);
                 at->dirty |= 1;
               }
             }
@@ -1383,23 +1511,17 @@ process_events:
             super_pressed = (event.xkey.state & Mod4Mask);
             shift_pressed = (event.xkey.state & ShiftMask);
 
-			if(key_sym == XK_Control_L || key_sym == XK_Control_R)
+            if(key_sym == XK_Control_L || key_sym == XK_Control_R)
               ctrl_pressed = 0;
 
-			if(key_sym == XK_Super_L || key_sym == XK_Super_R)
+            if(key_sym == XK_Super_L || key_sym == XK_Super_R)
               super_pressed = 0;
 
-			if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+            if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
               mod1_pressed = 0;
 
             if(!super_pressed || !(mod1_pressed ^ ctrl_pressed))
               destroy_terminal_list_popup();
-
-            if(at->mode == mode_menu)
-            {
-              menu_keyrelease(key_sym);
-              at->dirty |= 1;
-            }
           }
 
           break;
@@ -1516,7 +1638,7 @@ process_events:
 
           {
             XWindowChanges wc;
-            XCreateWindowEvent* cwe = &event.xcreatewindow;
+            const XCreateWindowEvent* cwe = &event.xcreatewindow;
             Window transient_for = 0;
 
             get_transient_for(cwe->window, &transient_for);
@@ -1524,7 +1646,7 @@ process_events:
             if(transient_for)
               break;
 
-            if(!cwe->override_redirect && (cwe->x != 0 || cwe->y != 0 || cwe->width != window_width || cwe->height != window_height))
+            if(!cwe->override_redirect && (cwe->x != screens[0].x_org || cwe->y != screens[0].y_org || cwe->width != window_width || cwe->height != window_height))
             {
               wc.x = screens[0].x_org;
               wc.y = screens[0].y_org;
@@ -1656,17 +1778,35 @@ process_events:
           {
             terminal* term;
             struct transient* trans;
+            int pid;
 
             find_window(event.xmaprequest.window, &term, &trans);
 
+            if(!term && 0 == get_int_property(event.xmaprequest.window, xa_net_wm_pid, &pid))
+              {
+                pid = getsid(pid);
+
+                if(0 != (term = find_pid(pid)))
+                  {
+                    if(term->mode != mode_menu)
+                      term = 0;
+                    else
+                      {
+                        term->mode = mode_x11;
+                        term->window = event.xmaprequest.window;
+                      }
+                  }
+              }
+
             if(!term)
             {
-              trans = 0;
-
               term = &terminals[first_available_terminal()];
 
+              memset(term, 0, sizeof(*term));
               term->mode = mode_x11;
               term->window = event.xmaprequest.window;
+
+              set_active_terminal(term - terminals);
             }
             else if(!trans)
             {
@@ -1677,9 +1817,7 @@ process_events:
               add_transient(term, event.xmaprequest.window, 0);
             }
 
-            if(!trans || term != at)
-              set_active_terminal(term - terminals);
-            else if(trans)
+            if(term == at)
             {
               XMapRaised(display, event.xmaprequest.window);
               XSetInputFocus(display, event.xmaprequest.window, RevertToPointerRoot, CurrentTime);

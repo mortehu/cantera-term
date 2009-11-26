@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -24,8 +23,10 @@
 #include "common.h"
 #include "font.h"
 #include "globals.h"
+#include "tree.h"
 
 static struct picture background;
+extern struct tree* config;
 
 #define FLAG_TERMINAL 0x0001
 
@@ -39,8 +40,6 @@ struct picture
 
 static wchar_t query[256];
 
-static void* config;
-
 void menu_draw_desktops(Picture buffer, int height);
 
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
@@ -51,46 +50,6 @@ static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x,
   XRenderFillRectangle(display, PictOpOver, target, &xrpalette[19],
                        x - 2, y, len * xskips[SMALL] + 4, yskips[SMALL]);
   drawtext(target, text, len, x, y, 15, SMALL);
-}
-
-static void* loading_thread_entry(void* arg)
-{
-  struct stat st_config, st_config_so;
-
-  if(0 == stat(".cantera/config.c", &st_config))
-  {
-    char config_so_path[64];
-    struct utsname un;
-
-    uname(&un);
-
-    sprintf(config_so_path, ".cantera/config-%s.so", un.machine);
-
-    if(-1 == stat(config_so_path, &st_config_so)
-    || st_config_so.st_mtime < st_config.st_mtime)
-    {
-      char cmd[128];
-
-      fprintf(stderr, "Compiling configuration...\n");
-
-      sprintf(cmd, "gcc -x c -fPIC -std=c99 .cantera/config.c -shared -o %s", config_so_path);
-      system(cmd);
-    }
-
-    config = dlopen(config_so_path, RTLD_NOW | RTLD_LOCAL);
-
-    if(!config)
-      fprintf(stderr, "Failed to load '%s': %s\n", config_so_path, dlerror());
-    else
-    {
-      void (*init_handler)() = dlsym(config, "init");
-
-      if(init_handler)
-        init_handler();
-    }
-  }
-
-  return 0;
 }
 
 static int image_load(const char* path, struct picture* img)
@@ -115,12 +74,17 @@ static int image_load(const char* path, struct picture* img)
 
 void menu_init()
 {
-  pthread_t loading_thread;
+  char** init_commands;
+  size_t i, init_command_count;
+
+  init_command_count = tree_get_strings(config, "menu.init", &init_commands);
+
+  for(i = 0; i < init_command_count; ++i)
+    system(init_commands[i]);
+
+  free(init_commands);
 
   image_load(".cantera/background.png", &background);
-
-  pthread_create(&loading_thread, 0, loading_thread_entry, 0);
-  pthread_detach(loading_thread);
 }
 
 void menu_thumbnail_dimensions(int* width, int* height, int* margin)
@@ -211,18 +175,14 @@ void menu_draw_desktops(Picture buffer, int height)
     XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y + thumb_height, thumb_width + 2, 1);
 
     if(!terminals[i].thumbnail)
-    {
       XRenderFillRectangle(display, PictOpOver, buffer, &xrpalette[19],
                            x, y, thumb_width, thumb_height);
-    }
     else
-    {
       XRenderComposite(display, PictOpSrc, terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
-    }
   }
 }
 
-void menu_keypress(int key_sym, const char* text, int textlen)
+void menu_keypress(int key_sym, const char* text, int textlen, Time time)
 {
   switch(key_sym)
   {
@@ -239,7 +199,7 @@ void menu_keypress(int key_sym, const char* text, int textlen)
 
         wcstombs(command, query, sizeof(command));
 
-        launch(command);
+        launch(command, time);
 
         query[0] = 0;
       }
@@ -259,10 +219,6 @@ void menu_keypress(int key_sym, const char* text, int textlen)
   }
 
   XClearArea(display, window, 0, 0, window_width, window_height, True);
-}
-
-void menu_keyrelease(int key_sym)
-{
 }
 
 int menu_handle_char(int ch)
@@ -297,16 +253,6 @@ int menu_handle_char(int ch)
   }
 
   XClearArea(display, window, 0, 0, window_width, window_height, True);
-
-  return 0;
-}
-
-int menu_handle_hotkey(int ch)
-{
-  void (*handler)(int ch) = dlsym(config, "handle_hotkey");
-
-  if(handler)
-    handler(ch);
 
   return 0;
 }
