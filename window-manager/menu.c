@@ -57,15 +57,6 @@ static void* loading_thread_entry(void* arg)
 {
   struct stat st_config, st_config_so;
 
-  if(0 == access(".cantera/applications/", X_OK | R_OK))
-    desktop_recursive_scan(".cantera/applications/");
-  else
-  {
-    desktop_recursive_scan("/usr/share/applications/");
-    desktop_recursive_scan("/home/larsod/share/applications/");
-    desktop_recursive_scan("/usr/local/share/applications/");
-  }
-
   if(0 == stat(".cantera/config.c", &st_config))
   {
     char config_so_path[64];
