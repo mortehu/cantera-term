@@ -695,7 +695,11 @@ static void x11_connect(const char* display_name)
 
   window_attr.cursor = menu_cursor;
 
-  window = XCreateWindow(display, root_window, screens[0].x_org, screens[0].y_org, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWOverrideRedirect | CWColormap | CWEventMask | CWCursor, &window_attr);
+  window = XCreateWindow(display, root_window, screens[0].x_org,
+                         screens[0].y_org, window_width, window_height, 0,
+                         visual_info->depth, InputOutput, visual,
+                         CWOverrideRedirect | CWColormap | CWEventMask |
+                         CWCursor, &window_attr);
   XMapWindow(display, window);
 
   grab_keys();
@@ -1045,6 +1049,7 @@ int main(int argc, char** argv)
     char buf[32];
     const char* command;
 
+    active_terminal = i;
     at = &terminals[i];
 
     if(i < 24)
@@ -1061,6 +1066,7 @@ int main(int argc, char** argv)
     at->return_mode = mode_menu;
   }
 
+  active_terminal = 0;
   at = &terminals[0];
 
   while(!done)
