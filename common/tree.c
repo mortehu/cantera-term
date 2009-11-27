@@ -420,7 +420,8 @@ tree_load_cfg(const char* path)
                     *o++ = *c++;
                 }
 
-              *c++ = 0;
+              *o = 0;
+              ++c;
             }
           else
             {
