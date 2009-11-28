@@ -1,3 +1,19 @@
+cantera-wm 27
+
+ * Added support for ordinary configuration file.
+ * Added scrollback support in terminal.
+ * Added several configuration options to terminal.
+ * Window manager places windows on the desktop on which they were launched.
+ * Programs can be started and assigned to a desktop at startup.
+ * Command line prompt on default desktop.
+ * Window manager automatically reloads configuration when it changes.
+
+cantera-wm 26
+
+ * Removed file manager.
+ * Performance improvements on single-core systems.
+ * Added a OpenGL based lock application.
+
 cantera-wm 25
 
  * Renamed potty to Canetera.
