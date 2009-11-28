@@ -1185,7 +1185,7 @@ int main(int argc, char** argv)
 
         if(available > 0)
           {
-            buf = alloca(result);
+            buf = malloc(result);
 
             result = read(inotify_fd, buf, available);
 
@@ -1233,10 +1233,11 @@ int main(int argc, char** argv)
                       }
 
                     available -= size;
-                    buf += size;
                     ev = (struct inotify_event*) ((char*) ev + size);
                   }
               }
+
+            free(buf);
           }
       }
 
