@@ -848,9 +848,6 @@ static void x11_connect(const char* display_name)
 
   window = XCreateWindow(display, RootWindow(display, screenidx), 0, 0, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWColormap | CWEventMask | CWCursor, &window_attr);
 
-  XStoreName(display, window, "cantera-term");
-  XMapWindow(display, window);
-
   prop_paste = XInternAtom(display, "CANTERA_PASTE", False);
   xa_utf8_string = XInternAtom(display, "UTF8_STRING", False);
   xa_compound_text = XInternAtom(display, "COMPOUND_TEXT", False);
@@ -864,6 +861,9 @@ static void x11_connect(const char* display_name)
 
   XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
                   PropModeReplace, (unsigned char *) &pid, 1);
+
+  XStoreName(display, window, "cantera-term");
+  XMapWindow(display, window);
 
   xim = 0;
 

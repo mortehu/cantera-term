@@ -412,7 +412,7 @@ static void destroy_terminal_list_popup()
   terminal_list_popup = 0;
 }
 
-static void set_focus(terminal* t)
+static void set_focus(terminal* t, Time when)
 {
   if(t->mode == mode_x11)
   {
@@ -430,11 +430,11 @@ static void set_focus(terminal* t)
       trans = trans->next;
     }
 
-    XSetInputFocus(display, focus, RevertToPointerRoot, CurrentTime);
+    XSetInputFocus(display, focus, RevertToPointerRoot, when);
   }
   else
   {
-    XSetInputFocus(display, window, RevertToPointerRoot, CurrentTime);
+    XSetInputFocus(display, window, RevertToPointerRoot, when);
 
     XSetWindowAttributes window_attr;
     if(t->mode == mode_menu)
@@ -446,14 +446,14 @@ static void set_focus(terminal* t)
   }
 }
 
-static void set_active_terminal(int terminal)
+static void set_active_terminal(int terminal, Time when)
 {
   int i;
 
   if(terminal != active_terminal && !super_pressed)
     grab_thumbnail();
 
-  set_focus(&terminals[terminal]);
+  set_focus(&terminals[terminal], when);
 
   if(terminal == active_terminal)
     return;
@@ -492,7 +492,7 @@ static void set_active_terminal(int terminal)
   at->dirty = 1;
 }
 
-pid_t launch(const char* command, Time time)
+pid_t launch(const char* command, Time when)
 {
   pid_t pid = fork();
 
@@ -506,7 +506,7 @@ pid_t launch(const char* command, Time time)
 
     setsid();
 
-    sprintf(buf, "%llu", (unsigned long long int) time);
+    sprintf(buf, "%llu", (unsigned long long int) when);
     setenv("DESKTOP_START_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
@@ -695,7 +695,11 @@ static void x11_connect(const char* display_name)
 
   window_attr.cursor = menu_cursor;
 
-  window = XCreateWindow(display, root_window, screens[0].x_org, screens[0].y_org, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWOverrideRedirect | CWColormap | CWEventMask | CWCursor, &window_attr);
+  window = XCreateWindow(display, root_window, screens[0].x_org,
+                         screens[0].y_org, window_width, window_height, 0,
+                         visual_info->depth, InputOutput, visual,
+                         CWOverrideRedirect | CWColormap | CWEventMask |
+                         CWCursor, &window_attr);
   XMapWindow(display, window);
 
   grab_keys();
@@ -1045,6 +1049,7 @@ int main(int argc, char** argv)
     char buf[32];
     const char* command;
 
+    active_terminal = i;
     at = &terminals[i];
 
     if(i < 24)
@@ -1061,6 +1066,7 @@ int main(int argc, char** argv)
     at->return_mode = mode_menu;
   }
 
+  active_terminal = 0;
   at = &terminals[0];
 
   while(!done)
@@ -1088,7 +1094,7 @@ int main(int argc, char** argv)
           terminals[i].pid = 0;
 
           if(i == active_terminal)
-            set_active_terminal(last_set_terminal);
+            set_active_terminal(last_set_terminal, CurrentTime);
 
           break;
         }
@@ -1179,7 +1185,7 @@ int main(int argc, char** argv)
 
         if(available > 0)
           {
-            buf = alloca(result);
+            buf = malloc(available);
 
             result = read(inotify_fd, buf, available);
 
@@ -1227,10 +1233,11 @@ int main(int argc, char** argv)
                       }
 
                     available -= size;
-                    buf += size;
                     ev = (struct inotify_event*) ((char*) ev + size);
                   }
               }
+
+            free(buf);
           }
       }
 
@@ -1367,7 +1374,7 @@ process_events:
               last_set_terminal = new_terminal;
 
               if(new_terminal != active_terminal)
-                set_active_terminal(new_terminal);
+                set_active_terminal(new_terminal, event.xkey.time);
             }
             else if((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
             {
@@ -1403,7 +1410,7 @@ process_events:
                 else
                 {
                   last_set_terminal = new_terminal;
-                  set_active_terminal(new_terminal);
+                  set_active_terminal(new_terminal, event.xkey.time);
                 }
               }
 
@@ -1568,7 +1575,7 @@ process_events:
             enter_menu_mode(active_terminal);
 
             /* Return to main window after a pop-up */
-            set_active_terminal(last_set_terminal);
+            set_active_terminal(last_set_terminal, CurrentTime);
           }
           else
           {
@@ -1806,7 +1813,7 @@ process_events:
               term->mode = mode_x11;
               term->window = event.xmaprequest.window;
 
-              set_active_terminal(term - terminals);
+              set_active_terminal(term - terminals, CurrentTime);
             }
             else if(!trans)
             {
