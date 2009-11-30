@@ -2190,14 +2190,9 @@ int main(int argc, char** argv)
           read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
           read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
+          if(terminal.cursory >= terminal.size.ws_row)
+            terminal.cursory = terminal.size.ws_row - 1;
           terminal.cursorx = 0;
-          ++terminal.cursory;
-
-          while(terminal.cursory >= terminal.size.ws_row)
-            {
-              scroll(0);
-              --terminal.cursory;
-            }
         }
 
       close(session_fd);
