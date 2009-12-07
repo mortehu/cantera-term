@@ -77,6 +77,9 @@ Window terminal_list_popup = 0;
 void run_command(int fd, const char* command, const char* arg);
 void init_ximage(XImage* image, int width, int height, void* data);
 
+struct window*
+new_window(Window window, XCreateWindowEvent* cwe);
+
 Window window;
 
 struct window
@@ -708,7 +711,6 @@ static void x11_connect(const char* display_name)
     return;
   }
 
-
   create_menu_cursor();
 
   if(XineramaQueryExtension(display, &i, &i))
@@ -960,6 +962,38 @@ window_gone(Window xwindow)
     }
 }
 
+struct window*
+new_window(Window window, XCreateWindowEvent* cwe)
+{
+  struct window new_window;
+  unsigned int i;
+
+  for(i = 0; i < screen_count; ++i)
+    {
+      if(window == screens[i].window)
+        break;
+    }
+
+  if(i != screen_count)
+    return 0;
+
+  memset(&new_window, 0, sizeof(new_window));
+
+  new_window.xwindow = window;
+
+  if(cwe)
+    {
+      new_window.x = cwe->x;
+      new_window.y = cwe->y;
+      new_window.width = cwe->width;
+      new_window.height = cwe->height;
+    }
+
+  ARRAY_ADD(&windows, new_window);
+
+  return &ARRAY_GET(&windows, ARRAY_COUNT(&windows) - 1);
+}
+
 extern struct tree* config;
 
 int main(int argc, char** argv)
@@ -1042,6 +1076,8 @@ int main(int argc, char** argv)
       screens[j].active_terminal = 0;
       screens[j].at = &screens[j].terminals[0];
     }
+
+  set_focus(current_screen, current_screen->at, CurrentTime);
 
   while(!done)
   {
@@ -1452,31 +1488,10 @@ process_events:
         case CreateNotify:
 
           {
-            XCreateWindowEvent* cwe = &event.xcreatewindow;
-            struct window new_window;
-            unsigned int i;
-
-            if(cwe->override_redirect)
+            if(event.xcreatewindow.override_redirect)
               break;
 
-            for(i = 0; i < screen_count; ++i)
-              {
-                if(cwe->window == screens[i].window)
-                  break;
-              }
-
-            if(i != screen_count)
-              break;
-
-            memset(&new_window, 0, sizeof(new_window));
-
-            new_window.xwindow = cwe->window;
-            new_window.x = cwe->x;
-            new_window.y = cwe->y;
-            new_window.width = cwe->width;
-            new_window.height = cwe->height;
-
-            ARRAY_ADD(&windows, new_window);
+            new_window(event.xcreatewindow.window, &event.xcreatewindow);
           }
 
           break;
