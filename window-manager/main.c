@@ -173,19 +173,39 @@ int mod1_pressed = 0;
 int super_pressed = 0;
 int shift_pressed = 0;
 int button1_pressed = 0;
-struct timeval lastpaint = { 0, 0 };
 
 struct screen* current_screen;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
-static void swap_terminals(int a, int b)
+static void swap_terminals(unsigned int a, unsigned int b)
 {
+  terminal* term_a;
+  terminal* term_b;
   terminal tmp;
+  unsigned int i;
 
-  tmp = current_screen->terminals[a];
-  current_screen->terminals[a] = current_screen->terminals[b];
-  current_screen->terminals[b] = tmp;
+  term_a = &current_screen->terminals[a];
+  term_b = &current_screen->terminals[b];
+
+  tmp = *term_a;
+  *term_a = *term_b;
+  *term_b = tmp;
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      struct window* w;
+
+      w = &ARRAY_GET(&windows, i);
+
+      if(w->screen != current_screen)
+        continue;
+
+      if(w->desktop == term_a)
+        w->desktop = term_b;
+      else if(w->desktop == term_b)
+        w->desktop = term_a;
+    }
 }
 
 static void paint(Window window, int x, int y, int width, int height)
@@ -255,54 +275,44 @@ static void set_map_state(Window window, int state)
   XChangeProperty(display, window, xa_wm_state, xa_wm_state, 32, PropModeReplace, (unsigned char*) data, 2);
 }
 
-static void grab_thumbnail()
+static void grab_thumbnail(struct window* w)
 {
-#if 0
+  Atom type;
+  int format;
+  int result;
+  unsigned long nitems;
+  unsigned long bytes_after;
+  unsigned char* prop;
+
   int thumb_width, thumb_height;
 
-  menu_thumbnail_dimensions(&thumb_width, &thumb_height, 0);
-
-  if(at->mode == mode_menu)
-  {
-    if(at->thumbnail)
-    {
-      XRenderFreePicture(display, at->thumbnail);
-      at->thumbnail = 0;
-    }
-
+  if(!w->screen)
     return;
-  }
-  else if(at->mode == mode_x11)
-  {
-    Atom type;
-    int format;
-    int result;
-    unsigned long nitems;
-    unsigned long bytes_after;
-    unsigned char* prop;
 
-    if(at->thumbnail)
-      return;
+  menu_thumbnail_dimensions(w->screen, &thumb_width, &thumb_height, 0);
 
-    result = XGetWindowProperty(display, at->window, xa_net_wm_icon, 0, 0, False,
-                                AnyPropertyType, &type, &format, &nitems, &bytes_after,
-                                &prop);
+  if(w->desktop->thumbnail)
+    return;
 
-    if(result != Success)
+  result = XGetWindowProperty(display, w->xwindow, xa_net_wm_icon, 0, 0, False,
+                              AnyPropertyType, &type, &format, &nitems, &bytes_after,
+                              &prop);
+
+  if(result != Success)
     {
       fprintf(stderr, "XGetWindowProperty failed\n");
 
       return;
     }
 
-    if(prop)
-      XFree(prop);
+  if(prop)
+    XFree(prop);
 
-    result = XGetWindowProperty(display, at->window, xa_net_wm_icon, 0, bytes_after, False,
-                                AnyPropertyType, &type, &format, &nitems, &bytes_after,
-                                &prop);
+  result = XGetWindowProperty(display, w->xwindow, xa_net_wm_icon, 0, bytes_after, False,
+                              AnyPropertyType, &type, &format, &nitems, &bytes_after,
+                              &prop);
 
-    if(prop && format == 32)
+  if(prop && format == 32)
     {
       uint64_t* buf = (uint64_t*) prop;
       unsigned int width = buf[0];
@@ -319,7 +329,7 @@ static void grab_thumbnail()
       XImage temp_image;
       init_ximage(&temp_image, width, height, colors);
 
-      Pixmap temp_pixmap = XCreatePixmap(display, window, thumb_width, thumb_height, format);
+      Pixmap temp_pixmap = XCreatePixmap(display, w->screen->window, thumb_width, thumb_height, format);
 
       GC tmp_gc = XCreateGC(display, temp_pixmap, 0, 0);
       XFillRectangle(display, temp_pixmap, tmp_gc, 0, 0, thumb_width, thumb_height);
@@ -327,7 +337,7 @@ static void grab_thumbnail()
                 thumb_width / 2 - width / 2, thumb_height / 2 - height / 2, width, height);
       XFreeGC(display, tmp_gc);
 
-      at->thumbnail
+      w->desktop->thumbnail
         = XRenderCreatePicture(display, temp_pixmap,
                                XRenderFindStandardFormat(display, PictStandardARGB32),
                                0, 0);
@@ -336,42 +346,36 @@ static void grab_thumbnail()
 
       XFree(prop);
     }
-
-    return;
-  }
-#endif
 }
 
 static void paint_terminal_list_popup();
 
 static void create_terminal_list_popup()
 {
-#if 0
+  XSetWindowAttributes window_attr;
   int thumb_width, thumb_height, thumb_margin;
 
-  if(at->mode == mode_menu || terminal_list_popup)
+  if(current_screen->at->mode == mode_menu || terminal_list_popup)
     return;
 
-  grab_thumbnail();
+  menu_thumbnail_dimensions(current_screen, &thumb_width, &thumb_height,
+                            &thumb_margin);
 
-  menu_thumbnail_dimensions(&thumb_width, &thumb_height, &thumb_margin);
-
-  terminal_list_width = window_width;
+  terminal_list_width = current_screen->width;
   terminal_list_height = 2 * thumb_height + 3 * thumb_margin + yskips[SMALL];
 
   window_attr.override_redirect = True;
 
   terminal_list_popup
     = XCreateWindow(display, RootWindow(display, screenidx),
-                    screens[0].x_org,
-                    screens[0].y_org + window_height - terminal_list_height,
+                    current_screen->x_org,
+                    current_screen->y_org + current_screen->height - terminal_list_height,
                     terminal_list_width, terminal_list_height,
                     0, visual_info->depth, InputOutput, visual, CWOverrideRedirect, &window_attr);
 
   XMapWindow(display, terminal_list_popup);
 
   paint_terminal_list_popup();
-#endif
 }
 
 static void paint_terminal_list_popup()
@@ -960,7 +964,6 @@ int main(int argc, char** argv)
 {
   int i;
   int result;
-  struct timeval now;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -1033,6 +1036,7 @@ int main(int argc, char** argv)
     int maxfd = xfd;
     fd_set readset;
     fd_set writeset;
+    struct timeval timeout;
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
@@ -1081,13 +1085,20 @@ int main(int argc, char** argv)
           maxfd = inotify_fd;
       }
 
-    result = select(maxfd + 1, &readset, &writeset, 0, 0);
+    gettimeofday(&timeout, 0);
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 1000000 - timeout.tv_usec;
+
+    result = select(maxfd + 1, &readset, &writeset, 0, &timeout);
 
     if(result < 0)
     {
       FD_ZERO(&writeset);
       FD_ZERO(&readset);
     }
+
+    if(result == 0)
+      clear();
 
     if(inotify_fd != -1 && FD_ISSET(inotify_fd, &readset))
       {
@@ -1616,6 +1627,8 @@ process_events:
                 XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
               }
 
+            grab_thumbnail(w);
+
             if(w->desktop == w->screen->at)
             {
               XMapRaised(display, w->xwindow);
@@ -1630,8 +1643,6 @@ process_events:
 
     if(x11_connected && terminal_list_popup)
       paint_terminal_list_popup();
-
-    gettimeofday(&now, 0);
 
     /*
     if(x11_connected)
