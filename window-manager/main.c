@@ -178,7 +178,23 @@ struct screen* current_screen;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
-static void swap_terminals(unsigned int a, unsigned int b)
+void
+clear()
+{
+  unsigned int i;
+
+  for(i = 0; i < screen_count; ++i)
+    {
+      if(screens[i].at->mode == mode_menu)
+        {
+          XClearArea(display, screens[i].window, 0, 0,
+                     screens[i].width, screens[i].height, True);
+        }
+    }
+}
+
+static void
+swap_terminals(unsigned int a, unsigned int b)
 {
   terminal* term_a;
   terminal* term_b;
@@ -317,7 +333,8 @@ static void grab_thumbnail(struct window* w)
       uint64_t* buf = (uint64_t*) prop;
       unsigned int width = buf[0];
       unsigned int height = buf[1];
-      unsigned int x, y, i;
+      unsigned int i;
+
       union
         {
           uint32_t rgba;
@@ -959,21 +976,6 @@ window_gone(Window xwindow)
 }
 
 extern struct tree* config;
-
-void
-clear()
-{
-  unsigned int i;
-
-  for(i = 0; i < screen_count; ++i)
-    {
-      if(screens[i].at->mode == mode_menu)
-        {
-          XClearArea(display, screens[i].window, 0, 0,
-                     screens[i].width, screens[i].height, True);
-        }
-    }
-}
 
 int main(int argc, char** argv)
 {

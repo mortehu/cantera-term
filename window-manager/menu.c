@@ -39,8 +39,6 @@ struct picture
   size_t height;
 };
 
-static wchar_t query[256];
-
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
 {
   if(!len)
@@ -116,7 +114,7 @@ void menu_draw(struct screen* screen)
 
   int y = margin_y;
 
-  swprintf(buf, sizeof(buf), L"Query: %ls", query);
+  swprintf(buf, sizeof(buf), L"Query: %ls", screen->query);
   y = screen->height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL] - yskips[LARGE] - 15;
   drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin + 1, y + 1, 0, LARGE);
   drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin, y, 15, LARGE);
@@ -189,7 +187,7 @@ void menu_keypress(struct screen* screen, int key_sym, const char* text, int tex
   {
   case XK_Escape:
 
-    query[0] = 0;
+    screen->query[0] = 0;
 
     break;
 
@@ -198,19 +196,19 @@ void menu_keypress(struct screen* screen, int key_sym, const char* text, int tex
       {
         char command[4096];
 
-        wcstombs(command, query, sizeof(command));
+        wcstombs(command, screen->query, sizeof(command));
 
         launch(command, time);
 
-        query[0] = 0;
+        screen->query[0] = 0;
       }
 
     break;
 
   case XK_BackSpace:
 
-    if(wcslen(query))
-      query[wcslen(query) - 1] = 0;
+    if(wcslen(screen->query))
+      screen->query[wcslen(screen->query) - 1] = 0;
 
     break;
 
@@ -228,7 +226,7 @@ int menu_handle_char(struct screen* screen, int ch)
   {
   case ('U' & 0x3F):
 
-    query[0] = 0;
+    screen->query[0] = 0;
 
     break;
 
@@ -236,15 +234,15 @@ int menu_handle_char(struct screen* screen, int ch)
 
     if(isgraph(ch) || ch == ' ')
     {
-      if(ch == ' ' && !query[0])
+      if(ch == ' ' && !screen->query[0])
         return 0;
 
-      size_t querylen = wcslen(query);
+      size_t querylen = wcslen(screen->query);
 
-      if(querylen < sizeof(query) / sizeof(query[0]) - 1)
+      if(querylen < sizeof(screen->query) / sizeof(screen->query[0]) - 1)
       {
-        query[querylen++] = ch;
-        query[querylen] = 0;
+        screen->query[querylen++] = ch;
+        screen->query[querylen] = 0;
       }
 
       break;

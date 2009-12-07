@@ -35,6 +35,8 @@ typedef struct terminal terminal;
 
 struct screen
 {
+  wchar_t query[256];
+
   unsigned int x_org, y_org;
   unsigned int width, height;
   Window window;
