@@ -979,7 +979,7 @@ extern struct tree* config;
 
 int main(int argc, char** argv)
 {
-  int i;
+  int i, j;
   int result;
 
   setlocale(LC_ALL, "en_US.UTF-8");
@@ -1021,30 +1021,42 @@ int main(int argc, char** argv)
   if(!x11_connected)
     return EXIT_FAILURE;
 
-  for(i = 0; i < TERMINAL_COUNT; ++i)
-  {
-    char buf[32];
-    const char* command;
+  for(j = 0; j < screen_count; ++j)
+    {
+      for(i = 0; i < TERMINAL_COUNT; ++i)
+        {
+          char buf[32];
+          const char* command;
 
-    screens[0].active_terminal = i;
-    screens[0].at = &screens[0].terminals[i];
+          screens[j].active_terminal = i;
+          screens[j].at = &screens[0].terminals[i];
 
-    if(i < 24)
-      {
-        sprintf(buf,
-                "auto-launch.%s-f%d", (i < 12) ? "ctrl" : "super",
-                (i % 12) + 1);
+          if(i < 24)
+            {
+              if(!j)
+                {
+                  sprintf(buf,
+                          "auto-launch.%s-f%d", (i < 12) ? "ctrl" : "super",
+                          (i % 12) + 1);
+                }
+              else
+                {
+                  sprintf(buf,
+                          "auto-launch.%s-f%d.%u", (i < 12) ? "ctrl" : "super",
+                          (i % 12) + 1, j);
+                }
 
-        if(0 != (command = tree_get_string_default(config, buf, 0)))
-          launch(command, 0);
-      }
+              if(0 != (command = tree_get_string_default(config, buf, 0)))
+                launch(command, 0);
+            }
 
-    screens[0].at->mode = mode_menu;
-    screens[0].at->return_mode = mode_menu;
-  }
+          screens[j].at->mode = mode_menu;
+          screens[j].at->return_mode = mode_menu;
+        }
 
-  screens[0].active_terminal = 0;
-  screens[0].at = &screens[0].terminals[0];
+      screens[j].active_terminal = 0;
+      screens[j].at = &screens[j].terminals[0];
+    }
 
   while(!done)
   {
@@ -1056,29 +1068,7 @@ int main(int argc, char** argv)
     struct timeval timeout;
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
-    {
-          /*
-      for(i = 0; i < TERMINAL_COUNT; ++i)
-      {
-        if(terminals[i].pid == pid)
-        {
-          if(terminals[i].return_mode == mode_menu)
-          {
-            enter_menu_mode(i);
-          }
-          terminals[i].mode = terminals[i].return_mode;
-          terminals[i].return_mode = mode_menu;
-
-          terminals[i].pid = 0;
-
-          if(i == active_terminal)
-            set_active_terminal(last_set_terminal, CurrentTime);
-
-          break;
-        }
-      }
-*/
-    }
+      ;
 
     if(x11_connected && XPending(display))
       goto process_events;
@@ -1198,7 +1188,7 @@ process_events:
         {
         case KeyPress:
 
-          if(!XFilterEvent(&event, screens[0].window))
+          if(!XFilterEvent(&event, event.xkey.window))
           {
             char text[32];
             Status status;
@@ -1609,7 +1599,10 @@ process_events:
                         w->desktop = 0;
                       }
                     else
-                      w->desktop->mode = mode_x11;
+                      {
+                        w->desktop->mode = mode_x11;
+                        clear();
+                      }
                   }
               }
 
