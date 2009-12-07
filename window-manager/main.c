@@ -460,7 +460,21 @@ static void set_focus(terminal* t, Time when)
       {
         w = &ARRAY_GET(&windows, i);
 
-        if(w->desktop == t)
+        if(!w->transient_for && w->desktop == t)
+          {
+            focus = w->xwindow;
+            set_map_state(focus, 1);
+            XMapRaised(display, w->xwindow);
+
+            break;
+          }
+      }
+
+    for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+      {
+        w = &ARRAY_GET(&windows, i);
+
+        if(w->transient_for && w->desktop == t)
           {
             focus = w->xwindow;
             set_map_state(focus, 1);
@@ -1311,7 +1325,6 @@ process_events:
             /* Logitech cordless keyboard (S510) */
 
             /* right side keys */
-
             if(event.xkey.keycode == 129)
               run_command(-1, "music", 0);
             else if(event.xkey.keycode == 162)
@@ -1328,17 +1341,14 @@ process_events:
               run_command(-1, "decrease-sound-volume", 0);
             else if(event.xkey.keycode == 160)
               run_command(-1, "toggle-mute", 0);
-
             /* left side keys */
             else if(event.xkey.keycode == 223)
               run_command(-1, "standby", 0);
             else if(event.xkey.keycode == 130)
               run_command(-1, "home", 0);
-
             /* other */
             else if(ctrl_pressed && event.xkey.keycode == 110)
               run_command(-1, "coffee", 0);
-
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
               {
                 char key[10];
