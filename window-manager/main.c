@@ -727,21 +727,6 @@ static void x11_connect(const char* display_name)
     xinerama_screens[0].height = root_window_attr.height;
   }
 
-  if(1)
-    {
-      unsigned int old_width;
-
-      old_width = xinerama_screens[0].width;
-
-      screen_count = 2;
-      xinerama_screens = realloc(xinerama_screens, sizeof(*xinerama_screens) * 2);
-      xinerama_screens[0].width = xinerama_screens[0].width / 2;
-      xinerama_screens[1].x_org = xinerama_screens[0].width;
-      xinerama_screens[1].y_org = 0;
-      xinerama_screens[1].width = old_width - xinerama_screens[0].width;
-      xinerama_screens[1].height = xinerama_screens[0].height;
-    }
-
   screens = calloc(sizeof(*screens), screen_count);
   current_screen = screens;
 
@@ -1029,7 +1014,7 @@ int main(int argc, char** argv)
           const char* command;
 
           screens[j].active_terminal = i;
-          screens[j].at = &screens[0].terminals[i];
+          screens[j].at = &screens[j].terminals[i];
 
           if(i < 24)
             {
@@ -1539,12 +1524,12 @@ process_events:
               if(!(mask & CWHeight))
                 wc.height = w->height;
 
-              if(!w->transient_for)
+              if(!w->transient_for && w->screen)
                 {
-                  wc.x = screens[0].x_org;
-                  wc.y = screens[0].y_org;
-                  wc.width = screens[0].width;
-                  wc.height = screens[0].height;
+                  wc.x = w->screen->x_org;
+                  wc.y = w->screen->y_org;
+                  wc.width = w->screen->width;
+                  wc.height = w->screen->height;
                 }
 
               mask |= CWX | CWY | CWWidth | CWHeight;
@@ -1635,6 +1620,7 @@ process_events:
                 wc.height = w->screen->height;
 
                 XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
+
               }
 
             grab_thumbnail(w);
@@ -1653,15 +1639,6 @@ process_events:
 
     if(x11_connected && terminal_list_popup)
       paint_terminal_list_popup();
-
-    /*
-    if(x11_connected)
-    {
-      XClearArea(display, screens[0].window, 0, 0, screens[0].width, screens[0].height, True);
-
-      XFlush(display);
-    }
-    */
   }
 
   return EXIT_SUCCESS;
