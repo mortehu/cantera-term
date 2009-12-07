@@ -1539,6 +1539,9 @@ process_events:
               if(!(mask & CWHeight))
                 wc.height = w->height;
 
+              if(screen_count == 1)
+                w->screen = &screens[0];
+
               if(!w->transient_for && w->screen)
                 {
                   wc.x = w->screen->x_org;
@@ -1635,7 +1638,6 @@ process_events:
                 wc.height = w->screen->height;
 
                 XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
-
               }
 
             grab_thumbnail(w);
