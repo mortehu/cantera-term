@@ -317,14 +317,26 @@ static void grab_thumbnail(struct window* w)
       uint64_t* buf = (uint64_t*) prop;
       unsigned int width = buf[0];
       unsigned int height = buf[1];
-      unsigned int x, y;
-      uint32_t* colors;
+      unsigned int x, y, i;
+      union
+        {
+          uint32_t rgba;
+          struct
+            {
+              unsigned char r, g, b, a;
+            } c;
+        } *colors;
 
       colors = alloca(sizeof(*colors) * width * height);
 
-      for(y = 0; y < height; ++y)
-        for(x = 0; x < width; ++x)
-          colors[y * width + x] = buf[y * width + x + 2]/* >> 32*/;
+      for(i = 0; i < width * height; ++i)
+        {
+          colors[i].rgba = buf[i + 2];
+
+          colors[i].c.r = (colors[i].c.r * colors[i].c.a) / 255;
+          colors[i].c.g = (colors[i].c.g * colors[i].c.a) / 255;
+          colors[i].c.b = (colors[i].c.b * colors[i].c.a) / 255;
+        }
 
       XImage temp_image;
       init_ximage(&temp_image, width, height, colors);
@@ -939,7 +951,10 @@ window_gone(Window xwindow)
         enter_menu_mode(screen, desktop);
 
       if(screen->at == desktop)
-        set_focus(screen, desktop, CurrentTime);
+        {
+          set_focus(screen, desktop, CurrentTime);
+          clear();
+        }
     }
 }
 
