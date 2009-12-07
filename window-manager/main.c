@@ -26,7 +26,6 @@
 #include <X11/cursorfont.h>
 
 #include <X11/extensions/Xinerama.h>
-#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xrender.h>
 
 #include "array.h"
@@ -86,8 +85,6 @@ void init_ximage(XImage* image, int width, int height, void* data);
 struct window
 {
   Window xwindow;
-  XserverRegion region;
-  Damage damage;
   int x, y;
   unsigned int width, height;
 
@@ -124,7 +121,6 @@ add_inferior(Window window)
   XGetWindowAttributes(display, window, &attr);
 
   w.xwindow = window;
-  w.damage = XDamageCreate(display, window, XDamageReportNonEmpty);
   w.x = attr.x;
   w.y = attr.y;
   w.width = attr.width;
@@ -151,8 +147,6 @@ find_xwindow(terminal* t)
 }
 
 Display* display;
-int damage_eventbase;
-int damage_errorbase;
 int screenidx;
 Screen* screen;
 Visual* visual;
@@ -228,15 +222,8 @@ static void paint(int x, int y, int width, int height)
   int maxx = x + width;
   int maxy = y + height;
 
-  XFixesSetPictureClipRegion(display, root_buffer, 0, 0, None);
-
   if(at->mode == mode_menu)
     menu_draw();
-  else if(at->mode == mode_x11)
-  {
-    XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
-        0, 0, window_width, window_height);
-  }
 
   if(root_buffer != root_picture)
   {
@@ -895,43 +882,11 @@ static void sighandler(int signal)
   exit(EXIT_SUCCESS);
 }
 
-static void mark_dirty(int termidx, int x, int y, int width, int height, const char* reason)
-{
-  terminal* t = &terminals[termidx];
-  XRectangle rect = { x, y, width, height };
-
-  if(!t->region)
-  {
-    t->region = XFixesCreateRegion(display, 0, 0);
-
-    XFixesSetRegion(display, t->region, &rect, 1);
-  }
-  else
-  {
-    XserverRegion tmpregion = XFixesCreateRegion(display, 0, 0);
-    XFixesSetRegion(display, tmpregion, &rect, 1);
-    XFixesUnionRegion(display, t->region, t->region, tmpregion);
-    XFixesDestroyRegion(display, tmpregion);
-  }
-
-  t->dirty |= 1;
-}
-
 static void enter_menu_mode(terminal* t)
 {
   /* XXX: Free first */
   t->mode = mode_menu;
-  t->damage = 0;
-  t->picture = 0;
-  t->region = 0;
   t->dirty |= 1;
-
-  if(t->picture)
-  {
-    XRenderFreePicture(display, t->picture);
-    XDamageDestroy(display, t->damage);
-    t->picture = 0;
-  }
 
   if(t->thumbnail)
   {
@@ -1260,37 +1215,6 @@ process_events:
       while(XPending(display))
       {
         XNextEvent(display, &event);
-
-        if(event.type == damage_eventbase + XDamageNotify)
-        {
-          XDamageNotifyEvent* e = (XDamageNotifyEvent*) &event;
-          struct window* w;
-
-          w = find_window(e->drawable);
-
-          if(w && w->damage)
-            {
-              if(!w->region)
-                {
-                  w->region = XFixesCreateRegion(display, 0, 0);
-
-                  XDamageSubtract(display, e->damage, None, w->region);
-                }
-              else
-                {
-                  XserverRegion tmpregion = XFixesCreateRegion(display, 0, 0);
-                  XDamageSubtract(display, e->damage, None, tmpregion);
-                  XFixesUnionRegion(display, w->region, w->region, tmpregion);
-                  XFixesDestroyRegion(display, tmpregion);
-                }
-            }
-          else
-            {
-              XDamageSubtract(display, e->damage, None, None);
-            }
-
-          continue;
-        }
 
         switch(event.type)
         {

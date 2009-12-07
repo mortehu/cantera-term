@@ -6,8 +6,6 @@
 #include <sys/time.h>
 #include <pty.h>
 
-#include <X11/extensions/Xdamage.h>
-
 enum mode
 {
   mode_menu,
@@ -26,9 +24,6 @@ struct transient
 
 typedef struct
 {
-  Damage damage;
-  Picture picture;
-  XserverRegion region;
   Picture thumbnail;
   int xscreen;
 
