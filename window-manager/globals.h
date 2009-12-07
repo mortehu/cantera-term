@@ -26,8 +26,6 @@ struct transient
 
 typedef struct
 {
-  Window window;
-  struct transient* transients;
   Damage damage;
   Picture picture;
   XserverRegion region;
