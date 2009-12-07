@@ -1,13 +1,76 @@
+/*  C array implementation.
+    Copyright (C) 2009  Morten Hustveit <morten@rashbox.org>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef ARRAY_H_
 #define ARRAY_H_ 1
 
 #include <assert.h>
+#include <stdlib.h>
 
-#define ARRAY_MEMBERS(type)       \
-      type* array_elements;       \
-      size_t array_element_count; \
-      size_t array_element_alloc; \
-      int array_result;           \
+/*** Example usage: ***
+
+  struct my_struct_t
+    {
+      ARRAY_MEMBERS(char);
+      int other_member;
+    };
+
+  // Variable declarations
+  struct my_struct_t my_struct;
+  ARRAY(const char*) my_array;
+
+  // Set all members to zero
+  ARRAY_INIT(&my_struct);
+  ARRAY_INIT(&my_array);
+
+  ARRAY_ADD(&my_struct, 'x');
+
+  // Example error handling.  Should really be done always.
+  if(ARRAY_RESULT(&my_struct))
+    err(EX_OSERR, "memory allocation failed");
+
+  ARRAY_ADD_SEVERAL(&my_struct, "hest", 4);
+
+  ARRAY_ADD(&my_array, "eple");
+
+  // Printing a non-null-terminated string
+  printf("%.*s\n", (int) ARRAY_COUNT(&my_struct), &ARRAY_GET(&my_struct, 0));
+
+  ARRAY_ADD(&my_struct, 0);
+
+  // Printing a null-terminated string
+  printf("%s\n", &ARRAY_GET(&struct, 0));
+
+  ARRAY_FREE(&my_array);
+  ARRAY_FREE(&my_struct);
+
+*/
+
+#define ARRAY_MEMBERS(type)                                                   \
+  type* array_elements;                                                       \
+  size_t array_element_count;                                                 \
+  size_t array_element_alloc;                                                 \
+  int array_result;                                                           \
+
+#define ARRAY(type)                                                           \
+  struct                                                                      \
+    {                                                                         \
+      ARRAY_MEMBERS(type);                                                    \
+    }                                                                         \
 
 #define ARRAY_INIT(array)                                                     \
   do                                                                          \
