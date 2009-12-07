@@ -47,7 +47,7 @@ struct screen
   terminal* at;
 };
 
-extern struct screen* screens;
+extern struct screen* current_screen;
 
 extern int xskips[];
 extern int yskips[];
