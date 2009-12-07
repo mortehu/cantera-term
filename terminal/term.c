@@ -112,6 +112,7 @@ struct terminal
 
 static int done;
 static const char* session_path;
+static int focused;
 
 XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
@@ -371,7 +372,9 @@ static void paint(int x, int y, int width, int height)
         int attr = attrline[start];
         int localattr = -1;
 
-        if(row == terminal.cursory + terminal.history_scroll && start == terminal.cursorx)
+        if(focused
+           && row == terminal.cursory + terminal.history_scroll
+           && start == terminal.cursorx)
         {
           attr = REVERSE(attr);
 
@@ -844,7 +847,7 @@ static void x11_connect(const char* display_name)
   window_attr.cursor = XCreateFontCursor(display, XC_left_ptr);
 
   window_attr.colormap = DefaultColormap(display, 0);
-  window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask;
+  window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask | FocusChangeMask;
 
   window = XCreateWindow(display, RootWindow(display, screenidx), 0, 0, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWColormap | CWEventMask | CWCursor, &window_attr);
 
@@ -864,6 +867,8 @@ static void x11_connect(const char* display_name)
 
   XStoreName(display, window, "cantera-term");
   XMapWindow(display, window);
+
+  focused = 1;
 
   xim = 0;
 
@@ -2827,6 +2832,21 @@ int main(int argc, char** argv)
 
           paint(minx, miny, maxx - minx, maxy - miny);
         }
+
+        break;
+
+      case FocusIn:
+
+        focused = 1;
+        XClearArea(display, window, 0, 0, window_width, window_height, True);
+
+        break;
+
+      case FocusOut:
+
+        focused = 0;
+        XClearArea(display, window, 0, 0, window_width, window_height, True);
+        fprintf(stderr, "focus loss\n");
 
         break;
       }
