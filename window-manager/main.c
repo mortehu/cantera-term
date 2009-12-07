@@ -26,9 +26,9 @@
 #include <X11/cursorfont.h>
 
 #include <X11/extensions/Xinerama.h>
-#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xrender.h>
 
+#include "array.h"
 #include "common.h"
 #include "font.h"
 #include "globals.h"
@@ -65,12 +65,8 @@ Cursor shell_cursor;
 Cursor other_cursor;
 
 XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
-Picture picpalette[sizeof(palette) / sizeof(palette[0])];
-Picture picgradients[256];
 
-XineramaScreenInfo* screens;
-Window* screen_windows;
-terminal** screen_terms;
+struct screen* screens;
 int screen_count = 0;
 
 int terminal_list_width;
@@ -79,46 +75,74 @@ Window terminal_list_popup = 0;
 
 int window_width, window_height;
 
-struct inferior
-{
-  Window window;
-  Damage damage;
-  int x, y;
-  int width, height;
-};
-
-struct inferior inferiors[128];
-int inferior_count = 0;
-
 void run_command(int fd, const char* command, const char* arg);
 void init_ximage(XImage* image, int width, int height, void* data);
 
-void add_inferior(Window window)
+struct window
 {
-  int i = inferior_count++;
+  Window xwindow;
+  int x, y;
+  unsigned int width, height;
 
+  Window transient_for;
+  terminal* desktop;
+  unsigned int screen_index;
+};
+
+struct
+{
+  ARRAY_MEMBERS(struct window);
+} windows;
+
+struct window*
+find_window(Window window)
+{
+  size_t i;
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      if(ARRAY_GET(&windows, i).xwindow == window)
+        return &ARRAY_GET(&windows, i);
+    }
+
+  return 0;
+}
+
+void
+add_inferior(Window window)
+{
   XWindowAttributes attr;
+  struct window w;
 
   XGetWindowAttributes(display, window, &attr);
 
-  inferiors[i].window = window;
-  inferiors[i].damage = XDamageCreate(display, window, XDamageReportNonEmpty);
-  inferiors[i].x = attr.x;
-  inferiors[i].y = attr.y;
-  inferiors[i].width = attr.width;
-  inferiors[i].height = attr.height;
+  w.xwindow = window;
+  w.x = attr.x;
+  w.y = attr.y;
+  w.width = attr.width;
+  w.height = attr.height;
+
+  ARRAY_ADD(&windows, w);
 }
 
-void remove_inferior(int i)
+Window
+find_xwindow(terminal* t)
 {
-  XDamageDestroy(display, inferiors[i].damage);
-  memmove(&inferiors[i], &inferiors[inferior_count - 1], sizeof(struct inferior));
-  --inferior_count;
+  const struct window* w;
+  size_t i;
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if(w->desktop == t)
+        return w->xwindow;
+    }
+
+  return 0;
 }
 
 Display* display;
-int damage_eventbase;
-int damage_errorbase;
 int screenidx;
 Screen* screen;
 Visual* visual;
@@ -126,9 +150,6 @@ XVisualInfo visual_template;
 XVisualInfo* visual_info;
 Window root_window;
 XWindowAttributes root_window_attr;
-XSetWindowAttributes window_attr;
-Window window;
-Atom prop_paste;
 Atom xa_potty_play;
 Atom xa_utf8_string;
 Atom xa_compound_text;
@@ -148,27 +169,24 @@ int cols;
 int rows;
 XIM xim = 0;
 XIC xic;
+/*
 #define TERMINAL_COUNT 24
 terminal terminals[TERMINAL_COUNT];
+*/
 int xfd;
+/*
 int active_terminal = 0;
 terminal* at = &terminals[0];
 int last_set_terminal = 0;
+*/
 int ctrl_pressed = 0;
 int mod1_pressed = 0;
 int super_pressed = 0;
 int shift_pressed = 0;
 int button1_pressed = 0;
 struct timeval lastpaint = { 0, 0 };
-unsigned char* paste_buffer = 0;
-unsigned long paste_offset;
-unsigned long paste_length;
-int paste_terminal;
-int paste_is_x;
-Picture root_picture;
-Picture root_buffer;
 
-static void mark_terminal_dirty();
+struct screen* current_screen;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
@@ -176,41 +194,28 @@ static void swap_terminals(int a, int b)
 {
   terminal tmp;
 
-  tmp = terminals[a];
-  terminals[a] = terminals[b];
-  terminals[b] = tmp;
+  tmp = current_screen->terminals[a];
+  current_screen->terminals[a] = current_screen->terminals[b];
+  current_screen->terminals[b] = tmp;
 }
 
-static void clear_screen()
+static void paint(Window window, int x, int y, int width, int height)
 {
-  XRenderFillRectangle(display, PictOpSrc, root_picture, &xrpalette[0],
-                       0, 0, window_width, window_height);
-}
+  unsigned int i;
 
-static void paint(int x, int y, int width, int height)
-{
-  int minx = x;
-  int miny = y;
-  int maxx = x + width;
-  int maxy = y + height;
+  for(i = 0; i < screen_count; ++i)
+    {
+      if(screens[i].window == window)
+          menu_draw(&screens[i]);
 
-  XFixesSetPictureClipRegion(display, root_buffer, 0, 0, None);
-
-  if(at->mode == mode_menu)
-    menu_draw();
-  else if(at->mode == mode_x11)
-  {
-    XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
-        0, 0, window_width, window_height);
-  }
-
-  if(root_buffer != root_picture)
-  {
-    XRenderComposite(display, PictOpSrc, root_buffer, None, root_picture,
-                     minx, miny,
-                     0, 0,
-                     minx, miny, maxx - minx, maxy - miny);
-  }
+      XRenderComposite(display, PictOpSrc,
+                       screens[i].root_buffer,
+                       None,
+                       screens[i].root_picture,
+                       x, y,
+                       0, 0,
+                       x, y, width, height);
+    }
 }
 
 int get_int_property(Window window, Atom property, int* result)
@@ -236,16 +241,16 @@ int get_int_property(Window window, Atom property, int* result)
   return 0;
 }
 
-static int first_available_terminal()
+static int first_available_terminal(struct screen* screen)
 {
   int i;
 
-  if(at->mode == mode_menu)
-    return active_terminal;
+  if(screen->at->mode == mode_menu)
+    return screen->active_terminal;
 
   for(i = 0; i < TERMINAL_COUNT; ++i)
   {
-    if(terminals[i].mode == mode_menu)
+    if(screen->terminals[i].mode == mode_menu)
       return i;
   }
 
@@ -261,13 +266,9 @@ static void set_map_state(Window window, int state)
   XChangeProperty(display, window, xa_wm_state, xa_wm_state, 32, PropModeReplace, (unsigned char*) data, 2);
 }
 
-static void mark_terminal_dirty()
-{
-  at->dirty = 2;
-}
-
 static void grab_thumbnail()
 {
+#if 0
   int thumb_width, thumb_height;
 
   menu_thumbnail_dimensions(&thumb_width, &thumb_height, 0);
@@ -349,13 +350,16 @@ static void grab_thumbnail()
 
     return;
   }
+#endif
 }
 
 static void paint_terminal_list_popup();
 
 static void create_terminal_list_popup()
 {
+#if 0
   int thumb_width, thumb_height, thumb_margin;
+
   if(at->mode == mode_menu || terminal_list_popup)
     return;
 
@@ -378,6 +382,7 @@ static void create_terminal_list_popup()
   XMapWindow(display, terminal_list_popup);
 
   paint_terminal_list_popup();
+#endif
 }
 
 static void paint_terminal_list_popup()
@@ -412,84 +417,77 @@ static void destroy_terminal_list_popup()
   terminal_list_popup = 0;
 }
 
-static void set_focus(terminal* t, Time when)
+static void set_focus(struct screen* screen, terminal* t, Time when)
 {
   if(t->mode == mode_x11)
   {
-    struct transient* trans = t->transients;
+    Window focus = 0;
+    struct window* w;
+    size_t i;
 
-    Window focus = t->window;
-    clear_screen();
-    XMapRaised(display, t->window);
-    set_map_state(t->window, 1);
+    XUnmapWindow(display, screen->window);
 
-    while(trans)
-    {
-      XMapRaised(display, trans->window);
-      focus = trans->window;
-      trans = trans->next;
-    }
+    for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+      {
+        w = &ARRAY_GET(&windows, i);
+
+        if(!w->transient_for && w->desktop == t)
+          {
+            focus = w->xwindow;
+            set_map_state(focus, 1);
+            XMapRaised(display, w->xwindow);
+
+            break;
+          }
+      }
+
+    for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+      {
+        w = &ARRAY_GET(&windows, i);
+
+        if(w->transient_for && w->desktop == t)
+          {
+            focus = w->xwindow;
+            set_map_state(focus, 1);
+            XMapRaised(display, w->xwindow);
+          }
+      }
 
     XSetInputFocus(display, focus, RevertToPointerRoot, when);
   }
   else
   {
-    XSetInputFocus(display, window, RevertToPointerRoot, when);
-
-    XSetWindowAttributes window_attr;
-    if(t->mode == mode_menu)
-      window_attr.cursor = menu_cursor;
-    else
-      window_attr.cursor = other_cursor;
-
-    XChangeWindowAttributes(display, window, CWCursor, &window_attr);
+    XMapRaised(display, screen->window);
+    XSetInputFocus(display, screen->window, RevertToPointerRoot, when);
   }
 }
 
-static void set_active_terminal(int terminal, Time when)
+static void set_active_terminal(struct screen* screen,
+                                unsigned int terminal_index, Time when)
 {
+  Window tmp_window;
   int i;
 
-  if(terminal != active_terminal && !super_pressed)
-    grab_thumbnail();
-
-  set_focus(&terminals[terminal], when);
-
-  if(terminal == active_terminal)
+  if(terminal_index == screen->active_terminal)
     return;
 
-  if(at->window)
-  {
-    for(i = 1; i < screen_count; ++i)
+  set_focus(screen, &screen->terminals[terminal_index], when);
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
     {
-      if(screen_windows[i] == at->window)
-        break;
+      if(ARRAY_GET(&windows, i).desktop == screen->at)
+        {
+          tmp_window = ARRAY_GET(&windows, i).xwindow;
+          XUnmapWindow(display, tmp_window);
+          set_map_state(tmp_window, 0);
+        }
     }
 
-    if(i == screen_count)
-    {
-      struct transient* t = at->transients;
+  screen->active_terminal = terminal_index;
+  screen->at = &screen->terminals[terminal_index];
 
-      XUnmapWindow(display, at->window);
-      set_map_state(at->window, 0);
-
-      while(t)
-      {
-        XUnmapWindow(display, t->window);
-        set_map_state(t->window, 0);
-
-        t = t->next;
-      }
-    }
-  }
-
-  active_terminal = terminal;
-  at = &terminals[active_terminal];
-
-  if(at->mode == mode_menu)
+  if(screen->at->mode == mode_menu)
     destroy_terminal_list_popup();
-
-  at->dirty = 1;
 }
 
 pid_t launch(const char* command, Time when)
@@ -509,10 +507,10 @@ pid_t launch(const char* command, Time when)
     sprintf(buf, "%llu", (unsigned long long int) when);
     setenv("DESKTOP_START_ID", buf, 1);
 
-    sprintf(buf, ".cantera/bash-history-%02d", active_terminal);
+    sprintf(buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
     setenv("HISTFILE", buf, 1);
 
-    sprintf(buf, ".cantera/session-%02d", active_terminal);
+    sprintf(buf, ".cantera/session-%02d", current_screen->active_terminal);
     setenv("SESSION_PATH", buf, 1);
 
     args[0] = "/bin/sh";
@@ -525,8 +523,8 @@ pid_t launch(const char* command, Time when)
     exit(EXIT_FAILURE);
   }
 
-  if(at->mode == mode_menu)
-    at->pid = pid;
+  if(current_screen->at->mode == mode_menu)
+    current_screen->at->pid = pid;
 
   return pid;
 }
@@ -600,8 +598,36 @@ static int xerror_discarder(Display* display, XErrorEvent* error)
 
 static int x11_connected = 0;
 
+static void
+create_menu_cursor()
+{
+  Pixmap mask = XCreatePixmap(display, XRootWindow(display, 0), 1, 1, 1);
+
+  XGCValues xgc;
+
+  xgc.function = GXclear;
+
+  GC gc = XCreateGC(display, mask, GCFunction, &xgc);
+
+  XFillRectangle(display, mask, gc, 0, 0, 1, 1);
+
+  XColor color;
+
+  color.pixel = 0;
+  color.red = 0;
+  color.flags = 4;
+
+  menu_cursor = XCreatePixmapCursor(display, mask, mask, &color, &color, 0, 0);
+
+  XFreePixmap(display, mask);
+
+  XFreeGC(display, gc);
+}
+
 static void x11_connect(const char* display_name)
 {
+  XSetWindowAttributes window_attr;
+  XineramaScreenInfo* xinerama_screens;
   int i;
   int nitems;
   char* c;
@@ -635,76 +661,94 @@ static void x11_connect(const char* display_name)
   XSetErrorHandler(xerror_handler);
   //XSetIOErrorHandler(xioerror_handler);
 
-  if(XineramaQueryExtension(display, &i, &i))
-  {
-    if(XineramaIsActive(display))
-      screens = XineramaQueryScreens(display, &screen_count);
-  }
-
-  if(!screen_count)
-  {
-    screen_count = 1;
-    screens = malloc(sizeof(XineramaScreenInfo) * 1);
-    screens[0].x_org = 0;
-    screens[0].y_org = 0;
-    screens[0].width = root_window_attr.width;
-    screens[0].height = root_window_attr.height;
-  }
-
-  screen_windows = malloc(sizeof(Window) * screen_count);
-  screen_terms = malloc(sizeof(terminal*) * screen_count);
-  memset(screen_windows, 0, sizeof(Window) * screen_count);
-  memset(screen_terms, 0, sizeof(terminal*) * screen_count);
-
   screenidx = DefaultScreen(display);
   screen = DefaultScreenOfDisplay(display);
   visual = DefaultVisual(display, screenidx);
   visual_info = XGetVisualInfo(display, VisualNoMask, &visual_template, &nitems);
 
-  memset(&window_attr, 0, sizeof(window_attr));
-  window_width = screens[0].width;
-  window_height = screens[0].height;
+  create_menu_cursor();
 
-  window_attr.colormap = DefaultColormap(display, 0);
-  window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ExposureMask;
-  window_attr.override_redirect = True;
-
+  if(XineramaQueryExtension(display, &i, &i))
   {
-    Pixmap mask = XCreatePixmap(display, XRootWindow(display, 0), 1, 1, 1);
-
-    XGCValues xgc;
-
-    xgc.function = GXclear;
-
-    GC gc = XCreateGC(display, mask, GCFunction, &xgc);
-
-    XFillRectangle(display, mask, gc, 0, 0, 1, 1);
-
-    XColor color;
-
-    color.pixel = 0;
-    color.red = 0;
-    color.flags = 4;
-
-    menu_cursor = XCreatePixmapCursor(display, mask, mask, &color, &color, 0, 0);
-
-    XFreePixmap(display, mask);
-
-    XFreeGC(display, gc);
+    if(XineramaIsActive(display))
+      xinerama_screens = XineramaQueryScreens(display, &screen_count);
   }
 
-  window_attr.cursor = menu_cursor;
+  if(!screen_count)
+  {
+    screen_count = 1;
+    xinerama_screens = malloc(sizeof(*screens) * 1);
+    xinerama_screens[0].x_org = 0;
+    xinerama_screens[0].y_org = 0;
+    xinerama_screens[0].width = root_window_attr.width;
+    xinerama_screens[0].height = root_window_attr.height;
+  }
 
-  window = XCreateWindow(display, root_window, screens[0].x_org,
-                         screens[0].y_org, window_width, window_height, 0,
-                         visual_info->depth, InputOutput, visual,
-                         CWOverrideRedirect | CWColormap | CWEventMask |
-                         CWCursor, &window_attr);
-  XMapWindow(display, window);
+  if(screen_count == 1 && screens[0].height * 4 / 3 < screens[0].width - 200)
+    {
+      unsigned int old_width;
+
+      old_width = screens[0].width;
+
+      screen_count = 2;
+      xinerama_screens = realloc(xinerama_screens, sizeof(*screens) * 2);
+      xinerama_screens[0].width = screens[0].width / 2;
+      xinerama_screens[1].x_org = screens[0].width;
+      xinerama_screens[1].y_org = 0;
+      xinerama_screens[1].width = old_width - screens[0].width;
+      xinerama_screens[1].height = screens[0].height;
+    }
+
+  screens = calloc(sizeof(*screens), screen_count);
+  current_screen = 0;
+
+  for(i = 0; i < screen_count; ++i)
+    {
+      XRenderPictureAttributes pa;
+      Pixmap pmap;
+
+      pa.subwindow_mode = IncludeInferiors;
+
+      screens[i].width = xinerama_screens[i].width;
+      screens[i].height = xinerama_screens[i].height;
+      screens[i].x_org = xinerama_screens[i].x_org;
+      screens[i].y_org = xinerama_screens[i].y_org;
+
+      memset(&window_attr, 0, sizeof(window_attr));
+
+      window_attr.colormap = DefaultColormap(display, 0);
+      window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ExposureMask;
+      window_attr.override_redirect = True;
+
+      window_attr.cursor = menu_cursor;
+
+      screens[i].window
+        = XCreateWindow(display, root_window,
+                        screens[i].x_org, screens[i].y_org,
+                        screens[i].width, screens[i].height, 0,
+                        visual_info->depth, InputOutput, visual,
+                        CWOverrideRedirect | CWColormap | CWEventMask |
+                        CWCursor, &window_attr);
+
+      XMapWindow(display, screens[i].window);
+
+      screens[i].root_picture = XRenderCreatePicture(display, screens[i].window, xrenderpictformat, CPSubwindowMode, &pa);
+
+      pmap = XCreatePixmap(display, screens[i].window, screens[i].width, screens[i].height, visual_info->depth);
+      screens[i].root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
+
+      if(screens[i].root_buffer == None)
+        {
+          fprintf(stderr, "Failed to create root buffer\n");
+
+          return;
+        }
+
+      XFreePixmap(display, pmap);
+    }
 
   grab_keys();
 
-  prop_paste = XInternAtom(display, "POTTY_PASTE", False);
   xa_potty_play = XInternAtom(display, "POTTY_PLAY", False);
   xa_utf8_string = XInternAtom(display, "UTF8_STRING", False);
   xa_compound_text = XInternAtom(display, "COMPOUND_TEXT", False);
@@ -731,8 +775,9 @@ static void x11_connect(const char* display_name)
     return;
   }
 
+  /* XXX: Used to be `window'  Root okay? */
   xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
-                  XNClientWindow, window, XNFocusWindow, window, NULL);
+                  XNClientWindow, root_window, XNFocusWindow, root_window, NULL);
 
   if(!xic)
   {
@@ -752,52 +797,12 @@ static void x11_connect(const char* display_name)
 
   a8pictformat = XRenderFindStandardFormat(display, PictStandardA8);
 
-  gc = XCreateGC(display, window, 0, 0);
-
   for(i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
   {
-    Pixmap pmap;
-    XRenderPictureAttributes attr;
-
     xrpalette[i].alpha = ((palette[i] & 0xff000000) >> 24) * 0x0101;
     xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
     xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
     xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
-
-    pmap = XCreatePixmap(display, window, 1, 1, xrenderpictformat->depth);
-
-    memset(&attr, 0, sizeof(attr));
-    attr.repeat = True;
-
-    picpalette[i] = XRenderCreatePicture(display, pmap, xrenderpictformat, CPRepeat, &attr);
-
-    XFreePixmap(display, pmap);
-
-    XRenderFillRectangle(display, PictOpSrc, picpalette[i],
-                         &xrpalette[i], 0, 0, 1, 1);
-  }
-
-  for(i = 0; i < 256; ++i)
-  {
-    Pixmap pmap;
-    XRenderPictureAttributes attr;
-
-    XRenderColor color;
-    color.alpha = i * 0x0101;
-    color.red = 0xffff;
-    color.green = 0xffff;
-    color.blue = 0xffff;
-
-    pmap = XCreatePixmap(display, window, 1, 1, a8pictformat->depth);
-
-    memset(&attr, 0, sizeof(attr));
-    attr.repeat = True;
-
-    picgradients[i] = XRenderCreatePicture(display, pmap, a8pictformat, CPRepeat, &attr);
-
-    XFreePixmap(display, pmap);
-
-    XRenderFillRectangle(display, PictOpSrc, picgradients[i], &color, 0, 0, 1, 1);
   }
 
   alpha_glyphs[0] = XRenderCreateGlyphSet(display, a8pictformat);
@@ -812,27 +817,6 @@ static void x11_connect(const char* display_name)
 
   font_init();
 
-  XRenderPictureAttributes pa;
-  pa.subwindow_mode = IncludeInferiors;
-
-  root_picture = XRenderCreatePicture(display, window, xrenderpictformat, CPSubwindowMode, &pa);
-
-  {
-    Pixmap pmap;
-
-    pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
-    root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-    if(root_buffer == None)
-    {
-      fprintf(stderr, "Failed to create root buffer\n");
-
-      return;
-    }
-
-    XFreePixmap(display, pmap);
-  }
-
   menu_init();
 
   cols = window_width / xskips[0];
@@ -841,9 +825,6 @@ static void x11_connect(const char* display_name)
   xfd = ConnectionNumber(display);
 
   XSynchronize(display, False);
-
-  clear_screen();
-  mark_terminal_dirty();
 
   x11_connected = 1;
 }
@@ -857,55 +838,10 @@ static void sighandler(int signal)
   exit(EXIT_SUCCESS);
 }
 
-static void mark_dirty(int termidx, int x, int y, int width, int height, const char* reason)
+static void enter_menu_mode(terminal* t)
 {
-  terminal* t = &terminals[termidx];
-  XRectangle rect = { x, y, width, height };
-
-  if(!t->region)
-  {
-    t->region = XFixesCreateRegion(display, 0, 0);
-
-    XFixesSetRegion(display, t->region, &rect, 1);
-  }
-  else
-  {
-    XserverRegion tmpregion = XFixesCreateRegion(display, 0, 0);
-    XFixesSetRegion(display, tmpregion, &rect, 1);
-    XFixesUnionRegion(display, t->region, t->region, tmpregion);
-    XFixesDestroyRegion(display, tmpregion);
-  }
-
-  t->dirty |= 1;
-}
-
-static void enter_menu_mode(int termidx)
-{
-  terminal* t = &terminals[termidx];
-  struct transient* transient = t->transients;
-
-  while(transient)
-  {
-    struct transient* next = transient->next;
-    free(transient);
-    transient = next;
-  }
-
   /* XXX: Free first */
   t->mode = mode_menu;
-  t->window = 0;
-  t->transients = 0;
-  t->damage = 0;
-  t->picture = 0;
-  t->region = 0;
-  t->dirty |= 1;
-
-  if(t->picture)
-  {
-    XRenderFreePicture(display, t->picture);
-    XDamageDestroy(display, t->damage);
-    t->picture = 0;
-  }
 
   if(t->thumbnail)
   {
@@ -913,54 +849,12 @@ static void enter_menu_mode(int termidx)
     t->thumbnail = 0;
   }
 
-  if(t == at)
+  if(t == screens[t->screen_index].at)
     destroy_terminal_list_popup();
 }
 
-static int find_window(Window w, terminal** term, struct transient** trans)
-{
-  int i;
-
-  for(i = 0; i < TERMINAL_COUNT; ++i)
-  {
-    if(terminals[i].window == w)
-    {
-      *term = &terminals[i];
-
-      if(trans)
-        *trans = 0;
-
-      return 0;
-    }
-
-    if(!trans)
-      continue;
-
-    struct transient* t = terminals[i].transients;
-
-    while(t)
-    {
-      if(t->window == w)
-      {
-        *term = &terminals[i];
-        *trans = t;
-
-        return 0;
-      }
-
-      t = t->next;
-    }
-  }
-
-  *term = 0;
-
-  if(trans)
-    *trans = 0;
-
-  return -1;
-}
-
-static terminal* find_pid(pid_t pid)
+static terminal*
+find_pid(pid_t pid)
 {
   int i;
 
@@ -973,28 +867,53 @@ static terminal* find_pid(pid_t pid)
   return 0;
 }
 
-static void add_transient(terminal* term, Window window, struct transient** trans)
+static void
+connect_transient(struct window* w)
 {
-  struct transient* next = term->transients;
-  term->transients = malloc(sizeof(struct transient));
-  term->transients->window = window;
-  term->transients->next = next;
-  term->transients->x = -1;
-  term->transients->y = -1;
-  term->transients->width = -1;
-  term->transients->height = -1;
+  if(w->transient_for)
+    return;
 
-  if(trans)
-    *trans = term->transients;
-}
-
-static void get_transient_for(Window w, Window* transient_for)
-{
   XSync(display, False);
   XSetErrorHandler(xerror_discarder);
-  XGetTransientForHint(display, w, transient_for);
+  XGetTransientForHint(display, w->xwindow, &w->transient_for);
   XSync(display, False);
   XSetErrorHandler(xerror_handler);
+
+  if(w->transient_for)
+    {
+      struct window* parent;
+
+      parent = find_window(w->transient_for);
+
+      if(parent)
+        w->desktop = parent->desktop;
+    }
+}
+
+void
+window_gone(Window xwindow)
+{
+  terminal* desktop;
+  struct window* w;
+  size_t i;
+
+  w = find_window(xwindow);
+
+  if(!w)
+    return;
+
+  desktop = w->desktop;
+
+  ARRAY_REMOVE_PTR(&windows, w);
+
+  if(desktop)
+    {
+      for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+        if(ARRAY_GET(&windows, i).desktop == desktop)
+          return;
+
+      enter_menu_mode(desktop);
+    }
 }
 
 extern struct tree* config;
@@ -1079,6 +998,7 @@ int main(int argc, char** argv)
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
+          /*
       for(i = 0; i < TERMINAL_COUNT; ++i)
       {
         if(terminals[i].pid == pid)
@@ -1087,7 +1007,6 @@ int main(int argc, char** argv)
           {
             enter_menu_mode(i);
           }
-
           terminals[i].mode = terminals[i].return_mode;
           terminals[i].return_mode = mode_menu;
 
@@ -1099,6 +1018,7 @@ int main(int argc, char** argv)
           break;
         }
       }
+*/
     }
 
     if(x11_connected && XPending(display))
@@ -1126,15 +1046,6 @@ int main(int argc, char** argv)
     if(!x11_connected)
     {
       result = select(maxfd + 1, &readset, &writeset, 0, 0);
-    }
-    else if(at->dirty)
-    {
-      struct timeval tv;
-
-      tv.tv_sec = 0;
-      tv.tv_usec = 10000;
-
-      result = select(maxfd + 1, &readset, &writeset, 0, &tv);
     }
     else
     {
@@ -1251,44 +1162,6 @@ process_events:
       {
         XNextEvent(display, &event);
 
-        if(event.type == damage_eventbase + XDamageNotify)
-        {
-          XDamageNotifyEvent* e = (XDamageNotifyEvent*) &event;
-
-          for(i = 0; i < inferior_count; ++i)
-            if(inferiors[i].window == e->drawable)
-              break;
-
-          if(e->drawable == at->window || i != inferior_count)
-          {
-            if(!at->region)
-            {
-              at->region = XFixesCreateRegion(display, 0, 0);
-
-              XDamageSubtract(display, e->damage, None, at->region);
-            }
-            else
-            {
-              XserverRegion tmpregion = XFixesCreateRegion(display, 0, 0);
-              XDamageSubtract(display, e->damage, None, tmpregion);
-              XFixesUnionRegion(display, at->region, at->region, tmpregion);
-              XFixesDestroyRegion(display, tmpregion);
-            }
-
-            at->dirty |= 1;
-          }
-          else if(e->drawable == window && at->mode != mode_x11)
-          {
-            at->dirty |= 1;
-          }
-          else
-          {
-            XDamageSubtract(display, e->damage, None, None);
-          }
-
-          continue;
-        }
-
         switch(event.type)
         {
         case KeyPress:
@@ -1322,7 +1195,6 @@ process_events:
             /* Logitech cordless keyboard (S510) */
 
             /* right side keys */
-
             if(event.xkey.keycode == 129)
               run_command(-1, "music", 0);
             else if(event.xkey.keycode == 162)
@@ -1339,17 +1211,14 @@ process_events:
               run_command(-1, "decrease-sound-volume", 0);
             else if(event.xkey.keycode == 160)
               run_command(-1, "toggle-mute", 0);
-
             /* left side keys */
             else if(event.xkey.keycode == 223)
               run_command(-1, "standby", 0);
             else if(event.xkey.keycode == 130)
               run_command(-1, "home", 0);
-
             /* other */
             else if(ctrl_pressed && event.xkey.keycode == 110)
               run_command(-1, "coffee", 0);
-
             else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
               {
                 char key[10];
@@ -1404,8 +1273,6 @@ process_events:
 
                   last_set_terminal = active_terminal = new_terminal;
                   at = &terminals[active_terminal];
-
-                  at->dirty = 1;
                 }
                 else
                 {
@@ -1418,48 +1285,11 @@ process_events:
             }
             else if(super_pressed && key_sym >= XK_1 && key_sym <= XK_9)
             {
-              int i;
-              int screen = key_sym - XK_1;
+              size_t i;
+              unsigned int screen = key_sym - XK_1;
 
-              if(at->window && screen < screen_count && screen_windows[screen] != at->window)
-              {
-                XWindowChanges wc;
-
-                if(screen_windows[screen])
-                {
-                  wc.x = screens[0].x_org;
-                  wc.y = screens[0].y_org;
-                  wc.width = screens[0].width;
-                  wc.height = screens[0].height;
-
-                  screen_terms[screen]->xscreen = 0;
-                  XConfigureWindow(display, screen_windows[screen], CWX | CWY | CWWidth | CWHeight, &wc);
-                  XUnmapWindow(display, screen_windows[screen]);
-                }
-
-                for(i = 0; i < screen_count; ++i)
-                {
-                  if(screen_windows[i] == at->window)
-                  {
-                    screen_windows[i] = 0;
-                    screen_terms[i] = 0;
-                  }
-                }
-
-                at->xscreen = screen;
-
-                wc.x = screens[screen].x_org;
-                wc.y = screens[screen].y_org;
-                wc.width = screens[screen].width;
-                wc.height = screens[screen].height;
-
-                XConfigureWindow(display, at->window, CWX | CWY | CWWidth | CWHeight, &wc);
-
-                mark_terminal_dirty();
-
-                screen_windows[screen] = at->window;
-                screen_terms[screen] = at;
-              }
+              if(screen >= screen_count)
+                break;
             }
             else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
             {
@@ -1473,17 +1303,21 @@ process_events:
 
                 {
                   XClientMessageEvent cme;
+                  Window tmp_window;
 
-                  cme.type = ClientMessage;
-                  cme.send_event = True;
-                  cme.display = display;
-                  cme.window = at->window;
-                  cme.message_type = xa_wm_protocols;
-                  cme.format = 32;
-                  cme.data.l[0] = xa_wm_delete_window;
-                  cme.data.l[1] = event.xkey.time;
+                  if(0 != (tmp_window = find_xwindow(at)))
+                    {
+                      cme.type = ClientMessage;
+                      cme.send_event = True;
+                      cme.display = display;
+                      cme.window = tmp_window;
+                      cme.message_type = xa_wm_protocols;
+                      cme.format = 32;
+                      cme.data.l[0] = xa_wm_delete_window;
+                      cme.data.l[1] = event.xkey.time;
 
-                  XSendEvent(display, at->window, False, 0, (XEvent*) &cme);
+                      XSendEvent(display, tmp_window, False, 0, (XEvent*) &cme);
+                    }
                 }
 
                 break;
@@ -1499,7 +1333,6 @@ process_events:
               if(0 != menu_handle_char(text[0]))
               {
                 menu_keypress(key_sym, text, len, event.xkey.time);
-                at->dirty |= 1;
               }
             }
           }
@@ -1535,84 +1368,31 @@ process_events:
 
         case DestroyNotify:
 
-          {
-            terminal* term;
-            struct transient* trans;
-
-            if(-1 == find_window(event.xdestroywindow.window, &term, &trans))
-              break;
-
-            if(!trans)
-            {
-              enter_menu_mode(term - terminals);
-            }
-            else
-            {
-              if(term->transients == trans)
-              {
-                term->transients = trans->next;
-              }
-              else
-              {
-                struct transient* prev = term->transients;
-
-                while(prev->next != trans)
-                  prev = prev->next;
-
-                prev->next = trans->next;
-              }
-
-              free(trans);
-            }
-          }
+          window_gone(event.xdestroywindow.window);
 
           break;
 
         case UnmapNotify:
 
-          if(event.xunmap.window == at->window)
-          {
-            enter_menu_mode(active_terminal);
-
-            /* Return to main window after a pop-up */
-            set_active_terminal(last_set_terminal, CurrentTime);
-          }
-          else
-          {
-            for(i = 0; i < inferior_count; ++i)
-            {
-              if(event.xunmap.window == inferiors[i].window)
-                break;
-            }
-
-            if(i == inferior_count)
-              break;
-
-            mark_dirty(active_terminal, inferiors[i].x, inferiors[i].y,
-                       inferiors[i].width, inferiors[i].height, "unmap");
-
-            remove_inferior(i);
-          }
+          //window_gone(event.xunmap.window);
 
           break;
 
         case ConfigureNotify:
 
-          for(i = 0; i < inferior_count; ++i)
-          {
-            if(event.xconfigure.window == inferiors[i].window)
             {
-              mark_dirty(active_terminal, inferiors[i].x, inferiors[i].y,
-                         inferiors[i].width, inferiors[i].height, "resize");
+              struct window* w;
 
-              inferiors[i].x = event.xconfigure.x;
-              inferiors[i].y = event.xconfigure.y;
-              inferiors[i].width = event.xconfigure.width;
-              inferiors[i].height = event.xconfigure.height;
+              w = find_window(event.xconfigure.window);
 
-              break;
+              if(!w)
+                break;
+
+              w->x = event.xconfigure.x;
+              w->y = event.xconfigure.x;
+              w->width = event.xconfigure.x;
+              w->height = event.xconfigure.x;
             }
-          }
 
           break;
 
@@ -1644,189 +1424,160 @@ process_events:
         case CreateNotify:
 
           {
-            XWindowChanges wc;
-            const XCreateWindowEvent* cwe = &event.xcreatewindow;
-            Window transient_for = 0;
+            XCreateWindowEvent* cwe = &event.xcreatewindow;
+            struct window new_window;
 
-            get_transient_for(cwe->window, &transient_for);
-
-            if(transient_for)
+            if(cwe->window == window)
               break;
 
-            if(!cwe->override_redirect && (cwe->x != screens[0].x_org || cwe->y != screens[0].y_org || cwe->width != window_width || cwe->height != window_height))
-            {
-              wc.x = screens[0].x_org;
-              wc.y = screens[0].y_org;
-              wc.width = screens[0].width;
-              wc.height = screens[0].height;
+            if(cwe->override_redirect)
+              break;
 
-              XConfigureWindow(display, cwe->window, CWX | CWY | CWWidth | CWHeight, &wc);
-            }
+            memset(&new_window, 0, sizeof(new_window));
+
+            new_window.xwindow = cwe->window;
+            new_window.x = cwe->x;
+            new_window.y = cwe->y;
+            new_window.width = cwe->width;
+            new_window.height = cwe->height;
+
+            ARRAY_ADD(&windows, new_window);
           }
 
           break;
 
         case ConfigureRequest:
 
-          {
-            XWindowChanges wc;
-            XConfigureEvent ce;
-            XConfigureRequestEvent* request = &event.xconfigurerequest;
-            Window transient_for = 0;
-            terminal* term;
-            struct transient* trans;
-            int mask;
-
-            memset(&wc, 0, sizeof(wc));
-
-            find_window(request->window, &term, &trans);
-
-            if(trans)
-              transient_for = term->window;
-            else
             {
-              get_transient_for(request->window, &transient_for);
+              XWindowChanges wc;
+              XConfigureEvent ce;
+              XConfigureRequestEvent* request = &event.xconfigurerequest;
+              int mask;
+              struct window* w;
 
-              if(transient_for)
-              {
-                find_window(transient_for, &term, 0);
+              mask = request->value_mask;
 
-                if(term)
-                  add_transient(term, request->window, &trans);
-              }
-            }
+              memset(&wc, 0, sizeof(wc));
 
-            if(trans)
-            {
-              int xscreen = 0;
+              w = find_window(request->window);
 
-              if(term)
-                xscreen = term->xscreen;
+              if(!w)
+                break;
+
+              XWindowAttributes attr;
+              XGetWindowAttributes(display, w->xwindow, &attr);
+
+              connect_transient(w);
 
               mask = request->value_mask;
               wc.sibling = request->above;
               wc.stack_mode = request->detail;
+              wc.x = request->x;
+              wc.y = request->y;
+              wc.width = request->width;
+              wc.height = request->height;
 
-              if(mask & CWX) trans->x = wc.x = request->x;
-              if(mask & CWY) trans->y = wc.y = request->y;
-              if(mask & CWWidth) trans->width = wc.width = request->width;
-              if(mask & CWHeight) trans->height = wc.height = request->height;
+              if(!(mask & CWX))
+                wc.x = w->x;
 
-              if(trans->x == -1)
-              {
-                mask |= CWX;
-                wc.x = trans->x = screens[xscreen].x_org;
-              }
+              if(!(mask & CWY))
+                wc.y = w->y;
 
-              if(trans->y == -1)
-              {
-                mask |= CWY;
-                wc.y = trans->y = screens[xscreen].y_org;
-              }
+              if(!(mask & CWWidth))
+                wc.width = w->width;
 
-              if(trans->width == -1)
-              {
-                mask |= CWWidth;
-                wc.width = trans->width = screens[xscreen].x_org + screens[xscreen].width - trans->x;
-              }
+              if(!(mask & CWHeight))
+                wc.height = w->height;
 
-              if(trans->height == -1)
-              {
-                mask |= CWHeight;
-                wc.height = trans->height = screens[xscreen].y_org + screens[xscreen].height - trans->y;
-              }
-            }
-            else
-            {
-              int xscreen = 0;
-              mask = request->value_mask | CWX | CWY | CWWidth | CWHeight;
+              if(!w->transient_for)
+                {
+                  wc.x = screens[0].x_org;
+                  wc.y = screens[0].y_org;
+                  wc.width = screens[0].width;
+                  wc.height = screens[0].height;
+                }
 
-              if(term)
-                xscreen = term->xscreen;
+              mask |= CWX | CWY | CWWidth | CWHeight;
 
-              wc.x = screens[xscreen].x_org;
-              wc.y = screens[xscreen].y_org;
-              wc.width = screens[xscreen].width;
-              wc.height = screens[xscreen].height;
-              wc.sibling = request->above;
-              wc.stack_mode = request->detail;
-            }
+              XConfigureWindow(display, request->window, mask, &wc);
 
-            XConfigureWindow(display, request->window, mask, &wc);
+              memset(&ce, 0, sizeof(ce));
+              ce.type = ConfigureNotify;
+              ce.display = display;
+              ce.event = request->window;
+              ce.window = request->window;
 
-            memset(&ce, 0, sizeof(ce));
-            ce.type = ConfigureNotify;
-            ce.display = display;
-            ce.event = request->window;
-            ce.window = request->window;
-
-            if(trans)
-            {
-              ce.x = trans->x;
-              ce.y = trans->y;
-              ce.width = trans->width;
-              ce.height = trans->height;
-            }
-            else
-            {
               ce.x = wc.x;
               ce.y = wc.y;
               ce.width = wc.width;
               ce.height = wc.height;
-            }
 
-            XSendEvent(display, request->window, False, StructureNotifyMask, (XEvent*) &ce);
-          }
+              XSendEvent(display, request->window, False, StructureNotifyMask, (XEvent*) &ce);
+
+              w->x = wc.x;
+              w->y = wc.y;
+              w->width = wc.width;
+              w->height = wc.height;
+            }
 
           break;
 
         case MapRequest:
 
           {
-            terminal* term;
-            struct transient* trans;
+            struct window* w;
             int pid;
 
-            find_window(event.xmaprequest.window, &term, &trans);
+            w = find_window(event.xmaprequest.window);
 
-            if(!term && 0 == get_int_property(event.xmaprequest.window, xa_net_wm_pid, &pid))
+            if(!w)
+              break;
+
+            connect_transient(w);
+
+            if(!w->transient_for
+               && (w->x != screens[0].x_org
+                   || w->y != screens[0].y_org
+                   || w->width != window_width
+                   || w->height != window_height))
+              {
+                XWindowChanges wc;
+
+                wc.x = screens[0].x_org;
+                wc.y = screens[0].y_org;
+                wc.width = screens[0].width;
+                wc.height = screens[0].height;
+
+                XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
+              }
+
+            if(!w->desktop
+               && 0 == get_int_property(event.xmaprequest.window, xa_net_wm_pid, &pid))
               {
                 pid = getsid(pid);
 
-                if(0 != (term = find_pid(pid)))
+                if(0 != (w->desktop = find_pid(pid)))
                   {
-                    if(term->mode != mode_menu)
-                      term = 0;
+                    if(w->desktop->mode != mode_menu)
+                      w->desktop = 0;
                     else
-                      {
-                        term->mode = mode_x11;
-                        term->window = event.xmaprequest.window;
-                      }
+                      w->desktop->mode = mode_x11;
                   }
               }
 
-            if(!term)
+            if(!w->desktop)
             {
-              term = &terminals[first_available_terminal()];
+              w->desktop = &terminals[first_available_terminal()];
 
-              memset(term, 0, sizeof(*term));
-              term->mode = mode_x11;
-              term->window = event.xmaprequest.window;
+              memset(w->desktop, 0, sizeof(*w->desktop));
+              w->desktop->mode = mode_x11;
 
-              set_active_terminal(term - terminals, CurrentTime);
-            }
-            else if(!trans)
-            {
-              Window transient_for = 0;
-
-              get_transient_for(event.xmaprequest.window, &transient_for);
-
-              add_transient(term, event.xmaprequest.window, 0);
+              set_active_terminal(w->desktop - terminals, CurrentTime);
             }
 
-            if(term == at)
+            if(w->desktop == at)
             {
-              XMapRaised(display, event.xmaprequest.window);
+              XMapRaised(display, w->xwindow);
               XSetInputFocus(display, event.xmaprequest.window, RevertToPointerRoot, CurrentTime);
             }
           }
@@ -1847,7 +1598,6 @@ process_events:
       || (   now.tv_sec == at->next_update.tv_sec
           && now.tv_usec >= at->next_update.tv_usec))
       {
-        at->dirty |= 1;
         at->next_update.tv_sec = 0;
         at->next_update.tv_usec = 0;
       }
@@ -1862,17 +1612,14 @@ process_events:
       }
     }
 
+    /*
     if(x11_connected)
     {
-      if(at->dirty)
-      {
-        at->dirty = 0;
-
-        XClearArea(display, window, 0, 0, window_width, window_height, True);
-      }
+      XClearArea(display, window, 0, 0, window_width, window_height, True);
 
       XFlush(display);
     }
+    */
   }
 
   return EXIT_SUCCESS;
