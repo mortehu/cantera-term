@@ -92,6 +92,8 @@ install-arch:
 	# Add here commands to install the arch part of the package into
 	# debian/tmp.
 	$(MAKE) DESTDIR=$(CURDIR)/debian/cantera install
+	$(MAKE) -C terminal DESTDIR=$(CURDIR)/debian/cantera-term install
+	$(MAKE) -C window-manager DESTDIR=$(CURDIR)/debian/cantera-wm install
 
 	dh_install -s
 # Must not depend on anything. This is to be called by

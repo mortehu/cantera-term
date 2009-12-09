@@ -23,6 +23,7 @@
 #include "common.h"
 #include "font.h"
 #include "globals.h"
+#include "menu.h"
 #include "tree.h"
 
 static struct picture background;
@@ -37,10 +38,6 @@ struct picture
   size_t width;
   size_t height;
 };
-
-static wchar_t query[256];
-
-void menu_draw_desktops(Picture buffer, int height);
 
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
 {
@@ -87,44 +84,45 @@ void menu_init()
   image_load(".cantera/background.png", &background);
 }
 
-void menu_thumbnail_dimensions(int* width, int* height, int* margin)
+void menu_thumbnail_dimensions(struct screen* screen, int* width, int* height, int* margin)
 {
   int tmp_margin = 10;
-  *width = (window_width - tmp_margin * 17) / 12;
-  *height = window_height * *width / window_width;
+  *width = (screen->width - tmp_margin * 17) / 12;
+  *height = screen->height * *width / screen->width;
 
   if(margin)
     *margin = tmp_margin;
 }
 
-void menu_draw()
+void menu_draw(struct screen* screen)
 {
   wchar_t buf[260];
   int thumb_width, thumb_height, thumb_margin;
-  menu_thumbnail_dimensions(&thumb_width, &thumb_height, &thumb_margin);
 
-  XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
-                       0, 0, window_width, window_height);
+  menu_thumbnail_dimensions(screen, &thumb_width, &thumb_height, &thumb_margin);
+
+  XRenderFillRectangle(display, PictOpSrc, screen->root_buffer, &xrpalette[0],
+                       0, 0, screen->width, screen->height);
 
   if(background.pic)
   {
-    XRenderComposite(display, PictOpSrc, background.pic, None, root_buffer,
-                     0, 0, 0, 0, 0, 0, window_width, window_height);
+    XRenderComposite(display, PictOpSrc, background.pic, None, screen->root_buffer,
+                     0, 0, 0, 0, 0, 0, screen->width, screen->height);
   }
 
-  int margin_y = window_height * 75 / 1000;
+  int margin_y = screen->height * 75 / 1000;
 
   int y = margin_y;
 
-  swprintf(buf, sizeof(buf), L"Query: %ls", query);
-  y = window_height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL] - yskips[LARGE] - 15;
-  drawtext(root_buffer, buf, wcslen(buf), thumb_margin + 1, y + 1, 0, LARGE);
-  drawtext(root_buffer, buf, wcslen(buf), thumb_margin, y, 15, LARGE);
+  swprintf(buf, sizeof(buf), L"Query: %ls", screen->query);
+  y = screen->height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL] - yskips[LARGE] - 15;
+  drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin + 1, y + 1, 0, LARGE);
+  drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin, y, 15, LARGE);
 
-  menu_draw_desktops(root_buffer, window_height);
+  menu_draw_desktops(screen, screen->root_buffer, screen->height);
 }
 
-void menu_draw_desktops(Picture buffer, int height)
+void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
 {
   int thumb_width, thumb_height, thumb_margin;
   int i, x = 0, y;
@@ -133,7 +131,7 @@ void menu_draw_desktops(Picture buffer, int height)
   wchar_t wbuf[256];
   char buf[256];
 
-  menu_thumbnail_dimensions(&thumb_width, &thumb_height, &thumb_margin);
+  menu_thumbnail_dimensions(screen, &thumb_width, &thumb_height, &thumb_margin);
 
   ttnow = time(0);
   tmnow = localtime(&ttnow);
@@ -164,9 +162,10 @@ void menu_draw_desktops(Picture buffer, int height)
 
     int border_color = 7;
 
-    if(i == active_terminal)
+    if(i == screen->active_terminal
+       && current_screen == screen)
       border_color = 12;
-    else if(terminals[i].mode == mode_menu)
+    else if(screen->terminals[i].mode == mode_menu)
       border_color = 8;
 
     XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y - 1, 1, thumb_height + 2);
@@ -174,21 +173,21 @@ void menu_draw_desktops(Picture buffer, int height)
     XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y - 1, thumb_width + 2, 1);
     XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y + thumb_height, thumb_width + 2, 1);
 
-    if(!terminals[i].thumbnail)
+    if(!screen->terminals[i].thumbnail)
       XRenderFillRectangle(display, PictOpOver, buffer, &xrpalette[19],
                            x, y, thumb_width, thumb_height);
     else
-      XRenderComposite(display, PictOpSrc, terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
+      XRenderComposite(display, PictOpSrc, screen->terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
   }
 }
 
-void menu_keypress(int key_sym, const char* text, int textlen, Time time)
+void menu_keypress(struct screen* screen, int key_sym, const char* text, int textlen, Time time)
 {
   switch(key_sym)
   {
   case XK_Escape:
 
-    query[0] = 0;
+    screen->query[0] = 0;
 
     break;
 
@@ -197,19 +196,19 @@ void menu_keypress(int key_sym, const char* text, int textlen, Time time)
       {
         char command[4096];
 
-        wcstombs(command, query, sizeof(command));
+        wcstombs(command, screen->query, sizeof(command));
 
         launch(command, time);
 
-        query[0] = 0;
+        screen->query[0] = 0;
       }
 
     break;
 
   case XK_BackSpace:
 
-    if(wcslen(query))
-      query[wcslen(query) - 1] = 0;
+    if(wcslen(screen->query))
+      screen->query[wcslen(screen->query) - 1] = 0;
 
     break;
 
@@ -218,16 +217,16 @@ void menu_keypress(int key_sym, const char* text, int textlen, Time time)
     return;
   }
 
-  XClearArea(display, window, 0, 0, window_width, window_height, True);
+  XClearArea(display, screen->window, 0, 0, screen->width, screen->height, True);
 }
 
-int menu_handle_char(int ch)
+int menu_handle_char(struct screen* screen, int ch)
 {
   switch(ch)
   {
   case ('U' & 0x3F):
 
-    query[0] = 0;
+    screen->query[0] = 0;
 
     break;
 
@@ -235,15 +234,15 @@ int menu_handle_char(int ch)
 
     if(isgraph(ch) || ch == ' ')
     {
-      if(ch == ' ' && !query[0])
+      if(ch == ' ' && !screen->query[0])
         return 0;
 
-      size_t querylen = wcslen(query);
+      size_t querylen = wcslen(screen->query);
 
-      if(querylen < sizeof(query) / sizeof(query[0]) - 1)
+      if(querylen < sizeof(screen->query) / sizeof(screen->query[0]) - 1)
       {
-        query[querylen++] = ch;
-        query[querylen] = 0;
+        screen->query[querylen++] = ch;
+        screen->query[querylen] = 0;
       }
 
       break;
@@ -252,7 +251,7 @@ int menu_handle_char(int ch)
     return -1;
   }
 
-  XClearArea(display, window, 0, 0, window_width, window_height, True);
+  XClearArea(display, screen->window, 0, 0, screen->width, screen->height, True);
 
   return 0;
 }

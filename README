@@ -6,24 +6,57 @@ COPYRIGHT
 
   Morten Hustveit 2006, 2007, 2008, 2009
 
+USE
+
+  Window manager
+  ==============
+
+    Press Ctrl-F1 ... Ctrl-F12, Super-F1 ... Super-F12 to select desktop.
+
+    Press Super-1 ... Super-9 to select screen.
+
+  Terminal emulator
+  =================
+
+    Use Shift in combination with Up, Down, PageUp, PageDown, Home and End to
+    scroll.
+
+    Use the middle mouse button or Shift+Insert to paste the primary selection.
+
+    Press the menu key or the calculator button to pass the current selection
+    through $HOME/.cantera/commands/calculate and paste the output.
+
+    Press Shift and the menu key, or Shift and the calculator button, to
+    automatically select a math expression to the left of the cursor.
+
 CONFIGURATION
 
-  The path of the configuration files is ``.cantera/config''.
+  The path of the configuration files is ``$HOME/.cantera/config''.
 
-  Options in ``.canterea/config'':
+  Terminal configuration:
 
     terminal.history-size <history-size>
     terminal.font <font-path>
     terminal.font-size <font-size>
     terminal.palette <palette>
 
+  Bind a key to a command:
+
     hotkey.<character> <command>
+
+  Run command at startup:
 
     menu.init <command>
 
+  Automatically launch commands on primary desktop:
+
     auto-launch.ctrl-f1 <command>
-    ...
     auto-launch.super-f12 <command>
+
+  Automatically launch commands on subsequent desktops:
+
+    auto-launch.ctrl-f1.1 <command>
+    auto-launch.ctrl-f1.2 <command>
 
   Example Palettes
   ================
