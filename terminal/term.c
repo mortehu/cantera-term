@@ -1354,44 +1354,86 @@ static void process_data(unsigned char* buf, int count)
 
     case 1:
 
-      if(buf[j] == '[')
-      {
-        terminal.escape = 2;
-
-        memset(terminal.param, 0, sizeof(terminal.param));
-      }
-      else if(buf[j] == '%')
-      {
-        terminal.escape = 2;
-        terminal.param[0] = -1;
-      }
-      else if(buf[j] == ']')
-      {
-        terminal.escape = 2;
-        terminal.param[0] = -2;
-      }
-      else if(buf[j] == '(')
-      {
-        terminal.escape = 2;
-        terminal.param[0] = -4;
-      }
-      else if(buf[j] == 'M')
-      {
-        if(terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
+      switch(buf[j])
         {
-          rscroll(0);
-        }
-        else if(terminal.cursory)
-        {
-          --terminal.cursory;
-        }
+        case 'D':
 
-        terminal.escape = 0;
-      }
-      else
-      {
-        terminal.escape = 0;
-      }
+          ++terminal.cursory;
+
+          while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+            {
+              scroll(0);
+              --terminal.cursory;
+            }
+
+          break;
+
+        case 'E':
+
+          terminal.escape = 0;
+          terminal.cursorx = 0;
+          ++terminal.cursory;
+
+          while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+            {
+              scroll(0);
+              --terminal.cursory;
+            }
+
+          break;
+
+        case '[':
+
+            {
+              terminal.escape = 2;
+
+              memset(terminal.param, 0, sizeof(terminal.param));
+            }
+
+          break;
+
+        case '%':
+
+            {
+              terminal.escape = 2;
+              terminal.param[0] = -1;
+            }
+
+          break;
+
+        case ']':
+
+            {
+              terminal.escape = 2;
+              terminal.param[0] = -2;
+            }
+
+          break;
+
+        case '(':
+
+            {
+              terminal.escape = 2;
+              terminal.param[0] = -4;
+            }
+
+          break;
+
+        case 'M':
+
+          if(terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
+            rscroll(0);
+          else if(terminal.cursory)
+            --terminal.cursory;
+
+          terminal.escape = 0;
+
+          break;
+
+        default:
+
+          terminal.escape = 0;
+        }
 
       break;
 
@@ -1583,6 +1625,32 @@ static void process_data(unsigned char* buf, int count)
               terminal.param[0] = 1;
 
             terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
+
+            break;
+
+          case 'E':
+
+            terminal.cursorx = 0;
+            ++terminal.cursory;
+
+            while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+              {
+                scroll(0);
+                --terminal.cursory;
+              }
+
+            break;
+
+          case 'F':
+
+            terminal.cursorx = 0;
+
+            if(terminal.cursory == terminal.scrolltop)
+              rscroll(0);
+            else if(terminal.cursory)
+              --terminal.cursory;
+
+            terminal.escape = 0;
 
             break;
 
