@@ -2881,7 +2881,6 @@ int main(int argc, char** argv)
 
         focused = 0;
         XClearArea(display, window, 0, 0, window_width, window_height, True);
-        fprintf(stderr, "focus loss\n");
 
         break;
       }
