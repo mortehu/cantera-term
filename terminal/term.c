@@ -87,6 +87,7 @@ struct terminal
   int savedy;
   int appcursor;
   int insertmode;
+  int alt_charset[2];
   unsigned int ch, nch;
 
   unsigned int history_scroll;
@@ -108,6 +109,19 @@ struct terminal
   } images[256];
 
   size_t image_count;
+};
+
+/* Alternate characters, from 0x41 to 0x7E, inclusive */
+static unsigned short alt_charset[62] =
+{
+    0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, // 41-47 hi mr. snowman!
+    0,      0,      0,      0,      0,      0,      0,      0, // 48-4f
+    0,      0,      0,      0,      0,      0,      0,      0, // 50-57
+    0,      0,      0,      0,      0,      0,      0, 0x0020, // 58-5f
+    0x25c6, 0x2592, 0x2409, 0x240c, 0x240d, 0x240a, 0x00b0, 0x00b1, // 60-67
+    0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514, 0x253c, 0x23ba, // 68-6f
+    0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534, 0x252c, // 70-77
+    0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,         // 78-7e
 };
 
 static int done;
@@ -283,6 +297,12 @@ static void addchar(int ch)
   int size;
 
   size = terminal.size.ws_col * terminal.history_size;
+
+  if(terminal.alt_charset[terminal.curscreen])
+    {
+      if(ch >= 0x41 && ch <= 0x7e)
+        ch = alt_charset[ch - 0x41];
+    }
 
   if(ch < 32)
     return;
@@ -1406,6 +1426,21 @@ static void process_data(unsigned char* buf, int count)
       }
       else if(terminal.param[0] == -4)
       {
+        switch(buf[j])
+          {
+          case '0':
+
+            terminal.alt_charset[terminal.curscreen] = 1;
+
+            break;
+
+          case 'B':
+
+            terminal.alt_charset[terminal.curscreen] = 0;
+
+            break;
+          }
+
         terminal.escape = 0;
       }
       else if(terminal.escape == 2 && buf[j] == '?')
