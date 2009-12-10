@@ -1384,38 +1384,36 @@ static void process_data(unsigned char* buf, int count)
 
         case '[':
 
-            {
-              terminal.escape = 2;
-
-              memset(terminal.param, 0, sizeof(terminal.param));
-            }
+          terminal.escape = 2;
+          memset(terminal.param, 0, sizeof(terminal.param));
 
           break;
 
         case '%':
 
-            {
-              terminal.escape = 2;
-              terminal.param[0] = -1;
-            }
+          terminal.escape = 2;
+          terminal.param[0] = -1;
 
           break;
 
         case ']':
 
-            {
-              terminal.escape = 2;
-              terminal.param[0] = -2;
-            }
+          terminal.escape = 2;
+          terminal.param[0] = -2;
 
           break;
 
         case '(':
 
-            {
-              terminal.escape = 2;
-              terminal.param[0] = -4;
-            }
+          terminal.escape = 2;
+          terminal.param[0] = -4;
+
+          break;
+
+        case '#':
+
+          terminal.escape = 2;
+          terminal.param[0] = -5;
 
           break;
 
@@ -1440,573 +1438,577 @@ static void process_data(unsigned char* buf, int count)
     default:
 
       if(terminal.param[0] == -1)
-      {
-        terminal.escape = 0;
-      }
+        {
+          terminal.escape = 0;
+        }
       else if(terminal.param[0] == -2)
-      {
-        /* Handle ESC ] Ps ; Pt BEL */
-        if(terminal.escape == 2)
         {
-          if(buf[j] >= '0' && buf[j] <= '9')
-          {
-            terminal.param[1] *= 10;
-            terminal.param[1] += buf[j] - '0';
-          }
-          else
-            ++terminal.escape;
-        }
-        else
-        {
-          if(buf[j] != '\007')
-          {
-            /* XXX: Store text */
-          }
-          else
-            terminal.escape = 0;
-        }
-      }
-      else if(terminal.param[0] == -4)
-      {
-        switch(buf[j])
-          {
-          case '0':
-
-            terminal.alt_charset[terminal.curscreen] = 1;
-
-            break;
-
-          case 'B':
-
-            terminal.alt_charset[terminal.curscreen] = 0;
-
-            break;
-          }
-
-        terminal.escape = 0;
-      }
-      else if(terminal.escape == 2 && buf[j] == '?')
-      {
-        terminal.param[0] = -3;
-        ++terminal.escape;
-      }
-      else if(terminal.escape == 2 && buf[j] == '>')
-      {
-        terminal.param[0] = -4;
-        ++terminal.escape;
-      }
-      else if(buf[j] == ';')
-      {
-        if(terminal.escape < sizeof(terminal.param) + 1)
-          terminal.param[++terminal.escape - 2] = 0;
-        else
-          terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
-      }
-      else if(buf[j] >= '0' && buf[j] <= '9')
-      {
-        terminal.param[terminal.escape - 2] *= 10;
-        terminal.param[terminal.escape - 2] += buf[j] - '0';
-      }
-      else if(terminal.param[0] == -3)
-      {
-        if(buf[j] == 'h')
-        {
-          for(k = 1; k < terminal.escape - 1; ++k)
-          {
-            switch(terminal.param[k])
+          /* Handle ESC ] Ps ; Pt BEL */
+          if(terminal.escape == 2)
             {
-            case 1:
-
-              terminal.appcursor = 1;
-
-              break;
-
-            case 1049:
-
-              if(terminal.curscreen != 1)
-              {
-                memset(terminal.chars[1], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-                memset(terminal.attr[1], 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
-                setscreen(1);
-              }
-
-              break;
-
-            case 0xD0C:
-
-              terminal.document = 1;
-              terminal.escape = 0;
-
-              if(j + 1 < count)
-                append_doc_data(&buf[j + 1], count - j - 1);
-
-              return;
-            }
-          }
-        }
-        else if(buf[j] == 'l')
-        {
-          for(k = 1; k < terminal.escape - 1; ++k)
-          {
-            switch(terminal.param[k])
-            {
-            case 1:
-
-              terminal.appcursor = 0;
-
-              break;
-
-            case 1049:
-
-              if(terminal.curscreen != 0)
-                setscreen(0);
-
-              break;
-
-            case 0xD0C:
-
-              free(terminal.doc_buf);
-              terminal.doc_buf = 0;
-              terminal.doc_buf_size = 0;
-              terminal.doc_buf_payload = 0;
-              terminal.doc_buf_alloc = 0;
-              terminal.document = 0;
-
-              break;
-            }
-          }
-        }
-
-        terminal.escape = 0;
-      }
-      else
-      {
-        switch(buf[j])
-        {
-          case '@':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            insert_chars(terminal.param[0]);
-
-            break;
-
-          case 'A':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            terminal.cursory -= (terminal.param[0] < terminal.cursory) ? terminal.param[0] : terminal.cursory;
-
-            break;
-
-          case 'B':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            terminal.cursory = (terminal.param[0] + terminal.cursory < terminal.size.ws_row) ? (terminal.param[0] + terminal.cursory) : (terminal.size.ws_row - 1);
-
-            break;
-
-          case 'C':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            terminal.cursorx = (terminal.param[0] + terminal.cursorx < terminal.size.ws_col) ? (terminal.param[0] + terminal.cursorx) : (terminal.size.ws_col - 1);
-
-            break;
-
-          case 'D':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
-
-            break;
-
-          case 'E':
-
-            terminal.cursorx = 0;
-            ++terminal.cursory;
-
-            while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-              {
-                scroll(0);
-                --terminal.cursory;
-              }
-
-            break;
-
-          case 'F':
-
-            terminal.cursorx = 0;
-
-            if(terminal.cursory == terminal.scrolltop)
-              rscroll(0);
-            else if(terminal.cursory)
-              --terminal.cursory;
-
-            terminal.escape = 0;
-
-            break;
-
-          case 'G':
-
-            if(terminal.param[0] > 0)
-              --terminal.param[0];
-
-            terminal.cursorx = (terminal.param[0] < terminal.size.ws_col) ? terminal.param[0] : (terminal.size.ws_col - 1);
-
-            break;
-
-          case 'H':
-          case 'f':
-
-            if(terminal.param[0] > 0)
-              --terminal.param[0];
-
-            if(terminal.param[1] > 0)
-              --terminal.param[1];
-
-            terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
-            terminal.cursorx = (terminal.param[1] < terminal.size.ws_col) ? terminal.param[1] : (terminal.size.ws_col - 1);
-
-            break;
-
-          case 'J':
-
-            if(terminal.param[0] == 0)
-            {
-              /* Clear from cursor to end */
-
-              normalize_offset();
-
-              int count = terminal.size.ws_col * (terminal.size.ws_row - terminal.cursory - 1) + (terminal.size.ws_col - terminal.cursorx);
-              memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
-              memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
-
-              for(k = 0; k < terminal.image_count; )
-              {
-                if(terminal.images[k].screen == terminal.curscreen
-                && terminal.images[k].char_y + terminal.images[k].rows > terminal.cursory)
+              if(buf[j] >= '0' && buf[j] <= '9')
                 {
-                  --terminal.image_count;
-                  cnt_image_free(&terminal.images[k].image);
-                  memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-                }
-                else
-                  ++k;
-              }
-            }
-            else if(terminal.param[0] == 1)
-            {
-              /* Clear from start to cursor */
-
-              normalize_offset();
-
-              int count = (terminal.size.ws_col * terminal.cursory + terminal.cursorx);
-              memset(terminal.curchars, 0, count * sizeof(wchar_t));
-              memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
-
-              for(k = 0; k < terminal.image_count; )
-              {
-                if(terminal.images[k].screen == terminal.curscreen
-                && terminal.images[k].char_y <= terminal.cursory)
-                {
-                  --terminal.image_count;
-                  cnt_image_free(&terminal.images[k].image);
-                  memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-                }
-                else
-                  ++k;
-              }
-            }
-            else if(terminal.param[0] == 2)
-            {
-              size_t screen_size, history_size;
-
-              screen_size = terminal.size.ws_col * terminal.size.ws_row;
-              history_size = terminal.size.ws_col * terminal.history_size;
-
-              if(*terminal.curoffset + screen_size > history_size)
-                {
-                  memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
-                  memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
-
-                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
-                  memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                  terminal.param[1] *= 10;
+                  terminal.param[1] += buf[j] - '0';
                 }
               else
+                ++terminal.escape;
+            }
+          else
+            {
+              if(buf[j] != '\007')
                 {
-                  memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
-                  memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                  /* XXX: Store text */
                 }
+              else
+                terminal.escape = 0;
+            }
+        }
+      else if(terminal.param[0] == -4)
+        {
+          switch(buf[j])
+            {
+            case '0':
 
-              terminal.cursory = 0;
-              terminal.cursorx = 0;
+              terminal.alt_charset[terminal.curscreen] = 1;
 
-              for(k = 0; k < terminal.image_count; )
+              break;
+
+            case 'B':
+
+              terminal.alt_charset[terminal.curscreen] = 0;
+
+              break;
+            }
+
+          terminal.escape = 0;
+        }
+      else if(terminal.param[0] == -5)
+        {
+          terminal.escape = 0;
+        }
+      else if(terminal.escape == 2 && buf[j] == '?')
+        {
+          terminal.param[0] = -3;
+          ++terminal.escape;
+        }
+      else if(terminal.escape == 2 && buf[j] == '>')
+        {
+          terminal.param[0] = -4;
+          ++terminal.escape;
+        }
+      else if(buf[j] == ';')
+        {
+          if(terminal.escape < sizeof(terminal.param) + 1)
+            terminal.param[++terminal.escape - 2] = 0;
+          else
+            terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
+        }
+      else if(buf[j] >= '0' && buf[j] <= '9')
+        {
+          terminal.param[terminal.escape - 2] *= 10;
+          terminal.param[terminal.escape - 2] += buf[j] - '0';
+        }
+      else if(terminal.param[0] == -3)
+        {
+          if(buf[j] == 'h')
+            {
+              for(k = 1; k < terminal.escape - 1; ++k)
                 {
-                  if(terminal.images[k].screen == terminal.curscreen)
+                  switch(terminal.param[k])
                     {
-                      --terminal.image_count;
-                      cnt_image_free(&terminal.images[k].image);
-                      memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                    case 1:
+
+                      terminal.appcursor = 1;
+
+                      break;
+
+                    case 1049:
+
+                      if(terminal.curscreen != 1)
+                        {
+                          memset(terminal.chars[1], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
+                          memset(terminal.attr[1], 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
+                          setscreen(1);
+                        }
+
+                      break;
+
+                    case 0xD0C:
+
+                      terminal.document = 1;
+                      terminal.escape = 0;
+
+                      if(j + 1 < count)
+                        append_doc_data(&buf[j + 1], count - j - 1);
+
+                      return;
                     }
-                  else
-                    ++k;
                 }
             }
-
-            break;
-
-          case 'K':
-
-            if(!terminal.param[0])
+          else if(buf[j] == 'l')
             {
-              /* Clear from cursor to end */
-
-              for(k = terminal.cursorx; k < terminal.size.ws_col; ++k)
-              {
-                terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-              }
-            }
-            else if(terminal.param[0] == 1)
-            {
-              /* Clear from start to cursor */
-
-              for(k = 0; k <= terminal.cursorx; ++k)
-              {
-                terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-              }
-            }
-            else if(terminal.param[0] == 2)
-            {
-              /* Clear entire line */
-
-              for(k = 0; k < terminal.size.ws_col; ++k)
-              {
-                terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-              }
-            }
-
-            break;
-
-          case 'L':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-            else if(terminal.param[0] > terminal.size.ws_row)
-              terminal.param[0] = terminal.size.ws_row;
-
-            while(terminal.param[0]--)
-              rscroll(1);
-
-            break;
-
-          case 'M':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-            else if(terminal.param[0] > terminal.size.ws_row)
-              terminal.param[0] = terminal.size.ws_row;
-
-            while(terminal.param[0]--)
-              scroll(1);
-
-            break;
-
-          case 'P':
-
-            /* Delete character at cursor */
-
-            normalize_offset();
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-            else if(terminal.param[0] > terminal.size.ws_col)
-              terminal.param[0] = terminal.size.ws_col;
-
-            while(terminal.param[0]--)
-            {
-              memmove(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
-                  &terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(wchar_t));
-              memmove(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
-                  &terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(uint16_t));
-              terminal.curchars[(terminal.cursory + 1) * terminal.size.ws_col - 1] = 0;
-              terminal.curattrs[(terminal.cursory + 1) * terminal.size.ws_col - 1] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-            }
-
-            break;
-
-          case 'S':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            while(terminal.param[0]--)
-              scroll(0);
-
-            break;
-
-          case 'T':
-
-            if(!terminal.param[0])
-              terminal.param[0] = 1;
-
-            while(terminal.param[0]--)
-              rscroll(0);
-
-            break;
-
-          case 'X':
-
-            if(terminal.param[0] <= 0)
-              terminal.param[0] = 1;
-
-            for(k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
-            {
-              terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-              terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-              terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-            }
-
-            break;
-
-          case 'd':
-
-            if(terminal.param[0] > 0)
-              --terminal.param[0];
-            else
-              terminal.param[0] = 0;
-
-            terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
-
-            break;
-
-          case 'h':
-
-            for(k = 0; k < terminal.escape - 1; ++k)
-            {
-              switch(terminal.param[k])
-              {
-                case 4:
-
-                  terminal.insertmode = 1;
-
-                  break;
-              }
-            }
-
-            break;
-
-          case 'l':
-
-            for(k = 0; k < terminal.escape - 1; ++k)
-            {
-              switch(terminal.param[k])
-              {
-                case 4:
-
-                  terminal.insertmode = 0;
-
-                  break;
-              }
-            }
-
-            break;
-
-          case 'm':
-
-            for(k = 0; k < terminal.escape - 1; ++k)
-            {
-              switch(terminal.param[k])
-              {
-                case 7:
-
-                  terminal.reverse = 1;
-
-                  break;
-
-                case 27:
-
-                  terminal.reverse = 0;
-
-                  break;
-
-                case 0:
-
-                  terminal.reverse = 0;
-
-                default:
-
-                  for(l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
-                  {
-                    if(ansi_helper[l].index == terminal.param[k])
+              for(k = 1; k < terminal.escape - 1; ++k)
+                {
+                  switch(terminal.param[k])
                     {
-                      terminal.curattr &= ansi_helper[l].and_mask;
-                      terminal.curattr |= ansi_helper[l].or_mask;
+                    case 1:
+
+                      terminal.appcursor = 0;
+
+                      break;
+
+                    case 1049:
+
+                      if(terminal.curscreen != 0)
+                        setscreen(0);
+
+                      break;
+
+                    case 0xD0C:
+
+                      free(terminal.doc_buf);
+                      terminal.doc_buf = 0;
+                      terminal.doc_buf_size = 0;
+                      terminal.doc_buf_payload = 0;
+                      terminal.doc_buf_alloc = 0;
+                      terminal.document = 0;
 
                       break;
                     }
-                  }
-
-                  break;
-              }
+                }
             }
 
-            break;
-
-          case 'r':
-
-            if(terminal.param[0] < terminal.param[1])
+          terminal.escape = 0;
+        }
+      else
+        {
+          switch(buf[j])
             {
-              --terminal.param[0];
+            case '@':
 
-              if(terminal.param[1] > terminal.size.ws_row)
-                terminal.param[1] = terminal.size.ws_row;
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
 
-              if(terminal.param[0] < 0)
+              insert_chars(terminal.param[0]);
+
+              break;
+
+            case 'A':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              terminal.cursory -= (terminal.param[0] < terminal.cursory) ? terminal.param[0] : terminal.cursory;
+
+              break;
+
+            case 'B':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              terminal.cursory = (terminal.param[0] + terminal.cursory < terminal.size.ws_row) ? (terminal.param[0] + terminal.cursory) : (terminal.size.ws_row - 1);
+
+              break;
+
+            case 'C':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              terminal.cursorx = (terminal.param[0] + terminal.cursorx < terminal.size.ws_col) ? (terminal.param[0] + terminal.cursorx) : (terminal.size.ws_col - 1);
+
+              break;
+
+            case 'D':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
+
+              break;
+
+            case 'E':
+
+              terminal.cursorx = 0;
+              ++terminal.cursory;
+
+              while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
+
+              break;
+
+            case 'F':
+
+              terminal.cursorx = 0;
+
+              if(terminal.cursory == terminal.scrolltop)
+                rscroll(0);
+              else if(terminal.cursory)
+                --terminal.cursory;
+
+              terminal.escape = 0;
+
+              break;
+
+            case 'G':
+
+              if(terminal.param[0] > 0)
+                --terminal.param[0];
+
+              terminal.cursorx = (terminal.param[0] < terminal.size.ws_col) ? terminal.param[0] : (terminal.size.ws_col - 1);
+
+              break;
+
+            case 'H':
+            case 'f':
+
+              if(terminal.param[0] > 0)
+                --terminal.param[0];
+
+              if(terminal.param[1] > 0)
+                --terminal.param[1];
+
+              terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
+              terminal.cursorx = (terminal.param[1] < terminal.size.ws_col) ? terminal.param[1] : (terminal.size.ws_col - 1);
+
+              break;
+
+            case 'J':
+
+              if(terminal.param[0] == 0)
+                {
+                  /* Clear from cursor to end */
+
+                  normalize_offset();
+
+                  int count = terminal.size.ws_col * (terminal.size.ws_row - terminal.cursory - 1) + (terminal.size.ws_col - terminal.cursorx);
+                  memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
+                  memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
+
+                  for(k = 0; k < terminal.image_count; )
+                    {
+                      if(terminal.images[k].screen == terminal.curscreen
+                         && terminal.images[k].char_y + terminal.images[k].rows > terminal.cursory)
+                        {
+                          --terminal.image_count;
+                          cnt_image_free(&terminal.images[k].image);
+                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                        }
+                      else
+                        ++k;
+                    }
+                }
+              else if(terminal.param[0] == 1)
+                {
+                  /* Clear from start to cursor */
+
+                  normalize_offset();
+
+                  int count = (terminal.size.ws_col * terminal.cursory + terminal.cursorx);
+                  memset(terminal.curchars, 0, count * sizeof(wchar_t));
+                  memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
+
+                  for(k = 0; k < terminal.image_count; )
+                    {
+                      if(terminal.images[k].screen == terminal.curscreen
+                         && terminal.images[k].char_y <= terminal.cursory)
+                        {
+                          --terminal.image_count;
+                          cnt_image_free(&terminal.images[k].image);
+                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                        }
+                      else
+                        ++k;
+                    }
+                }
+              else if(terminal.param[0] == 2)
+                {
+                  size_t screen_size, history_size;
+
+                  screen_size = terminal.size.ws_col * terminal.size.ws_row;
+                  history_size = terminal.size.ws_col * terminal.history_size;
+
+                  if(*terminal.curoffset + screen_size > history_size)
+                    {
+                      memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
+                      memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+
+                      memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
+                      memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                    }
+                  else
+                    {
+                      memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
+                      memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                    }
+
+                  terminal.cursory = 0;
+                  terminal.cursorx = 0;
+
+                  for(k = 0; k < terminal.image_count; )
+                    {
+                      if(terminal.images[k].screen == terminal.curscreen)
+                        {
+                          --terminal.image_count;
+                          cnt_image_free(&terminal.images[k].image);
+                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
+                        }
+                      else
+                        ++k;
+                    }
+                }
+
+              break;
+
+            case 'K':
+
+              if(!terminal.param[0])
+                {
+                  /* Clear from cursor to end */
+
+                  for(k = terminal.cursorx; k < terminal.size.ws_col; ++k)
+                    {
+                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                    }
+                }
+              else if(terminal.param[0] == 1)
+                {
+                  /* Clear from start to cursor */
+
+                  for(k = 0; k <= terminal.cursorx; ++k)
+                    {
+                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                    }
+                }
+              else if(terminal.param[0] == 2)
+                {
+                  /* Clear entire line */
+
+                  for(k = 0; k < terminal.size.ws_col; ++k)
+                    {
+                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                    }
+                }
+
+              break;
+
+            case 'L':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+              else if(terminal.param[0] > terminal.size.ws_row)
+                terminal.param[0] = terminal.size.ws_row;
+
+              while(terminal.param[0]--)
+                rscroll(1);
+
+              break;
+
+            case 'M':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+              else if(terminal.param[0] > terminal.size.ws_row)
+                terminal.param[0] = terminal.size.ws_row;
+
+              while(terminal.param[0]--)
+                scroll(1);
+
+              break;
+
+            case 'P':
+
+              /* Delete character at cursor */
+
+              normalize_offset();
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+              else if(terminal.param[0] > terminal.size.ws_col)
+                terminal.param[0] = terminal.size.ws_col;
+
+              while(terminal.param[0]--)
+                {
+                  memmove(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
+                          &terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(wchar_t));
+                  memmove(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
+                          &terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(uint16_t));
+                  terminal.curchars[(terminal.cursory + 1) * terminal.size.ws_col - 1] = 0;
+                  terminal.curattrs[(terminal.cursory + 1) * terminal.size.ws_col - 1] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                }
+
+              break;
+
+            case 'S':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              while(terminal.param[0]--)
+                scroll(0);
+
+              break;
+
+            case 'T':
+
+              if(!terminal.param[0])
+                terminal.param[0] = 1;
+
+              while(terminal.param[0]--)
+                rscroll(0);
+
+              break;
+
+            case 'X':
+
+              if(terminal.param[0] <= 0)
+                terminal.param[0] = 1;
+
+              for(k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
+                {
+                  terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                }
+
+              break;
+
+            case 'd':
+
+              if(terminal.param[0] > 0)
+                --terminal.param[0];
+              else
                 terminal.param[0] = 0;
 
-              terminal.scrolltop = terminal.param[0];
-              terminal.scrollbottom = terminal.param[1];
+              terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
+
+              break;
+
+            case 'h':
+
+              for(k = 0; k < terminal.escape - 1; ++k)
+                {
+                  switch(terminal.param[k])
+                    {
+                    case 4:
+
+                      terminal.insertmode = 1;
+
+                      break;
+                    }
+                }
+
+              break;
+
+            case 'l':
+
+              for(k = 0; k < terminal.escape - 1; ++k)
+                {
+                  switch(terminal.param[k])
+                    {
+                    case 4:
+
+                      terminal.insertmode = 0;
+
+                      break;
+                    }
+                }
+
+              break;
+
+            case 'm':
+
+              for(k = 0; k < terminal.escape - 1; ++k)
+                {
+                  switch(terminal.param[k])
+                    {
+                    case 7:
+
+                      terminal.reverse = 1;
+
+                      break;
+
+                    case 27:
+
+                      terminal.reverse = 0;
+
+                      break;
+
+                    case 0:
+
+                      terminal.reverse = 0;
+
+                    default:
+
+                      for(l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
+                        {
+                          if(ansi_helper[l].index == terminal.param[k])
+                            {
+                              terminal.curattr &= ansi_helper[l].and_mask;
+                              terminal.curattr |= ansi_helper[l].or_mask;
+
+                              break;
+                            }
+                        }
+
+                      break;
+                    }
+                }
+
+              break;
+
+            case 'r':
+
+              if(terminal.param[0] < terminal.param[1])
+                {
+                  --terminal.param[0];
+
+                  if(terminal.param[1] > terminal.size.ws_row)
+                    terminal.param[1] = terminal.size.ws_row;
+
+                  if(terminal.param[0] < 0)
+                    terminal.param[0] = 0;
+
+                  terminal.scrolltop = terminal.param[0];
+                  terminal.scrollbottom = terminal.param[1];
+                }
+              else
+                {
+                  terminal.scrolltop = 0;
+                  terminal.scrollbottom = terminal.size.ws_row;
+                }
+
+              break;
+
+            case 's':
+
+              terminal.savedx = terminal.cursorx;
+              terminal.savedy = terminal.cursory;
+
+              break;
+
+            case 'u':
+
+              terminal.cursorx = terminal.savedx;
+              terminal.cursory = terminal.savedy;
+
+              break;
             }
-            else
-            {
-              terminal.scrolltop = 0;
-              terminal.scrollbottom = terminal.size.ws_row;
-            }
 
-            break;
-
-          case 's':
-
-            terminal.savedx = terminal.cursorx;
-            terminal.savedy = terminal.cursory;
-
-            break;
-
-          case 'u':
-
-            terminal.cursorx = terminal.savedx;
-            terminal.cursory = terminal.savedy;
-
-            break;
+          terminal.escape = 0;
         }
-
-        terminal.escape = 0;
-      }
     }
   }
 
