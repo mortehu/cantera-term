@@ -112,23 +112,6 @@ find_window(Window window)
   return 0;
 }
 
-void
-add_inferior(Window window)
-{
-  XWindowAttributes attr;
-  struct window w;
-
-  XGetWindowAttributes(display, window, &attr);
-
-  w.xwindow = window;
-  w.x = attr.x;
-  w.y = attr.y;
-  w.width = attr.width;
-  w.height = attr.height;
-
-  ARRAY_ADD(&windows, w);
-}
-
 Window
 find_xwindow(terminal* t)
 {
@@ -980,14 +963,10 @@ new_window(Window window, XCreateWindowEvent* cwe)
   memset(&new_window, 0, sizeof(new_window));
 
   new_window.xwindow = window;
-
-  if(cwe)
-    {
-      new_window.x = cwe->x;
-      new_window.y = cwe->y;
-      new_window.width = cwe->width;
-      new_window.height = cwe->height;
-    }
+  new_window.x = cwe->x;
+  new_window.y = cwe->y;
+  new_window.width = cwe->width;
+  new_window.height = cwe->height;
 
   ARRAY_ADD(&windows, new_window);
 
@@ -1453,9 +1432,9 @@ process_events:
                 break;
 
               w->x = event.xconfigure.x;
-              w->y = event.xconfigure.x;
-              w->width = event.xconfigure.x;
-              w->height = event.xconfigure.x;
+              w->y = event.xconfigure.y;
+              w->width = event.xconfigure.width;
+              w->height = event.xconfigure.height;
             }
 
           break;
@@ -1590,7 +1569,7 @@ process_events:
 
             if(!w->desktop
                && !w->transient_for
-               && 0 == get_int_property(event.xmaprequest.window, xa_net_wm_pid, &pid))
+               && 0 == get_int_property(w->xwindow, xa_net_wm_pid, &pid))
               {
                 pid = getsid(pid);
 
@@ -1632,10 +1611,10 @@ process_events:
               {
                 XWindowChanges wc;
 
-                wc.x = w->screen->x_org;
-                wc.y = w->screen->y_org;
-                wc.width = w->screen->width;
-                wc.height = w->screen->height;
+                w->x = wc.x = w->screen->x_org;
+                w->y = wc.y = w->screen->y_org;
+                w->width = wc.width = w->screen->width;
+                w->height = wc.height = w->screen->height;
 
                 XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
               }
@@ -1644,8 +1623,9 @@ process_events:
 
             if(w->desktop == w->screen->at)
             {
+              set_map_state(w->xwindow, 1);
               XMapRaised(display, w->xwindow);
-              XSetInputFocus(display, event.xmaprequest.window, RevertToPointerRoot, CurrentTime);
+              XSetInputFocus(display, w->xwindow, RevertToPointerRoot, CurrentTime);
             }
           }
 
