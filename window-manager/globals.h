@@ -59,10 +59,6 @@ extern GlyphSet alpha_glyphs[2];
 extern XRenderPictFormat* xrenderpictformat;
 extern XRenderPictFormat* a8pictformat;
 extern XWindowAttributes root_window_attr;
-/*
-extern int window_width;
-extern int window_height;
-*/
 extern Display* display;
 
 extern XRenderColor xrpalette[];
