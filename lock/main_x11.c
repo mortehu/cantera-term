@@ -16,6 +16,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -27,6 +28,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 
 #include <X11/Xlib.h>
@@ -120,6 +123,23 @@ get_password_hash()
 int main(int argc, char** argv)
 {
   int i, j;
+
+  for(;;)
+    {
+      pid_t child;
+      int status;
+
+      child = fork();
+
+      if(!child)
+        break;
+
+      while(-1 == waitpid(child, &status, 0) && errno == EINTR)
+        ;
+
+      if(!WIFSIGNALED(status))
+        return EXIT_SUCCESS;
+    }
 
   program_argc = argc;
   program_argv = argv;
