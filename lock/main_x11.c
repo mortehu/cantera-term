@@ -140,6 +140,8 @@ int main(int argc, char** argv)
 
       if(WIFSIGNALED(status))
         system("killall5");
+
+      return EXIT_SUCCESS;
     }
   while(0);
 
