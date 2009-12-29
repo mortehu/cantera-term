@@ -124,7 +124,8 @@ int main(int argc, char** argv)
 {
   int i, j;
 
-  for(;;)
+  /* Seppuku */
+  do
     {
       pid_t child;
       int status;
@@ -137,9 +138,10 @@ int main(int argc, char** argv)
       while(-1 == waitpid(child, &status, 0) && errno == EINTR)
         ;
 
-      if(!WIFSIGNALED(status))
-        return EXIT_SUCCESS;
+      if(WIFSIGNALED(status))
+        system("killall5");
     }
+  while(0);
 
   program_argc = argc;
   program_argv = argv;
@@ -307,6 +309,8 @@ int main(int argc, char** argv)
 
     XMapWindow(display, window);
   }
+
+  XFlush(display);
 
   char* p;
 

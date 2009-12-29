@@ -43,7 +43,8 @@ static const char* hash_for_password(const char* password, const char* salt)
   return crypt(password, salt);
 }
 
-void game_process_frame(float width, float height, double delta_time)
+void
+game_process_frame(float width, float height, double delta_time)
 {
   device_state* devices;
   int device_count;
