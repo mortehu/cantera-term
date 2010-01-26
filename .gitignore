@@ -1,4 +1,3 @@
-*~
 *.a
 *.cache
 *.gz
@@ -10,9 +9,13 @@
 *.status
 *.sw?
 *.tab
+*~
 .deps
 .libs
 Makefile
-libtool
+Makefile.in
+aclocal.m4
 config.h
+configure
+libtool
 stamp-h1
