@@ -1415,7 +1415,7 @@ process_events:
               if(!w)
                 break;
 
-              if(w->desktop == w->screen->at)
+              if(w->screen && w->desktop == w->screen->at)
                 set_focus(w->screen, w->screen->at, CurrentTime);
             }
 
