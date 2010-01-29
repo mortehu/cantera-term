@@ -123,30 +123,16 @@ get_password_hash()
 int main(int argc, char** argv)
 {
   int i, j;
-
-  /* Seppuku */
-  do
-    {
-      pid_t child;
-      int status;
-
-      child = fork();
-
-      if(!child)
-        break;
-
-      while(-1 == waitpid(child, &status, 0) && errno == EINTR)
-        ;
-
-      if(WIFSIGNALED(status))
-        system("killall5");
-
-      return EXIT_SUCCESS;
-    }
-  while(0);
+  int fd;
 
   program_argc = argc;
   program_argv = argv;
+
+  if(-1 != (fd = open("/proc/self/oom_adj", O_WRONLY)))
+    {
+      write(fd, "-17", 3);
+      close(fd);
+    }
 
   var_register(main_variables);
 
