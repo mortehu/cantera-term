@@ -124,6 +124,13 @@ int main(int argc, char** argv)
 {
   int i, j;
   int fd;
+  const char *display_name;
+
+  display_name = getenv("DISPLAY");
+
+  environ = 0;
+
+  chdir("/");
 
   program_argc = argc;
   program_argv = argv;
@@ -146,13 +153,14 @@ int main(int argc, char** argv)
 
   get_password_hash();
 
-  display = XOpenDisplay(0);
+  display = XOpenDisplay(display_name);
+
+  setgid(getuid());
+  setuid(getuid());
 
   if(!display)
   {
-    const char* display = getenv("DISPLAY");
-
-    fatal_error("Failed to open display %s", display ? display : ":0");
+    fatal_error("Failed to open display %s", display_name);
   }
 
   if(!glXQueryExtension(display, 0, 0))
