@@ -316,7 +316,7 @@ static void grab_thumbnail(struct window* w)
 
   if(prop && format == 32)
     {
-      uint64_t* buf = (uint64_t*) prop;
+      unsigned long* buf = (unsigned long*) prop;
       unsigned int width = buf[0];
       unsigned int height = buf[1];
       unsigned int i;
