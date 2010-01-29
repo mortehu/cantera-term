@@ -330,7 +330,7 @@ static void grab_thumbnail(struct window* w)
             } c;
         } *colors;
 
-      colors = alloca(sizeof(*colors) * width * height);
+      colors = calloc(sizeof(*colors), width * height);
 
       for(i = 0; i < width * height; ++i)
         {
@@ -360,6 +360,8 @@ static void grab_thumbnail(struct window* w)
       XFreePixmap(display, temp_pixmap);
 
       XFree(prop);
+
+      free(colors);
     }
 }
 
