@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <limits.h>
 #include <locale.h>
 #include <pty.h>
@@ -39,6 +40,20 @@
 #include "tree.h"
 
 #define PARTIAL_REPAINT 1
+
+static int print_version;
+static int print_help;
+static unsigned int parent_window;
+static int pty_fd = -1;
+
+static struct option long_options[] =
+{
+  { "into",     required_argument, 0,              'i' },
+  { "pty-fd",   required_argument, 0,              'p' },
+  { "version",        no_argument, &print_version, 1 },
+  { "help",           no_argument, &print_help,    1 },
+  { 0, 0, 0, 0 }
+};
 
 struct tree* config = 0;
 
@@ -132,7 +147,7 @@ XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picgradients[256];
 
-int window_width, window_height;
+unsigned int window_width, window_height;
 
 static void normalize_offset();
 
@@ -794,6 +809,8 @@ static int find_range(int range, int* begin, int* end)
 
 void init_session(char* const* args)
 {
+  char* c;
+
   memset(&terminal, 0, sizeof(terminal));
 
   terminal.xskip = xskips[terminal.fontsize];
@@ -804,36 +821,40 @@ void init_session(char* const* args)
   terminal.size.ws_row = window_height / terminal.yskip;
   terminal.history_size = terminal.size.ws_row + scroll_extra;
 
-  terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size);
-
-  if(terminal.pid)
-  {
-    char* c;
-
-    terminal.buffer = calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
-    c = terminal.buffer;
-    terminal.chars[0] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
-    terminal.attr[0] = (uint16_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(uint16_t);
-    terminal.chars[1] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
-    terminal.attr[1] = (uint16_t*) c;
-    terminal.curattr = 0x07;
-    terminal.scrollbottom = terminal.size.ws_row;
-    memset(terminal.chars[0], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-    memset16(terminal.attr[0], terminal.curattr, sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
-    memset16(terminal.attr[1], terminal.curattr, sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
-    terminal.offset[0] = 0;
-    terminal.offset[1] = 0;
-
-    setscreen(0);
-  }
+  if (pty_fd != -1)
+    {
+      terminal.fd = pty_fd;
+      terminal.pid = getppid ();
+    }
   else
-  {
-    terminal.xskip = xskips[terminal.fontsize];
-    terminal.yskip = yskips[terminal.fontsize];
-    execve(args[0], args, environ);
+    {
+      terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size);
 
-    exit(EXIT_FAILURE);
-  }
+      if(!terminal.pid)
+        {
+          terminal.xskip = xskips[terminal.fontsize];
+          terminal.yskip = yskips[terminal.fontsize];
+          execve(args[0], args, environ);
+
+          exit(EXIT_FAILURE);
+        }
+    }
+
+  terminal.buffer = calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
+  c = terminal.buffer;
+  terminal.chars[0] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
+  terminal.attr[0] = (uint16_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(uint16_t);
+  terminal.chars[1] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
+  terminal.attr[1] = (uint16_t*) c;
+  terminal.curattr = 0x07;
+  terminal.scrollbottom = terminal.size.ws_row;
+  memset(terminal.chars[0], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
+  memset16(terminal.attr[0], terminal.curattr, sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
+  memset16(terminal.attr[1], terminal.curattr, sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
+  terminal.offset[0] = 0;
+  terminal.offset[1] = 0;
+
+  setscreen(0);
 }
 
 static void x11_connect(const char* display_name)
@@ -869,7 +890,21 @@ static void x11_connect(const char* display_name)
   window_attr.colormap = DefaultColormap(display, 0);
   window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask | FocusChangeMask;
 
-  window = XCreateWindow(display, RootWindow(display, screenidx), 0, 0, window_width, window_height, 0, visual_info->depth, InputOutput, visual, CWColormap | CWEventMask | CWCursor, &window_attr);
+  if (!parent_window)
+    parent_window = RootWindow(display, screenidx);
+  else
+    {
+      Window tmp_window;
+      int x, y;
+      unsigned int border_width, depth;
+
+      XGetGeometry (display, parent_window, &tmp_window, &x, &y, &window_width, &window_height, &border_width, &depth);
+    }
+
+  window = XCreateWindow(display, parent_window, 0, 0,
+                         window_width, window_height, 0, visual_info->depth,
+                         InputOutput, visual,
+                         CWColormap | CWEventMask | CWCursor, &window_attr);
 
   prop_paste = XInternAtom(display, "CANTERA_PASTE", False);
   xa_utf8_string = XInternAtom(display, "UTF8_STRING", False);
@@ -2209,6 +2244,53 @@ int main(int argc, char** argv)
   char* token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
+
+  while ((i = getopt_long (argc, argv, "", long_options, 0)) != -1)
+  {
+    switch (i)
+    {
+    case 0:
+
+      break;
+
+    case 'i':
+
+      parent_window = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'p':
+
+      pty_fd = strtol (optarg, 0, 0);
+
+      break;
+
+    case '?':
+
+      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
+
+      return EXIT_FAILURE;
+    }
+  }
+
+  if (print_help)
+    {
+      printf ("Usage: %s [OPTION]...\n"
+             "\n"
+             "      --help     display this help and exit\n"
+             "      --version  display version information\n"
+             "\n"
+             "Report bugs to <morten@rashbox.org>\n", argv[0]);
+
+      return EXIT_SUCCESS;
+    }
+
+  if (print_version)
+    {
+      fprintf (stdout, "%s\n", PACKAGE_STRING);
+
+      return EXIT_SUCCESS;
+    }
 
   if(!getenv("DISPLAY"))
   {
