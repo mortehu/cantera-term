@@ -44,8 +44,10 @@ struct screen
   Picture root_picture;
   terminal terminals[TERMINAL_COUNT];
 
+  int history[TERMINAL_COUNT];
+  int history_size;
+
   int active_terminal;
-  int last_set_terminal;
   terminal* at;
 };
 

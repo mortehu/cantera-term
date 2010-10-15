@@ -213,6 +213,25 @@ swap_terminals(unsigned int a, unsigned int b)
     }
 }
 
+static void
+history_reset(struct screen *s, int terminal)
+{
+  s->history_size = 1;
+  s->history[0] = terminal;
+}
+
+static void
+history_add(struct screen *s, int terminal)
+{
+  if (s->history_size == TERMINAL_COUNT)
+    {
+      --s->history_size;
+      memmove (s->history, s->history + 1, s->history_size * sizeof(*s->history));
+    }
+
+  s->history[s->history_size++] = terminal;
+}
+
 static void paint(Window window, int x, int y, int width, int height)
 {
   unsigned int i;
@@ -473,8 +492,8 @@ set_focus(struct screen* screen, terminal* t, Time when)
     XSetInputFocus(display, focus, RevertToPointerRoot, when);
 }
 
-static void set_active_terminal(struct screen* screen,
-                                unsigned int terminal_index, Time when)
+static void
+set_active_terminal(struct screen* screen, unsigned int terminal_index, Time when)
 {
   Window tmp_window;
   int i;
@@ -841,7 +860,8 @@ static void sighandler(int signal)
 static void
 enter_menu_mode(struct screen* screen, terminal* t)
 {
-  /* XXX: Free first */
+  /* XXX: Free first (2010-10-15: what does this mean?) */
+
   t->mode = mode_menu;
 
   if(t->thumbnail)
@@ -909,7 +929,7 @@ window_gone(Window xwindow)
   struct screen* screen;
   terminal* desktop;
   struct window* w;
-  size_t i;
+  size_t i, j;
 
   w = find_window(xwindow);
 
@@ -920,6 +940,32 @@ window_gone(Window xwindow)
   desktop = w->desktop;
 
   ARRAY_REMOVE_PTR(&windows, w);
+
+  if (screen && screen->history_size > 1)
+    {
+      i = desktop - screen->terminals;
+
+      assert (i >= 0 && i < TERMINAL_COUNT);
+
+      if (i == screen->history[screen->history_size - 1])
+        {
+          --screen->history_size;
+          set_active_terminal(screen, screen->history[screen->history_size - 1], CurrentTime);
+        }
+
+      /* If desktop is inside the history stack, remove it */
+
+      for (j = 0; screen->history_size > 1 && j < screen->history_size; )
+        {
+          if (screen->history[j] == i)
+            {
+              --screen->history_size;
+              memmove(screen->history + j, screen->history + j + 1, sizeof(*screen->history) * (screen->history_size - j));
+            }
+          else
+            ++j;
+        }
+    }
 
   if(desktop)
     {
@@ -1047,6 +1093,8 @@ int main(int argc, char** argv)
 
       screens[j].active_terminal = 0;
       screens[j].at = &screens[j].terminals[0];
+
+      history_reset(&screens[j], 0);
     }
 
   set_focus(current_screen, current_screen->at, CurrentTime);
@@ -1255,10 +1303,11 @@ process_events:
               if(super_pressed)
                 new_terminal += 12;
 
-              current_screen->last_set_terminal = new_terminal;
-
               if(new_terminal != current_screen->active_terminal)
-                set_active_terminal(current_screen, new_terminal, event.xkey.time);
+              {
+                  history_reset(current_screen, new_terminal);
+                  set_active_terminal(current_screen, new_terminal, event.xkey.time);
+              }
             }
             else if((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
             {
@@ -1286,12 +1335,14 @@ process_events:
                 {
                   swap_terminals(new_terminal, current_screen->active_terminal);
 
-                  current_screen->last_set_terminal = current_screen->active_terminal = new_terminal;
+                  current_screen->history[current_screen->history_size - 1] = new_terminal;
+
+                  current_screen->active_terminal = new_terminal;
                   current_screen->at = &current_screen->terminals[current_screen->active_terminal];
                 }
                 else
                 {
-                  current_screen->last_set_terminal = new_terminal;
+                    history_reset(current_screen, new_terminal);
                   set_active_terminal(current_screen, new_terminal, event.xkey.time);
                 }
               }
@@ -1593,6 +1644,7 @@ process_events:
               memset(w->desktop, 0, sizeof(*w->desktop));
               w->desktop->mode = mode_x11;
 
+              history_add(current_screen, new_terminal);
               set_active_terminal(current_screen, new_terminal, CurrentTime);
             }
 
