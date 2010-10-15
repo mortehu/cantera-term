@@ -128,6 +128,8 @@ int main(int argc, char** argv)
 
   display_name = getenv("DISPLAY");
 
+  display = XOpenDisplay(display_name);
+
   environ = 0;
 
   chdir("/");
@@ -152,8 +154,6 @@ int main(int argc, char** argv)
   host_name = get_host_name();
 
   get_password_hash();
-
-  display = XOpenDisplay(display_name);
 
   setgid(getuid());
   setuid(getuid());

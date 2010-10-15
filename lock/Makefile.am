@@ -19,7 +19,3 @@ cantera_lock_SOURCES = \
 EXTRA_DIST = gfx/fonts/vera-sans-mono.dat gfx/fonts/vera-sans-mono_0.png
 
 cantera_lock_LDADD = -lX11 -lGL -lGLU -lm -lXxf86vm -lpng -lXinerama -lcrypt
-
-install-exec-hook:
-	chown root $(bindir)/cantera-lock
-	chmod u+s $(bindir)/cantera-lock
