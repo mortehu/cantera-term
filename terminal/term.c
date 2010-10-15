@@ -257,6 +257,8 @@ unsigned long select_length;
 Picture root_picture;
 Picture root_buffer;
 
+int temp_switch_screen = 0;
+
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
 void *memset16(void *s, int w, size_t n)
@@ -375,6 +377,28 @@ static void paint(int x, int y, int width, int height)
     memset(screenchars, 0xff, cols * rows * sizeof(wchar_t));
   }
 
+  const wchar_t* curchars;
+  const uint16_t* curattrs;
+  int cursorx, cursory;
+  int curoffset;
+
+  if (temp_switch_screen)
+    {
+      curchars = terminal.chars[1 - terminal.curscreen];
+      curattrs = terminal.attr[1 - terminal.curscreen];
+      cursorx = terminal.storedcursorx[1 - terminal.curscreen];
+      cursory = terminal.storedcursory[1 - terminal.curscreen];
+      curoffset = terminal.offset[1 - terminal.curscreen];
+    }
+  else
+    {
+      curchars = terminal.curchars;
+      curattrs = terminal.curattrs;
+      cursorx = terminal.cursorx;
+      cursory = terminal.cursory;
+      curoffset = *terminal.curoffset;
+    }
+
   {
     if(select_begin < select_end)
     {
@@ -392,11 +416,11 @@ static void paint(int x, int y, int width, int height)
 
     for(row = 0; row < terminal.size.ws_row; ++row)
     {
-      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + (*terminal.curoffset)) % size;
+      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + curoffset) % size;
       wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
       uint16_t* screenattrline = &screenattrs[row * terminal.size.ws_col];
-      const wchar_t* line = &terminal.curchars[pos];
-      const uint16_t* attrline = &terminal.curattrs[pos];
+      const wchar_t* line = &curchars[pos];
+      const uint16_t* attrline = &curattrs[pos];
       int start = 0, end, x = 0;
 
       while(start < terminal.size.ws_col)
@@ -408,8 +432,8 @@ static void paint(int x, int y, int width, int height)
         int localattr = -1;
 
         if(focused
-           && row == terminal.cursory + terminal.history_scroll
-           && start == terminal.cursorx)
+           && row == cursory + terminal.history_scroll
+           && start == cursorx)
         {
           attr = REVERSE(attr);
 
@@ -466,7 +490,7 @@ static void paint(int x, int y, int width, int height)
           if(localattr != attr)
             break;
 
-          if(row == terminal.cursory && end == terminal.cursorx)
+          if(row == cursory && end == cursorx)
             break;
 
           if((line[end] != 0) != printable)
@@ -2467,6 +2491,13 @@ int main(int argc, char** argv)
              || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
             history_scroll_reset = 0;
 
+          if (temp_switch_screen)
+            {
+              XClearArea(display, window, 0, 0, window_width, window_height, True);
+
+              temp_switch_screen = 0;
+            }
+
           if(event.xkey.keycode == 161 || key_sym == XK_Menu)
           {
             normalize_offset();
@@ -2640,10 +2671,19 @@ int main(int argc, char** argv)
             }
             else if(key_sym == XK_space)
             {
-              if(mod1_pressed)
-                term_write("\033");
+              /*
+                 if(mod1_pressed)
+                 term_write("\033");
 
-              term_write(" ");
+               */
+              if(mod1_pressed)
+                {
+                  temp_switch_screen = 1;
+
+                  XClearArea(display, window, 0, 0, window_width, window_height, True);
+                }
+              else
+                term_write(" ");
             }
             else if(key_sym == XK_Shift_L || key_sym == XK_Shift_R
                  || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
