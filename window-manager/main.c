@@ -80,6 +80,9 @@ void init_ximage(XImage* image, int width, int height, void* data);
 struct window*
 new_window(Window window, XCreateWindowEvent* cwe);
 
+void
+window_gone(Window xwindow);
+
 Window window;
 
 struct window
@@ -592,19 +595,7 @@ static int xerror_handler(Display* display, XErrorEvent* error)
   XGetErrorText(display, error->error_code, errorbuf, sizeof(errorbuf));
 
   if(error->error_code == BadWindow)
-    {
-      size_t i;
-
-      for(i = 0; i < ARRAY_COUNT(&windows); ++i)
-        {
-          if(ARRAY_GET(&windows, i).xwindow == error->resourceid)
-            {
-              ARRAY_REMOVE(&windows, i);
-
-              return 0;
-            }
-        }
-    }
+    window_gone(error->resourceid);
 
   fprintf(stderr, "X error: %s (request: %d, minor: %d)  ID: %08X\n", errorbuf,
           error->request_code, error->minor_code, (unsigned int) error->resourceid);
