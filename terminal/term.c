@@ -2568,6 +2568,8 @@ int main(int argc, char** argv)
                       XClearArea(display, window, 0, 0, window_width, window_height, True);
                     }
                 }
+              else if (ctrl_pressed)
+                term_write("\033[5~");
               else if(terminal.appcursor)
                 term_write("\033OA");
               else
@@ -2585,6 +2587,8 @@ int main(int argc, char** argv)
                       XClearArea(display, window, 0, 0, window_width, window_height, True);
                     }
                 }
+              else if (ctrl_pressed)
+                term_write("\033[6~");
               else if(terminal.appcursor)
                 term_write("\033OB");
               else
@@ -2592,14 +2596,18 @@ int main(int argc, char** argv)
             }
             else if(key_sym == XK_Right)
             {
-              if(terminal.appcursor)
+              if (ctrl_pressed)
+                term_write(terminal.appcursor ? "\033OF" : "\033[F");
+              else if(terminal.appcursor)
                 term_write("\033OC");
               else
                 term_write("\033[C");
             }
             else if(key_sym == XK_Left)
             {
-              if(terminal.appcursor)
+              if (ctrl_pressed)
+                term_write(terminal.appcursor ? "\033OH" : "\033[H");
+              else if(terminal.appcursor)
                 term_write("\033OD");
               else
                 term_write("\033[D");
