@@ -88,9 +88,12 @@ void loadglyph(int size, unsigned int n)
   }
   else
   {
+    int source_width, source_height;
+    int source_x = 0, source_y = 0;
+
     glyphinfo.width = slot->bitmap.width;
     glyphinfo.height = slot->bitmap.rows;
-    glyphinfo.x = -slot->metrics.horiBearingX >> 6;
+    glyphinfo.x = -(slot->metrics.horiBearingX >> 6);
     glyphinfo.y = (slot->metrics.horiBearingY >> 6) - font_sizes[size] - (ft_faces[size][i]->descender >> 8) - 1;
     glyphinfo.xOff = slot->advance.x >> 6;
 
@@ -99,10 +102,26 @@ void loadglyph(int size, unsigned int n)
     if(wcwidth(n) < 2)
       glyphinfo.xOff = xskips[size];
     else
-    {
-      skip = 2 * xskips[size];
-      glyphinfo.xOff = skip;
-    }
+      glyphinfo.xOff = 2 * xskips[size];
+
+    source_width = slot->bitmap.width;
+    source_height = slot->bitmap.rows;
+
+    if (glyphinfo.x > 0)
+      {
+        source_x = glyphinfo.x;
+        glyphinfo.width -= source_x;
+        glyphinfo.x = 0;
+      }
+
+    if(glyphinfo.y > 0)
+      glyphinfo.y = 0;
+
+    if (glyphinfo.width - glyphinfo.x > glyphinfo.xOff)
+        glyphinfo.width = glyphinfo.xOff + glyphinfo.x;
+
+    if (glyphinfo.height - glyphinfo.y > yskips[size])
+        glyphinfo.height = yskips[size] + glyphinfo.y;
 
     glyphinfo.yOff = 0;
 
@@ -110,17 +129,8 @@ void loadglyph(int size, unsigned int n)
 
     for(y = 0; y < glyphinfo.height; ++y)
     {
-      int effy = -glyphinfo.y + y;
-
       for(x = 0; x < glyphinfo.width; ++x)
-      {
-        int effx = -glyphinfo.x + x < skip;
-
-        if(effx >= 0 && effx < skip && effy >= 0 && effy < yskips[size])
-          alpha_image[y * stride + x] = slot->bitmap.buffer[y * glyphinfo.width + x];
-        else
-          alpha_image[y * stride + x] = 0;
-      }
+        alpha_image[y * stride + x] = slot->bitmap.buffer[y * source_width + (x + source_x)];
     }
   }
 
@@ -167,48 +177,43 @@ void font_init()
     exit(EXIT_FAILURE);
   }
 
-  /*
-  for(i = 0; i < sizeof(font_names) / sizeof(font_names[0]); ++i)
-  */
+  for(j = 0; j < SIZE_COUNT; ++j)
   {
-    for(j = 0; j < SIZE_COUNT; ++j)
+    result = FT_New_Face(ft_library, font_name, 0, &ft_faces[j][ft_facecount]);
+
+    if(result == FT_Err_Unknown_File_Format)
     {
-      result = FT_New_Face(ft_library, font_name, 0, &ft_faces[j][ft_facecount]);
+      fprintf(stderr, "Error opening font '%s': Unsupported file format.\n",
+              font_name);
 
-      if(result == FT_Err_Unknown_File_Format)
-      {
-        fprintf(stderr, "Error opening font '%s': Unsupported file format.\n",
-                font_name);
-
-        break;
-      }
-
-      if(result)
-      {
-        fprintf(stderr, "Error opening font '%s': %d\n", font_name, result);
-
-        break;
-      }
-
-      result = FT_Set_Pixel_Sizes(ft_faces[j][ft_facecount], 0, font_sizes[j]);
-
-      if(result)
-      {
-        fprintf(stderr, "Error setting size (%d pixels): %d\n", font_sizes[j], result);
-
-        break;
-      }
-
-      if(ft_facecount == 0)
-      {
-        xskips[j] = round(ft_faces[j][ft_facecount]->size->metrics.max_advance / 64.0);
-        yskips[j] = round(ft_faces[j][ft_facecount]->size->metrics.height / 64.0);
-      }
+      break;
     }
 
-    if(j == SIZE_COUNT)
-      ++ft_facecount;
+    if(result)
+    {
+      fprintf(stderr, "Error opening font '%s': %d\n", font_name, result);
+
+      break;
+    }
+
+    result = FT_Set_Pixel_Sizes(ft_faces[j][ft_facecount], 0, font_sizes[j]);
+
+    if(result)
+    {
+      fprintf(stderr, "Error setting size (%d pixels): %d\n", font_sizes[j], result);
+
+      break;
+    }
+
+    if(ft_facecount == 0)
+    {
+      xskips[j] = ceil(ft_faces[j][ft_facecount]->size->metrics.max_advance / 64.0);
+      yskips[j] = round(ft_faces[j][ft_facecount]->size->metrics.height / 64.0);
+    }
   }
+
+  if(j == SIZE_COUNT)
+    ++ft_facecount;
 
   if(!ft_facecount)
   {
