@@ -1,4 +1,3 @@
-#define _XOPEN_SOURCE 600
 #include <assert.h>
 #include <math.h>
 #include <string.h>
