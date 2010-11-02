@@ -941,7 +941,7 @@ window_gone(Window xwindow)
 
   ARRAY_REMOVE_PTR(&windows, w);
 
-  if (screen && screen->history_size > 1)
+  if (screen && screen->history_size > 1 && !w->transient_for)
     {
       i = desktop - screen->terminals;
 
