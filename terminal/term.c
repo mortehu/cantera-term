@@ -45,9 +45,13 @@ static int print_version;
 static int print_help;
 static unsigned int parent_window;
 static int pty_fd = -1;
+static char *command = "/bin/bash";
 
 static struct option long_options[] =
 {
+  { "width",    required_argument, 0,              'w' },
+  { "height",   required_argument, 0,              'h' },
+  { "command",  required_argument, 0,              'c' },
   { "into",     required_argument, 0,              'i' },
   { "pty-fd",   required_argument, 0,              'p' },
   { "version",        no_argument, &print_version, 1 },
@@ -147,7 +151,7 @@ XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picgradients[256];
 
-unsigned int window_width, window_height;
+unsigned int window_width = 800, window_height = 600;
 
 static void normalize_offset();
 
@@ -2229,6 +2233,112 @@ void term_write(const char* data)
   term_writen(data, strlen(data));
 }
 
+void handle_configure(XConfigureEvent *config)
+{
+  int i;
+
+  normalize_offset();
+
+  window_width = config->width;
+  window_height = config->height;
+
+  cols = window_width / terminal.xskip;
+  rows = window_height / terminal.yskip;
+
+  int oldcols = terminal.size.ws_col;
+  int oldrows = terminal.size.ws_row;
+
+  terminal.size.ws_xpixel = window_width;
+  terminal.size.ws_ypixel = window_height;
+  terminal.size.ws_col = cols;
+  terminal.size.ws_row = rows;
+  terminal.history_size = rows + scroll_extra;
+
+  if (cols != oldcols || rows != oldrows)
+    {
+      wchar_t* oldchars[2] = {terminal.chars[0], terminal.chars[1]};
+      uint16_t* oldattr[2] = {terminal.attr[0], terminal.attr[1]};
+
+      char *oldbuffer = terminal.buffer;
+      terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
+
+      char* c;
+      c = terminal.buffer;
+      terminal.chars[0] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
+      terminal.attr[0] = (uint16_t*) c; c += cols * terminal.history_size * sizeof(uint16_t);
+      terminal.chars[1] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
+      terminal.attr[1] = (uint16_t*) c;
+      terminal.scrollbottom = rows;
+
+      int srcoff = 0;
+      int minrows;
+
+      if(rows > oldrows)
+        minrows = oldrows;
+      else
+        {
+          if(terminal.cursory >= rows)
+            srcoff = terminal.cursory - rows + 1;
+          minrows = rows;
+        }
+
+      int mincols = (cols < oldcols) ? cols : oldcols;
+
+      for(i = 0; i < minrows; ++i)
+        {
+          memcpy(&terminal.chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
+          memcpy(&terminal.attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[0][0]));
+        }
+
+      for(i = 0; i < minrows; ++i)
+        {
+          memcpy(&terminal.chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
+          memcpy(&terminal.attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[1][0]));
+        }
+
+      free(oldbuffer);
+
+      terminal.curchars = terminal.chars[terminal.curscreen];
+      terminal.curattrs = terminal.attr[terminal.curscreen];
+
+      free(screenchars);
+      free(screenattrs);
+      screenchars = calloc(sizeof(*screenchars), cols * rows);
+      screenattrs = calloc(sizeof(*screenattrs), cols * rows);
+
+      terminal.cursory = terminal.cursory - srcoff;
+      terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
+#define CLIP_CURSOR(val, max) { if (val < 0) val = 0; else if (val >= max) val = max - 1; }
+      CLIP_CURSOR(terminal.cursorx, cols);
+      CLIP_CURSOR(terminal.cursory, rows);
+      CLIP_CURSOR(terminal.storedcursorx[1 - terminal.curscreen], cols);
+      CLIP_CURSOR(terminal.storedcursory[1 - terminal.curscreen], rows);
+#undef CLIP_CURSOR
+
+      ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
+    }
+
+  Pixmap pmap;
+
+  XRenderFreePicture(display, root_buffer);
+
+  pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
+  root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
+
+  if(root_buffer == None)
+    {
+      fprintf(stderr, "Failed to create root buffer\n");
+
+      exit(EXIT_FAILURE);
+    }
+
+  XFreePixmap(display, pmap);
+
+  XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
+  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
+  XClearArea(display, window, 0, 0, window_width, window_height, True);
+}
+
 void run_command(int fd, const char* command, const char* arg)
 {
   char path[4096];
@@ -2269,11 +2379,17 @@ int main(int argc, char** argv)
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
-  while ((i = getopt_long (argc, argv, "", long_options, 0)) != -1)
+  while ((i = getopt_long (argc, argv, "c:", long_options, 0)) != -1)
   {
     switch (i)
     {
     case 0:
+
+      break;
+
+    case 'c':
+
+      command = optarg;
 
       break;
 
@@ -2289,6 +2405,19 @@ int main(int argc, char** argv)
 
       break;
 
+
+    case 'w':
+
+      window_width = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'h':
+
+      window_height = strtol (optarg, 0, 0);
+
+      break;
+
     case '?':
 
       fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
@@ -2301,6 +2430,7 @@ int main(int argc, char** argv)
     {
       printf ("Usage: %s [OPTION]...\n"
              "\n"
+             "  -c, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
              "      --help     display this help and exit\n"
              "      --version  display version information\n"
              "\n"
@@ -2356,9 +2486,6 @@ int main(int argc, char** argv)
 
   setenv("TERM", "xterm", 1);
 
-  window_width = 800;
-  window_height = 600;
-
   if(session_path)
     {
       session_fd = open(session_path, O_RDONLY);
@@ -2379,7 +2506,7 @@ int main(int argc, char** argv)
 
   x11_connect(getenv("DISPLAY"));
 
-  args[0] = "/bin/bash";
+  args[0] = command;
   args[1] = 0;
 
   init_session(args);
@@ -2941,106 +3068,7 @@ int main(int argc, char** argv)
           if(window_width == event.xconfigure.width && window_height == event.xconfigure.height)
             break;
 
-          normalize_offset();
-
-          window_width = event.xconfigure.width;
-          window_height = event.xconfigure.height;
-
-          cols = window_width / terminal.xskip;
-          rows = window_height / terminal.yskip;
-
-          int oldcols = terminal.size.ws_col;
-          int oldrows = terminal.size.ws_row;
-
-          terminal.size.ws_xpixel = window_width;
-          terminal.size.ws_ypixel = window_height;
-          terminal.size.ws_col = cols;
-          terminal.size.ws_row = rows;
-          terminal.history_size = rows + scroll_extra;
-
-          if (cols != oldcols || rows != oldrows)
-          {
-            wchar_t* oldchars[2] = {terminal.chars[0], terminal.chars[1]};
-            uint16_t* oldattr[2] = {terminal.attr[0], terminal.attr[1]};
-
-            char *oldbuffer = terminal.buffer;
-            terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
-
-            char* c;
-            c = terminal.buffer;
-            terminal.chars[0] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
-            terminal.attr[0] = (uint16_t*) c; c += cols * terminal.history_size * sizeof(uint16_t);
-            terminal.chars[1] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
-            terminal.attr[1] = (uint16_t*) c;
-            terminal.scrollbottom = rows;
-
-            int srcoff = 0;
-            int minrows;
-
-            if(rows > oldrows)
-              minrows = oldrows;
-            else
-            {
-              if(terminal.cursory >= rows)
-                srcoff = terminal.cursory - rows + 1;
-              minrows = rows;
-            }
-
-            int mincols = (cols < oldcols) ? cols : oldcols;
-
-            for(i = 0; i < minrows; ++i)
-            {
-              memcpy(&terminal.chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
-              memcpy(&terminal.attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[0][0]));
-            }
-
-            for(i = 0; i < minrows; ++i)
-            {
-              memcpy(&terminal.chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
-              memcpy(&terminal.attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[1][0]));
-            }
-
-            free(oldbuffer);
-
-            terminal.curchars = terminal.chars[terminal.curscreen];
-            terminal.curattrs = terminal.attr[terminal.curscreen];
-
-            free(screenchars);
-            free(screenattrs);
-            screenchars = calloc(sizeof(*screenchars), cols * rows);
-            screenattrs = calloc(sizeof(*screenattrs), cols * rows);
-
-            terminal.cursory = terminal.cursory - srcoff;
-            terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
-#define CLIP_CURSOR(val, max) { if (val < 0) val = 0; else if (val >= max) val = max - 1; }
-            CLIP_CURSOR(terminal.cursorx, cols);
-            CLIP_CURSOR(terminal.cursory, rows);
-            CLIP_CURSOR(terminal.storedcursorx[1 - terminal.curscreen], cols);
-            CLIP_CURSOR(terminal.storedcursory[1 - terminal.curscreen], rows);
-#undef CLIP_CURSOR
-
-            ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
-          }
-
-          Pixmap pmap;
-
-          XRenderFreePicture(display, root_buffer);
-
-          pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
-          root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-          if(root_buffer == None)
-          {
-            fprintf(stderr, "Failed to create root buffer\n");
-
-            return EXIT_FAILURE;
-          }
-
-          XFreePixmap(display, pmap);
-
-          XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-          memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
-          XClearArea(display, window, 0, 0, window_width, window_height, True);
+          handle_configure(&event.xconfigure);
         }
 
         break;
