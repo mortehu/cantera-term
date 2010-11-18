@@ -570,14 +570,6 @@ static void grab_keys()
   XGrabKey(display, 174, AnyModifier, root_window, False, GrabModeAsync, GrabModeAsync); /* volume down */
   XGrabKey(display, 176, AnyModifier, root_window, False, GrabModeAsync, GrabModeAsync); /* volume up */
 
-  /*
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_L), Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_R), Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_L), Mod2Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_R), Mod2Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Alt_L), ControlMask | Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Alt_R), ControlMask | Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  */
   XGrabKey(display, XKeysymToKeycode(display, XK_Alt_L), Mod4Mask, root_window, False, GrabModeAsync, GrabModeAsync);
   XGrabKey(display, XKeysymToKeycode(display, XK_Alt_R), Mod4Mask, root_window, False, GrabModeAsync, GrabModeAsync);
 
