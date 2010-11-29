@@ -545,7 +545,7 @@ pid_t launch(const char* command, Time when)
 
     args[0] = "/bin/sh";
     args[1] = "-c";
-    asprintf(&args[2], "exec %s", command);
+    asprintf(&args[2], "%s", command);
     args[3] = 0;
 
     execve(args[0], args, environ);
