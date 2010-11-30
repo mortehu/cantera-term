@@ -647,6 +647,29 @@ create_menu_cursor()
   XFreeGC(display, gc);
 }
 
+static void composite_init()
+{
+#if 0
+  XRenderPictureAttributes pa;
+  int major, minor;
+
+  if(!XCompositeQueryExtension(display, &i, &i))
+    return;
+
+  XCompositeQueryVersion(display, &major, &minor);
+
+  if(!(major > 0 || minor >= 2))
+    return;
+
+  if(!XDamageQueryExtension(display, &damage_eventbase, &damage_errorbase))
+    return;
+
+  pa.subwindow_mode = IncludeInferiors;
+
+  XCompositeRedirectSubwindows(display, root_window, CompositeRedirectManual);
+#endif
+}
+
 static void x11_connect(const char* display_name)
 {
   XSetWindowAttributes window_attr;
@@ -828,6 +851,8 @@ static void x11_connect(const char* display_name)
 
     return;
   }
+
+  composite_init();
 
   font_init();
 
@@ -1708,23 +1733,23 @@ void run_command(int fd, const char* command, const char* arg)
 
 void init_ximage(XImage* image, int width, int height, void* data)
 {
-    memset(image, 0, sizeof(XImage));
-    image->width = width;
-    image->height = height;
-    image->format = ZPixmap;
-    image->data = (char*) data;
+  memset(image, 0, sizeof(XImage));
+  image->width = width;
+  image->height = height;
+  image->format = ZPixmap;
+  image->data = (char*) data;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-    image->byte_order = LSBFirst;
-    image->bitmap_bit_order = LSBFirst;
+  image->byte_order = LSBFirst;
+  image->bitmap_bit_order = LSBFirst;
 #else
-    image->byte_order = MSBFirst;
-    image->bitmap_bit_order = MSBFirst;
+  image->byte_order = MSBFirst;
+  image->bitmap_bit_order = MSBFirst;
 #endif
-    image->bitmap_unit = 32;
-    image->bitmap_pad = 32;
-    image->depth = 32;
-    image->bytes_per_line = width * 4;
-    image->bits_per_pixel = 32;
+  image->bitmap_unit = 32;
+  image->bitmap_pad = 32;
+  image->depth = 32;
+  image->bytes_per_line = width * 4;
+  image->bits_per_pixel = 32;
 }
 
 // vim: ts=2 sw=2 et sts=2
