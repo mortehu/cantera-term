@@ -120,8 +120,7 @@ game_process_frame(float width, float height, double delta_time)
       y = 0.1 * sin(i * 0.07
                     + cos(i * 0.03 + now + sin(i * 0.09 + now) * 0.2));
 
-      y = y * height
-        + height * 0.5;
+      y = y * height + height * 0.5;
 
       glVertex2f(x, y);
     }
@@ -158,9 +157,9 @@ game_process_frame(float width, float height, double delta_time)
           if(diff < 120)
             asprintf(&buf, "%u seconds ago", diff);
           else if(diff < 3600)
-            asprintf(&buf, "%u:%u minutes ago", diff / 60, diff % 60);
+            asprintf(&buf, "%u:%02u minutes ago", diff / 60, diff % 60);
           else
-            asprintf(&buf, "%u:%u hours ago", diff / 3600, (diff / 60) % 60);
+            asprintf(&buf, "%u:%02u hours ago", diff / 3600, (diff / 60) % 60);
 
           y += 25.0f;
           font_draw(font, 18, buf, x + 10.0, y + 20.0, 0);
