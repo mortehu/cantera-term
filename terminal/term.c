@@ -111,12 +111,6 @@ struct terminal
 
   unsigned int history_scroll;
 
-  int document;
-  unsigned char* doc_buf;
-  size_t doc_buf_size;
-  size_t doc_buf_payload;
-  size_t doc_buf_alloc;
-
   struct
   {
     struct cnt_image* image;
@@ -1229,8 +1223,6 @@ static void paste(Time time)
   XConvertSelection(display, XA_PRIMARY, xa_utf8_string, prop_paste, window, time);
 }
 
-static void append_doc_data(void* data, size_t size);
-
 static void process_data(unsigned char* buf, int count)
 {
   int j, k, l;
@@ -1596,16 +1588,6 @@ static void process_data(unsigned char* buf, int count)
                         }
 
                       break;
-
-                    case 0xD0C:
-
-                      terminal.document = 1;
-                      terminal.escape = 0;
-
-                      if(j + 1 < count)
-                        append_doc_data(&buf[j + 1], count - j - 1);
-
-                      return;
                     }
                 }
             }
@@ -1625,17 +1607,6 @@ static void process_data(unsigned char* buf, int count)
 
                       if(terminal.curscreen != 0)
                         setscreen(0);
-
-                      break;
-
-                    case 0xD0C:
-
-                      free(terminal.doc_buf);
-                      terminal.doc_buf = 0;
-                      terminal.doc_buf_size = 0;
-                      terminal.doc_buf_payload = 0;
-                      terminal.doc_buf_alloc = 0;
-                      terminal.document = 0;
 
                       break;
                     }
@@ -2081,101 +2052,7 @@ static void process_data(unsigned char* buf, int count)
   XUnlockDisplay(display);
 }
 
-static int doc_data_callback(void** buffer, size_t* size, void* ctx)
-{
-  struct terminal* term = ctx;
-
-  *buffer = term->doc_buf;
-  *size = term->doc_buf_payload;
-
-  return 1;
-}
-
-static void append_doc_data(void* data, size_t size)
-{
-  unsigned char* end;
-
-  if(terminal.doc_buf_size + size > terminal.doc_buf_alloc)
-  {
-    terminal.doc_buf_alloc = terminal.doc_buf_alloc * 3 / 2;
-    terminal.doc_buf_alloc += (size + 0xffff) & ~0xffff;
-    terminal.doc_buf = realloc(terminal.doc_buf, terminal.doc_buf_alloc);
-  }
-
-  memcpy(terminal.doc_buf + terminal.doc_buf_size, data, size);
-  terminal.doc_buf_size += size;
-
-  if(0 != (end = memmem(terminal.doc_buf, terminal.doc_buf_size, "\033[?3340l", 8)))
-  {
-    struct cnt_image* image;
-    Picture pic;
-    size_t width, height;
-
-    unsigned char* old_buf;
-    size_t old_buf_size;
-    size_t old_buf_payload;
-
-    terminal.doc_buf_payload = end - terminal.doc_buf;
-
-    image = cnt_image_alloc();
-    cnt_image_set_data_callback(image, doc_data_callback, &terminal);
-
-    pic = cnt_image_load(&width, &height, image);
-
-    old_buf = terminal.doc_buf;
-    old_buf_size = terminal.doc_buf_size;
-    old_buf_payload = terminal.doc_buf_payload;
-
-    terminal.doc_buf = 0;
-    terminal.doc_buf_size = 0;
-    terminal.doc_buf_payload = 0;
-    terminal.doc_buf_alloc = 0;
-    terminal.document = 0;
-
-    if(pic && terminal.image_count < sizeof(terminal.images) / sizeof(terminal.images[0]))
-    {
-      size_t i, lines;
-
-      i = terminal.image_count++;
-
-      terminal.images[i].image = image;
-      terminal.images[i].pic = pic;
-      terminal.images[i].width = width;
-      terminal.images[i].height = height;
-      terminal.images[i].char_x = terminal.cursorx;
-      terminal.images[i].char_y = terminal.cursory;
-      terminal.images[i].screen = terminal.curscreen;
-      terminal.images[i].rows = (height + yskips[SMALL] - 1) / yskips[SMALL];
-      terminal.images[i].cols = (width + xskips[SMALL] - 1) / xskips[SMALL];
-      lines = terminal.images[i].rows;
-
-      while(lines--)
-      {
-        terminal.cursorx = 0;
-        ++terminal.cursory;
-
-        while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-        {
-          scroll(0);
-          --terminal.cursory;
-        }
-      }
-    }
-    else
-    {
-      static const char* message = "[Unrecognized document]\r\n";
-      process_data((unsigned char*) message, strlen(message));
-
-      cnt_image_free(&image);
-    }
-
-    process_data(end, old_buf_size - old_buf_payload);
-
-    free(old_buf);
-  }
-}
-
-void read_data()
+void term_read()
 {
   unsigned char buf[4096];
   int result, more, fill = 0;
@@ -2206,13 +2083,10 @@ void read_data()
   }
   while(more);
 
-  if(terminal.document)
-    append_doc_data(buf, fill);
-  else
-    process_data(buf, fill);
+  process_data(buf, fill);
 }
 
-void term_writen(const char* data, size_t len)
+void term_write(const char* data, size_t len)
 {
   size_t off = 0;
   ssize_t result;
@@ -2228,14 +2102,16 @@ void term_writen(const char* data, size_t len)
   }
 }
 
-void term_write(const char* data)
+void term_strwrite(const char* data)
 {
-  term_writen(data, strlen(data));
+  term_write(data, strlen(data));
 }
 
-void handle_configure(XConfigureEvent *config)
+void x11_handle_configure(XConfigureEvent *config)
 {
   int i;
+
+  /* Resize event -- create new buffers and copy+clip old data */
 
   normalize_offset();
 
@@ -2367,180 +2243,10 @@ void run_command(int fd, const char* command, const char* arg)
   }
 }
 
-int main(int argc, char** argv)
+int x11_process_events()
 {
-  char* args[2];
-  int i;
-  int xfd;
   int result;
-  int session_fd;
-  char* palette_str;
-  char* token;
-
-  setlocale(LC_ALL, "en_US.UTF-8");
-
-  while ((i = getopt_long (argc, argv, "c:", long_options, 0)) != -1)
-  {
-    switch (i)
-    {
-    case 0:
-
-      break;
-
-    case 'c':
-
-      command = optarg;
-
-      break;
-
-    case 'i':
-
-      parent_window = strtol (optarg, 0, 0);
-
-      break;
-
-    case 'p':
-
-      pty_fd = strtol (optarg, 0, 0);
-
-      break;
-
-
-    case 'w':
-
-      window_width = strtol (optarg, 0, 0);
-
-      break;
-
-    case 'h':
-
-      window_height = strtol (optarg, 0, 0);
-
-      break;
-
-    case '?':
-
-      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
-
-      return EXIT_FAILURE;
-    }
-  }
-
-  if (print_help)
-    {
-      printf ("Usage: %s [OPTION]...\n"
-             "\n"
-             "  -c, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
-             "      --help     display this help and exit\n"
-             "      --version  display version information\n"
-             "\n"
-             "Report bugs to <morten@rashbox.org>\n", argv[0]);
-
-      return EXIT_SUCCESS;
-    }
-
-  if (print_version)
-    {
-      fprintf (stdout, "%s\n", PACKAGE_STRING);
-
-      return EXIT_SUCCESS;
-    }
-
-  if(!getenv("DISPLAY"))
-  {
-    fprintf(stderr, "DISPLAY variable not set.\n");
-
-    return EXIT_FAILURE;
-  }
-
-  session_path = getenv("SESSION_PATH");
-
-  if(session_path)
-    unsetenv("SESSION_PATH");
-
-  chdir(getenv("HOME"));
-
-  mkdir(".cantera", 0777);
-  mkdir(".cantera/commands", 0777);
-  mkdir(".cantera/file-commands", 0777);
-  mkdir(".cantera/filemanager", 0777);
-
-  config = tree_load_cfg(".cantera/config");
-
-  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
-
-  for(i = 0, token = strtok(palette_str, " "); token;
-      ++i, token = strtok(0, " "))
-    {
-      if(palette[i] < 16)
-        palette[i] = 0xff000000 | strtol(token, 0, 16);
-    }
-  scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
-  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
-
-  signal(SIGTERM, sighandler);
-  signal(SIGIO, sighandler);
-  signal(SIGPIPE, SIG_IGN);
-  signal(SIGALRM, SIG_IGN);
-
-  setenv("TERM", "xterm", 1);
-
-  if(session_path)
-    {
-      session_fd = open(session_path, O_RDONLY);
-
-      if(session_fd != -1)
-        {
-          struct winsize ws;
-
-          if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
-            {
-              window_width = ws.ws_xpixel;
-              window_height = ws.ws_ypixel;
-            }
-        }
-    }
-  else
-    session_fd = -1;
-
-  x11_connect(getenv("DISPLAY"));
-
-  args[0] = command;
-  args[1] = 0;
-
-  init_session(args);
-
-  if(session_fd != -1)
-    {
-      size_t size;
-
-      size = terminal.size.ws_col * terminal.history_size;
-
-      read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
-      read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
-
-      if(terminal.cursorx >= terminal.size.ws_col
-         || terminal.cursory >= terminal.size.ws_row
-         || terminal.cursorx < 0
-         || terminal.cursory < 0)
-        {
-          terminal.cursorx = 0;
-          terminal.cursory = 0;
-        }
-      else
-        {
-          read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
-          read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
-
-          if(terminal.cursory >= terminal.size.ws_row)
-            terminal.cursory = terminal.size.ws_row - 1;
-          terminal.cursorx = 0;
-        }
-
-      close(session_fd);
-      unlink(session_path);
-    }
+  int xfd;
 
   xfd = ConnectionNumber(display);
 
@@ -2566,11 +2272,11 @@ int main(int argc, char** argv)
 
       fprintf(stderr, "select failed: %s\n", strerror(errno));
 
-      return EXIT_FAILURE;
+      return -1;
     }
 
     if(FD_ISSET(terminal.fd, &readset))
-      read_data();
+      term_read();
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
@@ -2578,7 +2284,7 @@ int main(int argc, char** argv)
         {
           save_session();
 
-          return EXIT_SUCCESS;
+          return 0;
         }
     }
 
@@ -2654,192 +2360,190 @@ int main(int argc, char** argv)
             }
           }
 
-          {
-            if (key_sym == XK_Insert && shift_pressed)
-            {
-              paste(event.xkey.time);
-            }
-            else if(key_sym >= XK_F1 && key_sym <= XK_F4)
-            {
-              char buf[4];
-              buf[0] = '\033';
-              buf[1] = 'O';
-              buf[2] = 'P' + key_sym - XK_F1;
-              buf[3] = 0;
+	  if (key_sym == XK_Insert && shift_pressed)
+	  {
+	    paste(event.xkey.time);
+	  }
+	  else if(key_sym >= XK_F1 && key_sym <= XK_F4)
+	  {
+	    char buf[4];
+	    buf[0] = '\033';
+	    buf[1] = 'O';
+	    buf[2] = 'P' + key_sym - XK_F1;
+	    buf[3] = 0;
 
-              term_write(buf);
-            }
-            else if(key_sym >= XK_F5 && key_sym <= XK_F12)
-            {
-              static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
+	    term_strwrite(buf);
+	  }
+	  else if(key_sym >= XK_F5 && key_sym <= XK_F12)
+	  {
+	    static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
 
-              char buf[6];
-              buf[0] = '\033';
-              buf[1] = '[';
-              buf[2] = '0' + off[key_sym - XK_F5] / 10;
-              buf[3] = '0' + off[key_sym - XK_F5] % 10;
-              buf[4] = '~';
-              buf[5] = 0;
+	    char buf[6];
+	    buf[0] = '\033';
+	    buf[1] = '[';
+	    buf[2] = '0' + off[key_sym - XK_F5] / 10;
+	    buf[3] = '0' + off[key_sym - XK_F5] % 10;
+	    buf[4] = '~';
+	    buf[5] = 0;
 
-              term_write(buf);
-            }
-            else if(key_sym == XK_Up)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+	    term_strwrite(buf);
+	  }
+	  else if(key_sym == XK_Up)
+	  {
+	    if(shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll < scroll_extra)
-                    {
-                      ++terminal.history_scroll;
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if (ctrl_pressed)
-                term_write("\033[5~");
-              else if(terminal.appcursor)
-                term_write("\033OA");
-              else
-                term_write("\033[A");
-            }
-            else if(key_sym == XK_Down)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		if(terminal.history_scroll < scroll_extra)
+		  {
+		    ++terminal.history_scroll;
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if (ctrl_pressed)
+	      term_strwrite("\033[5~");
+	    else if(terminal.appcursor)
+	      term_strwrite("\033OA");
+	    else
+	      term_strwrite("\033[A");
+	  }
+	  else if(key_sym == XK_Down)
+	  {
+	    if(shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll)
-                    {
-                      --terminal.history_scroll;
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if (ctrl_pressed)
-                term_write("\033[6~");
-              else if(terminal.appcursor)
-                term_write("\033OB");
-              else
-                term_write("\033[B");
-            }
-            else if(key_sym == XK_Right)
-            {
-              if (ctrl_pressed)
-                term_write(terminal.appcursor ? "\033OF" : "\033[F");
-              else if(terminal.appcursor)
-                term_write("\033OC");
-              else
-                term_write("\033[C");
-            }
-            else if(key_sym == XK_Left)
-            {
-              if (ctrl_pressed)
-                term_write(terminal.appcursor ? "\033OH" : "\033[H");
-              else if(terminal.appcursor)
-                term_write("\033OD");
-              else
-                term_write("\033[D");
-            }
-            else if(key_sym == XK_Insert)
-            {
-              term_write("\033[2~");
-            }
-            else if(key_sym == XK_Delete)
-            {
-              term_write("\033[3~");
-            }
-            else if(key_sym == XK_Page_Up)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		if(terminal.history_scroll)
+		  {
+		    --terminal.history_scroll;
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if (ctrl_pressed)
+	      term_strwrite("\033[6~");
+	    else if(terminal.appcursor)
+	      term_strwrite("\033OB");
+	    else
+	      term_strwrite("\033[B");
+	  }
+	  else if(key_sym == XK_Right)
+	  {
+	    if (ctrl_pressed)
+	      term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
+	    else if(terminal.appcursor)
+	      term_strwrite("\033OC");
+	    else
+	      term_strwrite("\033[C");
+	  }
+	  else if(key_sym == XK_Left)
+	  {
+	    if (ctrl_pressed)
+	      term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
+	    else if(terminal.appcursor)
+	      term_strwrite("\033OD");
+	    else
+	      term_strwrite("\033[D");
+	  }
+	  else if(key_sym == XK_Insert)
+	  {
+	    term_strwrite("\033[2~");
+	  }
+	  else if(key_sym == XK_Delete)
+	  {
+	    term_strwrite("\033[3~");
+	  }
+	  else if(key_sym == XK_Page_Up)
+	  {
+	    if(shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  terminal.history_scroll += terminal.size.ws_row;
+		terminal.history_scroll += terminal.size.ws_row;
 
-                  if(terminal.history_scroll > scroll_extra)
-                    terminal.history_scroll = scroll_extra;
+		if(terminal.history_scroll > scroll_extra)
+		  terminal.history_scroll = scroll_extra;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write("\033[5~");
-            }
-            else if(key_sym == XK_Page_Down)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite("\033[5~");
+	  }
+	  else if(key_sym == XK_Page_Down)
+	  {
+	    if(shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll > terminal.size.ws_row)
-                    terminal.history_scroll -= terminal.size.ws_row;
-                  else
-                    terminal.history_scroll = 0;
+		if(terminal.history_scroll > terminal.size.ws_row)
+		  terminal.history_scroll -= terminal.size.ws_row;
+		else
+		  terminal.history_scroll = 0;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write("\033[6~");
-            }
-            else if(key_sym == XK_Home)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite("\033[6~");
+	  }
+	  else if(key_sym == XK_Home)
+	  {
+	    if(shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll != scroll_extra)
-                    {
-                      terminal.history_scroll = scroll_extra;
+		if(terminal.history_scroll != scroll_extra)
+		  {
+		    terminal.history_scroll = scroll_extra;
 
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if(terminal.appcursor)
-                term_write("\033OH");
-              else
-                term_write("\033[H");
-            }
-            else if(key_sym == XK_End)
-            {
-              if(terminal.appcursor)
-                term_write("\033OF");
-              else
-                term_write("\033[F");
-            }
-            else if(key_sym == XK_space)
-            {
-              /*
-                 if(mod1_pressed)
-                 term_write("\033");
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if(terminal.appcursor)
+	      term_strwrite("\033OH");
+	    else
+	      term_strwrite("\033[H");
+	  }
+	  else if(key_sym == XK_End)
+	  {
+	    if(terminal.appcursor)
+	      term_strwrite("\033OF");
+	    else
+	      term_strwrite("\033[F");
+	  }
+	  else if(key_sym == XK_space)
+	  {
+	    /*
+	       if(mod1_pressed)
+	       term_strwrite("\033");
 
-               */
-              if(mod1_pressed)
-                {
-                  temp_switch_screen = 1;
+	     */
+	    if(mod1_pressed)
+	      {
+		temp_switch_screen = 1;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write(" ");
-            }
-            else if(key_sym == XK_Shift_L || key_sym == XK_Shift_R
-                 || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
-            {
-              /* Do not generate characters on shift key, or gus'
-               * special shift keys */
-            }
-            else if(len)
-            {
-              if(mod1_pressed)
-                term_write("\033");
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite(" ");
+	  }
+	  else if(key_sym == XK_Shift_L || key_sym == XK_Shift_R
+	       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
+	  {
+	    /* Do not generate characters on shift key, or gus'
+	     * special shift keys */
+	  }
+	  else if(len)
+	  {
+	    if(mod1_pressed)
+	      term_strwrite("\033");
 
-              term_writen((const char*) text, len);
-            }
-          }
+	    term_write((const char*) text, len);
+	  }
 
-          if(history_scroll_reset && terminal.history_scroll)
-            {
-              terminal.history_scroll = 0;
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
-            }
+	  if(history_scroll_reset && terminal.history_scroll)
+	  {
+	    terminal.history_scroll = 0;
+	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	  }
         }
 
         break;
@@ -2863,35 +2567,33 @@ int main(int argc, char** argv)
 
         ctrl_pressed = (event.xkey.state & ControlMask);
 
-        {
-          if(event.xbutton.state & Button1Mask)
-          {
-            int x, y, new_select_end;
-            unsigned int size;
+	if(event.xbutton.state & Button1Mask)
+	{
+	  int x, y, new_select_end;
+	  unsigned int size;
 
-            size = terminal.history_size * terminal.size.ws_col;
+	  size = terminal.history_size * terminal.size.ws_col;
 
-            x = event.xbutton.x / terminal.xskip;
-            y = event.xbutton.y / terminal.yskip;
+	  x = event.xbutton.x / terminal.xskip;
+	  y = event.xbutton.y / terminal.yskip;
 
-            new_select_end = y * terminal.size.ws_col + x;
+	  new_select_end = y * terminal.size.ws_col + x;
 
-            if(terminal.history_scroll)
-              new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
+	  if(terminal.history_scroll)
+	    new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
 
-            if(ctrl_pressed)
-            {
-              find_range(range_word_or_url, &select_begin, &new_select_end);
-            }
+	  if(ctrl_pressed)
+	  {
+	    find_range(range_word_or_url, &select_begin, &new_select_end);
+	  }
 
-            if(new_select_end != select_end)
-            {
-              select_end = new_select_end;
+	  if(new_select_end != select_end)
+	  {
+	    select_end = new_select_end;
 
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
-            }
-          }
-        }
+	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	  }
+	}
 
         break;
 
@@ -3049,7 +2751,7 @@ int main(int argc, char** argv)
           if(type != xa_utf8_string || format != 8)
             break;
 
-          term_writen((char*) prop, nitems);
+          term_write((char*) prop, nitems);
 
           XFree(prop);
         }
@@ -3068,7 +2770,7 @@ int main(int argc, char** argv)
           if(window_width == event.xconfigure.width && window_height == event.xconfigure.height)
             break;
 
-          handle_configure(&event.xconfigure);
+          x11_handle_configure(&event.xconfigure);
         }
 
         break;
@@ -3114,6 +2816,186 @@ int main(int argc, char** argv)
       }
     }
   }
+
+  return 0;
+}
+
+int main(int argc, char** argv)
+{
+  char* args[2];
+  int i;
+  int session_fd;
+  char* palette_str;
+  char* token;
+
+  setlocale(LC_ALL, "en_US.UTF-8");
+
+  while ((i = getopt_long (argc, argv, "c:", long_options, 0)) != -1)
+  {
+    switch (i)
+    {
+    case 0:
+
+      break;
+
+    case 'c':
+
+      command = optarg;
+
+      break;
+
+    case 'i':
+
+      parent_window = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'p':
+
+      pty_fd = strtol (optarg, 0, 0);
+
+      break;
+
+
+    case 'w':
+
+      window_width = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'h':
+
+      window_height = strtol (optarg, 0, 0);
+
+      break;
+
+    case '?':
+
+      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
+
+      return EXIT_FAILURE;
+    }
+  }
+
+  if (print_help)
+    {
+      printf ("Usage: %s [OPTION]...\n"
+             "\n"
+             "  -c, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
+             "      --help     display this help and exit\n"
+             "      --version  display version information\n"
+             "\n"
+             "Report bugs to <morten@rashbox.org>\n", argv[0]);
+
+      return EXIT_SUCCESS;
+    }
+
+  if (print_version)
+    {
+      fprintf (stdout, "%s\n", PACKAGE_STRING);
+
+      return EXIT_SUCCESS;
+    }
+
+  if(!getenv("DISPLAY"))
+  {
+    fprintf(stderr, "DISPLAY variable not set.\n");
+
+    return EXIT_FAILURE;
+  }
+
+  session_path = getenv("SESSION_PATH");
+
+  if(session_path)
+    unsetenv("SESSION_PATH");
+
+  chdir(getenv("HOME"));
+
+  mkdir(".cantera", 0777);
+  mkdir(".cantera/commands", 0777);
+  mkdir(".cantera/file-commands", 0777);
+  mkdir(".cantera/filemanager", 0777);
+
+  config = tree_load_cfg(".cantera/config");
+
+  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
+
+  for(i = 0, token = strtok(palette_str, " "); token;
+      ++i, token = strtok(0, " "))
+    {
+      if(palette[i] < 16)
+        palette[i] = 0xff000000 | strtol(token, 0, 16);
+    }
+
+  scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
+  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
+  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
+
+  signal(SIGTERM, sighandler);
+  signal(SIGIO, sighandler);
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGALRM, SIG_IGN);
+
+  setenv("TERM", "xterm", 1);
+
+  if(session_path)
+    {
+      session_fd = open(session_path, O_RDONLY);
+
+      if(session_fd != -1)
+        {
+          struct winsize ws;
+
+          if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+            {
+              window_width = ws.ws_xpixel;
+              window_height = ws.ws_ypixel;
+            }
+        }
+    }
+  else
+    session_fd = -1;
+
+  x11_connect(getenv("DISPLAY"));
+
+  args[0] = command;
+  args[1] = 0;
+
+  init_session(args);
+
+  if(session_fd != -1)
+    {
+      size_t size;
+
+      size = terminal.size.ws_col * terminal.history_size;
+
+      read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
+      read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
+
+      if(terminal.cursorx >= terminal.size.ws_col
+         || terminal.cursory >= terminal.size.ws_row
+         || terminal.cursorx < 0
+         || terminal.cursory < 0)
+        {
+          terminal.cursorx = 0;
+          terminal.cursory = 0;
+        }
+      else
+        {
+          read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
+          read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
+
+          if(terminal.cursory >= terminal.size.ws_row)
+            terminal.cursory = terminal.size.ws_row - 1;
+          terminal.cursorx = 0;
+        }
+
+      close(session_fd);
+      unlink(session_path);
+    }
+
+  if (-1 == x11_process_events())
+    return EXIT_FAILURE;
 
   return EXIT_SUCCESS;
 }
