@@ -1223,7 +1223,7 @@ static void paste(Time time)
   XConvertSelection(display, XA_PRIMARY, xa_utf8_string, prop_paste, window, time);
 }
 
-static void process_data(unsigned char* buf, int count)
+static void term_process_data(unsigned char* buf, int count)
 {
   int j, k, l;
 
@@ -2083,7 +2083,7 @@ void term_read()
   }
   while(more);
 
-  process_data(buf, fill);
+  term_process_data(buf, fill);
 }
 
 void term_write(const char* data, size_t len)
