@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -22,6 +23,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sysexits.h>
 #include <unistd.h>
 #include <utmp.h>
 #include <wchar.h>
@@ -45,13 +47,14 @@ static int print_version;
 static int print_help;
 static unsigned int parent_window;
 static int pty_fd = -1;
-static char *command = "/bin/bash";
+static const char *title = "cantera-term";
 
 static struct option long_options[] =
 {
   { "width",    required_argument, 0,              'w' },
   { "height",   required_argument, 0,              'h' },
-  { "command",  required_argument, 0,              'c' },
+  { "title",    required_argument, 0,              'T' },
+  { "command",  required_argument, 0,              'e' },
   { "into",     required_argument, 0,              'i' },
   { "pty-fd",   required_argument, 0,              'p' },
   { "version",        no_argument, &print_version, 1 },
@@ -850,15 +853,22 @@ void init_session(char* const* args)
     }
   else
     {
+      stderr_backup = dup (2);
       terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size);
 
-      if(!terminal.pid)
+      if (terminal.pid == -1)
+	err (EX_OSERR, "forkpty() failed");
+
+      if (!terminal.pid)
         {
           terminal.xskip = xskips[terminal.fontsize];
           terminal.yskip = yskips[terminal.fontsize];
-          execve(args[0], args, environ);
 
-          exit(EXIT_FAILURE);
+          if (-1 == execve(args[0], args, environ))
+	  {
+	    dup2 (stderr_backup, 2);
+	    err (EXIT_FAILURE, "Failed to execute '%s'", args[0]);
+	  }
         }
     }
 
@@ -942,7 +952,7 @@ static void x11_connect(const char* display_name)
   XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
                   PropModeReplace, (unsigned char *) &pid, 1);
 
-  XStoreName(display, window, "cantera-term");
+  XStoreName(display, window, title);
   XMapWindow(display, window);
 
   focused = 1;
@@ -2822,15 +2832,19 @@ int x11_process_events()
 
 int main(int argc, char** argv)
 {
-  char* args[2];
+  char* args[16];
   int i;
   int session_fd;
   char* palette_str;
   char* token;
 
+  for (i = 1; i < argc; ++i)
+    if (!strcmp (argv[i], "-e"))
+      argv[i] = "--";
+
   setlocale(LC_ALL, "en_US.UTF-8");
 
-  while ((i = getopt_long (argc, argv, "c:", long_options, 0)) != -1)
+  while ((i = getopt_long (argc, argv, "T:", long_options, 0)) != -1)
   {
     switch (i)
     {
@@ -2838,9 +2852,9 @@ int main(int argc, char** argv)
 
       break;
 
-    case 'c':
+    case 'T':
 
-      command = optarg;
+      title = optarg;
 
       break;
 
@@ -2881,7 +2895,8 @@ int main(int argc, char** argv)
     {
       printf ("Usage: %s [OPTION]...\n"
              "\n"
-             "  -c, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
+             "  -T, --title=TITLE          set window title to TITLE\n"
+             "  -e, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
              "      --help     display this help and exit\n"
              "      --version  display version information\n"
              "\n"
@@ -2958,8 +2973,18 @@ int main(int argc, char** argv)
 
   x11_connect(getenv("DISPLAY"));
 
-  args[0] = command;
-  args[1] = 0;
+  if (optind < argc)
+  {
+    for (i = 0; i < argc - optind && i + 1 < sizeof(args) / sizeof(args[0]); ++i)
+      args[i] = argv[optind + i];
+
+    args[i] = 0;
+  }
+  else
+  {
+    args[0] = "/bin/bash";
+    args[1] = 0;
+  }
 
   init_session(args);
 
