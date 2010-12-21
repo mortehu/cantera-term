@@ -570,14 +570,6 @@ static void grab_keys()
   XGrabKey(display, 174, AnyModifier, root_window, False, GrabModeAsync, GrabModeAsync); /* volume down */
   XGrabKey(display, 176, AnyModifier, root_window, False, GrabModeAsync, GrabModeAsync); /* volume up */
 
-  /*
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_L), Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_R), Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_L), Mod2Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Control_R), Mod2Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Alt_L), ControlMask | Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  XGrabKey(display, XKeysymToKeycode(display, XK_Alt_R), ControlMask | Mod1Mask, root_window, False, GrabModeAsync, GrabModeAsync);
-  */
   XGrabKey(display, XKeysymToKeycode(display, XK_Alt_L), Mod4Mask, root_window, False, GrabModeAsync, GrabModeAsync);
   XGrabKey(display, XKeysymToKeycode(display, XK_Alt_R), Mod4Mask, root_window, False, GrabModeAsync, GrabModeAsync);
 
@@ -653,6 +645,29 @@ create_menu_cursor()
   XFreePixmap(display, mask);
 
   XFreeGC(display, gc);
+}
+
+static void composite_init()
+{
+#if 0
+  XRenderPictureAttributes pa;
+  int major, minor;
+
+  if(!XCompositeQueryExtension(display, &i, &i))
+    return;
+
+  XCompositeQueryVersion(display, &major, &minor);
+
+  if(!(major > 0 || minor >= 2))
+    return;
+
+  if(!XDamageQueryExtension(display, &damage_eventbase, &damage_errorbase))
+    return;
+
+  pa.subwindow_mode = IncludeInferiors;
+
+  XCompositeRedirectSubwindows(display, root_window, CompositeRedirectManual);
+#endif
 }
 
 static void x11_connect(const char* display_name)
@@ -837,6 +852,8 @@ static void x11_connect(const char* display_name)
     return;
   }
 
+  composite_init();
+
   font_init();
 
   menu_init();
@@ -941,7 +958,7 @@ window_gone(Window xwindow)
 
   ARRAY_REMOVE_PTR(&windows, w);
 
-  if (screen && screen->history_size > 1)
+  if (screen && screen->history_size > 1 && !w->transient_for)
     {
       i = desktop - screen->terminals;
 
@@ -1716,23 +1733,23 @@ void run_command(int fd, const char* command, const char* arg)
 
 void init_ximage(XImage* image, int width, int height, void* data)
 {
-    memset(image, 0, sizeof(XImage));
-    image->width = width;
-    image->height = height;
-    image->format = ZPixmap;
-    image->data = (char*) data;
+  memset(image, 0, sizeof(XImage));
+  image->width = width;
+  image->height = height;
+  image->format = ZPixmap;
+  image->data = (char*) data;
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-    image->byte_order = LSBFirst;
-    image->bitmap_bit_order = LSBFirst;
+  image->byte_order = LSBFirst;
+  image->bitmap_bit_order = LSBFirst;
 #else
-    image->byte_order = MSBFirst;
-    image->bitmap_bit_order = MSBFirst;
+  image->byte_order = MSBFirst;
+  image->bitmap_bit_order = MSBFirst;
 #endif
-    image->bitmap_unit = 32;
-    image->bitmap_pad = 32;
-    image->depth = 32;
-    image->bytes_per_line = width * 4;
-    image->bits_per_pixel = 32;
+  image->bitmap_unit = 32;
+  image->bitmap_pad = 32;
+  image->depth = 32;
+  image->bytes_per_line = width * 4;
+  image->bits_per_pixel = 32;
 }
 
 // vim: ts=2 sw=2 et sts=2

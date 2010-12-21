@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -22,6 +23,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sysexits.h>
 #include <unistd.h>
 #include <utmp.h>
 #include <wchar.h>
@@ -45,9 +47,14 @@ static int print_version;
 static int print_help;
 static unsigned int parent_window;
 static int pty_fd = -1;
+static const char *title = "cantera-term";
 
 static struct option long_options[] =
 {
+  { "width",    required_argument, 0,              'w' },
+  { "height",   required_argument, 0,              'h' },
+  { "title",    required_argument, 0,              'T' },
+  { "command",  required_argument, 0,              'e' },
   { "into",     required_argument, 0,              'i' },
   { "pty-fd",   required_argument, 0,              'p' },
   { "version",        no_argument, &print_version, 1 },
@@ -107,12 +114,6 @@ struct terminal
 
   unsigned int history_scroll;
 
-  int document;
-  unsigned char* doc_buf;
-  size_t doc_buf_size;
-  size_t doc_buf_payload;
-  size_t doc_buf_alloc;
-
   struct
   {
     struct cnt_image* image;
@@ -147,7 +148,7 @@ XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picgradients[256];
 
-unsigned int window_width, window_height;
+unsigned int window_width = 800, window_height = 600;
 
 static void normalize_offset();
 
@@ -269,7 +270,7 @@ void *memset16(void *s, int w, size_t n)
 
   n >>= 1;
 
-  while(n--)
+  while (n--)
     *o++ = w;
 
   return s;
@@ -295,13 +296,13 @@ static void insert_chars(int count)
 
   size = terminal.size.ws_col * terminal.history_size;
 
-  for(k = terminal.size.ws_col; k-- > terminal.cursorx + count; )
+  for (k = terminal.size.ws_col; k-- > terminal.cursorx + count; )
   {
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curchars[(terminal.cursory * terminal.size.ws_col + k - count + *terminal.curoffset) % size];
     terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k - count + *terminal.curoffset) % size];
   }
 
-  while(k >= terminal.cursorx)
+  while (k >= terminal.cursorx)
   {
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 'X';
     terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
@@ -315,16 +316,16 @@ static void addchar(int ch)
 
   size = terminal.size.ws_col * terminal.history_size;
 
-  if(terminal.alt_charset[terminal.curscreen])
+  if (terminal.alt_charset[terminal.curscreen])
     {
-      if(ch >= 0x41 && ch <= 0x7e)
+      if (ch >= 0x41 && ch <= 0x7e)
         ch = alt_charset[ch - 0x41];
     }
 
-  if(ch < 32)
+  if (ch < 32)
     return;
 
-  if(ch == 0x7f || ch >= 65536)
+  if (ch == 0x7f || ch >= 65536)
   {
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.curattr;
@@ -334,10 +335,10 @@ static void addchar(int ch)
 
   int width = wcwidth(ch);
 
-  if(!width)
+  if (!width)
     return;
 
-  if(width > 1)
+  if (width > 1)
   {
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1 + *terminal.curoffset) % size] = 0xffff;
@@ -345,12 +346,12 @@ static void addchar(int ch)
     terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1 + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
     terminal.cursorx += width;
 
-    if(terminal.cursorx > terminal.size.ws_col)
+    if (terminal.cursorx > terminal.size.ws_col)
       terminal.cursorx = terminal.size.ws_col;
   }
   else
   {
-    if(terminal.insertmode)
+    if (terminal.insertmode)
       insert_chars(1);
 
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
@@ -371,7 +372,7 @@ static void paint(int x, int y, int width, int height)
 
   size = terminal.history_size * terminal.size.ws_col;
 
-  if(terminal.image_count)
+  if (terminal.image_count)
   {
     XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
     memset(screenchars, 0xff, cols * rows * sizeof(wchar_t));
@@ -400,7 +401,7 @@ static void paint(int x, int y, int width, int height)
     }
 
   {
-    if(select_begin < select_end)
+    if (select_begin < select_end)
     {
       selbegin = select_begin;
       selend = select_end;
@@ -414,7 +415,7 @@ static void paint(int x, int y, int width, int height)
     selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
     selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
 
-    for(row = 0; row < terminal.size.ws_row; ++row)
+    for (row = 0; row < terminal.size.ws_row; ++row)
     {
       size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + curoffset) % size;
       wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
@@ -423,7 +424,7 @@ static void paint(int x, int y, int width, int height)
       const uint16_t* attrline = &curattrs[pos];
       int start = 0, end, x = 0;
 
-      while(start < terminal.size.ws_col)
+      while (start < terminal.size.ws_col)
       {
         int width, height;
         int printable;
@@ -431,27 +432,27 @@ static void paint(int x, int y, int width, int height)
         int attr = attrline[start];
         int localattr = -1;
 
-        if(focused
+        if (focused
            && row == cursory + terminal.history_scroll
            && start == cursorx)
         {
           attr = REVERSE(attr);
 
-          if(!attr)
+          if (!attr)
             attr = BG(ATTR_WHITE);
         }
 
         printable = (line[start] != 0);
 
-        if(row * terminal.size.ws_col + start == selbegin)
+        if (row * terminal.size.ws_col + start == selbegin)
           in_selection = 1;
 
-        if(row * terminal.size.ws_col + start == selend)
+        if (row * terminal.size.ws_col + start == selend)
           in_selection = 0;
 
-        if(in_selection)
+        if (in_selection)
           {
-            if(line[start] != screenline[start] && !button1_pressed)
+            if (line[start] != screenline[start] && !button1_pressed)
               {
                 in_selection = 0;
                 select_begin = -1;
@@ -471,14 +472,14 @@ static void paint(int x, int y, int width, int height)
 
         end = start + 1;
 
-        while(end < terminal.size.ws_col)
+        while (end < terminal.size.ws_col)
         {
           localattr = attrline[end];
 
-          if(row * terminal.size.ws_col + end >= selbegin
+          if (row * terminal.size.ws_col + end >= selbegin
           && row * terminal.size.ws_col + end < selend)
           {
-            if(line[end] != screenline[end] && !button1_pressed)
+            if (line[end] != screenline[end] && !button1_pressed)
             {
               selbegin = select_begin = -1;
               selend = select_end = -1;
@@ -487,24 +488,24 @@ static void paint(int x, int y, int width, int height)
               localattr = REVERSE(localattr);
           }
 
-          if(localattr != attr)
+          if (localattr != attr)
             break;
 
-          if(row == cursory && end == cursorx)
+          if (row == cursory && end == cursorx)
             break;
 
-          if((line[end] != 0) != printable)
+          if ((line[end] != 0) != printable)
             break;
 
 #if PARTIAL_REPAINT
-          if(update)
+          if (update)
           {
-            if(line[end] == screenline[end] && attr == screenattrline[end])
+            if (line[end] == screenline[end] && attr == screenattrline[end])
               break;
           }
           else
           {
-            if(line[end] != screenline[end] || attr != screenattrline[end])
+            if (line[end] != screenline[end] || attr != screenattrline[end])
               break;
           }
 #endif
@@ -515,23 +516,23 @@ static void paint(int x, int y, int width, int height)
         width = (end - start) * terminal.xskip;
         height = terminal.yskip;
 
-        for(i = start; i < end; ++i)
+        for (i = start; i < end; ++i)
         {
           screenline[i] = line[i];
           screenattrline[i] = attr;
         }
 
-        if(!printable)
+        if (!printable)
         {
-          if(update || !PARTIAL_REPAINT)
+          if (update || !PARTIAL_REPAINT)
           {
-            if(x < minx) minx =x;
-            if(row * terminal.yskip < miny) miny = row * terminal.yskip;
-            if(x + width > maxx) maxx = x + width;
-            if(row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
+            if (x < minx) minx =x;
+            if (row * terminal.yskip < miny) miny = row * terminal.yskip;
+            if (x + width > maxx) maxx = x + width;
+            if (row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
             XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[(attr >> 4) & 0x07], x, row * terminal.yskip, width, height);
 
-            if(attr & ATTR_UNDERLINE)
+            if (attr & ATTR_UNDERLINE)
             {
               XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[attr & 0x0F], x, (row + 1) * terminal.yskip - 1, width, 1);
             }
@@ -543,17 +544,17 @@ static void paint(int x, int y, int width, int height)
           continue;
         }
 
-        if(update || !PARTIAL_REPAINT)
+        if (update || !PARTIAL_REPAINT)
         {
-          if(x < minx) minx =x;
-          if(row * terminal.yskip < miny) miny = row * terminal.yskip;
-          if(x + width > maxx) maxx = x + width;
-          if(row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
+          if (x < minx) minx =x;
+          if (row * terminal.yskip < miny) miny = row * terminal.yskip;
+          if (x + width > maxx) maxx = x + width;
+          if (row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
           XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[(attr >> 4) & 0x07], x, row * terminal.yskip, width, height);
 
           drawtext(root_buffer, &line[start], end - start, x, row * terminal.yskip, attr & 0x0F, SMALL);
 
-          if(attr & ATTR_UNDERLINE)
+          if (attr & ATTR_UNDERLINE)
           {
             XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[attr & 0x0F], x, (row + 1) * terminal.yskip - 1, width, 1);
           }
@@ -565,16 +566,16 @@ static void paint(int x, int y, int width, int height)
       }
     }
 
-    for(i = 0; i < terminal.image_count; )
+    for (i = 0; i < terminal.image_count; )
     {
-      if(terminal.images[i].screen != terminal.curscreen)
+      if (terminal.images[i].screen != terminal.curscreen)
       {
         ++i;
 
         continue;
       }
 
-      if(terminal.images[i].char_y + terminal.images[i].rows < 0)
+      if (terminal.images[i].char_y + terminal.images[i].rows < 0)
       {
         --terminal.image_count;
         cnt_image_free(&terminal.images[i].image);
@@ -589,11 +590,11 @@ static void paint(int x, int y, int width, int height)
                          terminal.images[i].char_y * yskips[SMALL],
                          terminal.images[i].width, terminal.images[i].height);
 
-        for(row = terminal.images[i].char_y; row < terminal.images[i].char_y + rows; ++row)
+        for (row = terminal.images[i].char_y; row < terminal.images[i].char_y + rows; ++row)
         {
-          for(col = terminal.images[i].char_x; col < terminal.images[i].char_x + cols; ++col)
+          for (col = terminal.images[i].char_x; col < terminal.images[i].char_x + cols; ++col)
           {
-            if(row >= 0 && col >= 0 && row < terminal.size.ws_row && col < terminal.size.ws_col)
+            if (row >= 0 && col >= 0 && row < terminal.size.ws_row && col < terminal.size.ws_col)
               screenchars[row * terminal.size.ws_col + col] = 0xffff;
           }
         }
@@ -604,7 +605,7 @@ static void paint(int x, int y, int width, int height)
 
     i = terminal.size.ws_row * terminal.yskip;
 
-    if(i < window_height)
+    if (i < window_height)
     {
       XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
                            0, i, window_width, window_height - i);
@@ -612,7 +613,7 @@ static void paint(int x, int y, int width, int height)
 
     i = terminal.size.ws_col * terminal.xskip;
 
-    if(i < window_width)
+    if (i < window_width)
     {
       XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
                            i, 0,
@@ -620,7 +621,7 @@ static void paint(int x, int y, int width, int height)
     }
   }
 
-  if(root_buffer != root_picture)
+  if (root_buffer != root_picture)
   {
     XRenderComposite(display, PictOpSrc, root_buffer, None, root_picture,
                      x, y, 0, 0, x, y, width, height);
@@ -632,10 +633,10 @@ static void normalize_offset()
   int size = terminal.size.ws_col * terminal.history_size;
   int i;
 
-  if(!*terminal.curoffset)
+  if (!*terminal.curoffset)
     return;
 
-  for(i = 0; i < 2; ++i)
+  for (i = 0; i < 2; ++i)
   {
     int offset = terminal.offset[i];
     wchar_t* tmpchars;
@@ -668,13 +669,13 @@ static void scroll(int fromcursor)
   size_t i;
   int first, length;
 
-  for(i = 0; i < terminal.image_count; ++i)
+  for (i = 0; i < terminal.image_count; ++i)
   {
-    if(terminal.images[i].screen == terminal.curscreen)
+    if (terminal.images[i].screen == terminal.curscreen)
       --terminal.images[i].char_y;
   }
 
-  if(!fromcursor && terminal.scrolltop == 0 && terminal.scrollbottom == terminal.size.ws_row)
+  if (!fromcursor && terminal.scrolltop == 0 && terminal.scrollbottom == terminal.size.ws_row)
   {
     size_t clear_offset;
 
@@ -692,7 +693,7 @@ static void scroll(int fromcursor)
 
   normalize_offset();
 
-  if(fromcursor)
+  if (fromcursor)
   {
     first = terminal.cursory * terminal.size.ws_col;
     length = (terminal.scrollbottom - terminal.cursory - 1) * terminal.size.ws_col;
@@ -716,7 +717,7 @@ static void rscroll(int fromcursor)
 
   normalize_offset();
 
-  if(fromcursor)
+  if (fromcursor)
   {
     first = terminal.cursory * terminal.size.ws_col;
     length = (terminal.scrollbottom - terminal.cursory - 1) * terminal.size.ws_col;
@@ -749,18 +750,18 @@ static int find_range(int range, int* begin, int* end)
   size = terminal.history_size * terminal.size.ws_col;
   offset = *terminal.curoffset;
 
-  if(range == range_word_or_url)
+  if (range == range_word_or_url)
   {
     i = *begin;
 
-    while(i)
+    while (i)
     {
-      if(!(i % terminal.size.ws_col))
+      if (!(i % terminal.size.ws_col))
         break;
 
       ch = terminal.curchars[(offset + i - 1) % size];
 
-      if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
+      if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
 
       --i;
@@ -770,11 +771,11 @@ static int find_range(int range, int* begin, int* end)
 
     i = *end;
 
-    while((i % terminal.size.ws_col) < terminal.size.ws_col)
+    while ((i % terminal.size.ws_col) < terminal.size.ws_col)
     {
       ch = terminal.curchars[(offset + i) % size];
 
-      if(ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
+      if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch))
         break;
 
       ++i;
@@ -782,33 +783,33 @@ static int find_range(int range, int* begin, int* end)
 
     *end = i;
 
-    if(*begin == *end)
+    if (*begin == *end)
       return 0;
 
     return 1;
   }
-  else if(range == range_parenthesis)
+  else if (range == range_parenthesis)
   {
     int paren_level = 0;
     i = *begin;
 
-    while(i > 0)
+    while (i > 0)
     {
       ch = terminal.curchars[(offset + i) % size];
 
-      if((!ch || ((i + 1) % terminal.size.ws_col == 0) || isspace(ch)) && !paren_level)
+      if ((!ch || ((i + 1) % terminal.size.ws_col == 0) || isspace(ch)) && !paren_level)
       {
         ++i;
 
         break;
       }
 
-      if(ch == ')')
+      if (ch == ')')
         ++paren_level;
 
-      if(ch == '(')
+      if (ch == '(')
       {
-        if(!paren_level)
+        if (!paren_level)
           break;
 
         --paren_level;
@@ -819,9 +820,9 @@ static int find_range(int range, int* begin, int* end)
 
     *begin = i;
 
-    if(*end > i + 1)
+    if (*end > i + 1)
     {
-      if(terminal.curchars[(offset + *end - 1) % size] == '=')
+      if (terminal.curchars[(offset + *end - 1) % size] == '=')
         --*end;
     }
 
@@ -834,6 +835,7 @@ static int find_range(int range, int* begin, int* end)
 void init_session(char* const* args)
 {
   char* c;
+  int stderr_backup;
 
   memset(&terminal, 0, sizeof(terminal));
 
@@ -852,15 +854,22 @@ void init_session(char* const* args)
     }
   else
     {
+      stderr_backup = dup (2);
       terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size);
 
-      if(!terminal.pid)
+      if (terminal.pid == -1)
+	err (EX_OSERR, "forkpty() failed");
+
+      if (!terminal.pid)
         {
           terminal.xskip = xskips[terminal.fontsize];
           terminal.yskip = yskips[terminal.fontsize];
-          execve(args[0], args, environ);
 
-          exit(EXIT_FAILURE);
+          if (-1 == execve(args[0], args, environ))
+	  {
+	    dup2 (stderr_backup, 2);
+	    err (EXIT_FAILURE, "Failed to execute '%s'", args[0]);
+	  }
         }
     }
 
@@ -894,7 +903,7 @@ static void x11_connect(const char* display_name)
 
   display = XOpenDisplay(display_name);
 
-  if(!display)
+  if (!display)
   {
     fprintf(stderr, "Failed to open display %s\n", display_name);
 
@@ -944,20 +953,20 @@ static void x11_connect(const char* display_name)
   XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
                   PropModeReplace, (unsigned char *) &pid, 1);
 
-  XStoreName(display, window, "cantera-term");
+  XStoreName(display, window, title);
   XMapWindow(display, window);
 
   focused = 1;
 
   xim = 0;
 
-  if((c = XSetLocaleModifiers("")) && *c)
+  if ((c = XSetLocaleModifiers("")) && *c)
     xim = XOpenIM(display, 0, 0, 0);
 
-  if(!xim && (c = XSetLocaleModifiers("@im=none")) && *c)
+  if (!xim && (c = XSetLocaleModifiers("@im=none")) && *c)
     xim = XOpenIM(display, 0, 0, 0);
 
-  if(!xim)
+  if (!xim)
   {
     fprintf(stderr, "Failed to open X Input Method\n");
 
@@ -967,7 +976,7 @@ static void x11_connect(const char* display_name)
   xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
                   XNClientWindow, window, XNFocusWindow, window, NULL);
 
-  if(!xic)
+  if (!xic)
   {
     fprintf(stderr, "Failed to create X Input Context\n");
 
@@ -976,7 +985,7 @@ static void x11_connect(const char* display_name)
 
   xrenderpictformat = XRenderFindVisualFormat(display, visual);
 
-  if(!xrenderpictformat)
+  if (!xrenderpictformat)
   {
     fprintf(stderr, "XRenderFindVisualFormat failed.\n");
 
@@ -987,7 +996,7 @@ static void x11_connect(const char* display_name)
 
   gc = XCreateGC(display, window, 0, 0);
 
-  for(i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
+  for (i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
   {
     Pixmap pmap;
     XRenderPictureAttributes attr;
@@ -1010,7 +1019,7 @@ static void x11_connect(const char* display_name)
                          &xrpalette[i], 0, 0, 1, 1);
   }
 
-  for(i = 0; i < 256; ++i)
+  for (i = 0; i < 256; ++i)
   {
     Pixmap pmap;
     XRenderPictureAttributes attr;
@@ -1036,7 +1045,7 @@ static void x11_connect(const char* display_name)
   alpha_glyphs[0] = XRenderCreateGlyphSet(display, a8pictformat);
   alpha_glyphs[1] = XRenderCreateGlyphSet(display, a8pictformat);
 
-  if(!alpha_glyphs[0] || !alpha_glyphs[1])
+  if (!alpha_glyphs[0] || !alpha_glyphs[1])
   {
     fprintf(stderr, "XRenderCreateGlyphSet failed.\n");
 
@@ -1056,7 +1065,7 @@ static void x11_connect(const char* display_name)
     pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
     root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
 
-    if(root_buffer == None)
+    if (root_buffer == None)
     {
       fprintf(stderr, "Failed to create root buffer\n");
 
@@ -1083,12 +1092,12 @@ static void save_session()
   int fd;
   size_t size;
 
-  if(!session_path)
+  if (!session_path)
     return;
 
   fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 
-  if(fd == -1)
+  if (fd == -1)
     return;
 
   normalize_offset();
@@ -1110,7 +1119,7 @@ static void sighandler(int signal)
 
   fprintf(stderr, "Got signal %d\n", signal);
 
-  if(first)
+  if (first)
     {
       first = 0;
       save_session();
@@ -1124,19 +1133,19 @@ static void update_selection(Time time)
   int i;
   unsigned int size, offset;
 
-  if(select_begin == select_end)
+  if (select_begin == select_end)
     return;
 
   size = terminal.size.ws_col * terminal.history_size;
   offset = *terminal.curoffset;
 
-  if(select_text)
+  if (select_text)
   {
     free(select_text);
     select_text = 0;
   }
 
-  if(select_begin > select_end)
+  if (select_begin > select_end)
   {
     i = select_begin;
     select_begin = select_end;
@@ -1151,45 +1160,45 @@ static void update_selection(Time time)
   size_t last_graph_col = 0;
   i = select_begin;
 
-  while(i != select_end)
+  while (i != select_end)
   {
     int ch = terminal.curchars[(i + offset) % size];
     int width = terminal.size.ws_col;
 
-    if(ch == 0 || ch == 0xffff)
+    if (ch == 0 || ch == 0xffff)
       ch = ' ';
 
-    if(select_length + 4 > select_alloc)
+    if (select_length + 4 > select_alloc)
     {
       select_alloc *= 2;
       select_text = realloc(select_text, select_alloc);
     }
 
-    if(i > select_begin && (i % width) == 0)
+    if (i > select_begin && (i % width) == 0)
     {
       select_length = last_graph;
-      if(last_graph_col != (width - 1))
+      if (last_graph_col != (width - 1))
         select_text[select_length++] = '\n';
       last_graph = select_length;
     }
 
-    if(ch < 0x80)
+    if (ch < 0x80)
     {
       select_text[select_length++] = ch;
     }
-    else if(ch < 0x800)
+    else if (ch < 0x800)
     {
       select_text[select_length++] = 0xC0 | (ch >> 6);
       select_text[select_length++] = 0x80 | (ch & 0x3F);
     }
-    else if(ch < 0x10000)
+    else if (ch < 0x10000)
     {
       select_text[select_length++] = 0xE0 | (ch >> 12);
       select_text[select_length++] = 0x80 | ((ch >> 6) & 0x3F);
       select_text[select_length++] = 0x80 | (ch & 0x3f);
     }
 
-    if(ch != ' ')
+    if (ch != ' ')
     {
       last_graph = select_length;
       last_graph_col = i % width;
@@ -1203,7 +1212,7 @@ static void update_selection(Time time)
 
   XSetSelectionOwner(display, XA_PRIMARY, window, time);
 
-  if(window != XGetSelectionOwner(display, XA_PRIMARY))
+  if (window != XGetSelectionOwner(display, XA_PRIMARY))
   {
     select_begin = select_end;
     free(select_text);
@@ -1217,7 +1226,7 @@ static void paste(Time time)
 
   selowner = XGetSelectionOwner(display, XA_PRIMARY);
 
-  if(selowner == None)
+  if (selowner == None)
     return;
 
   XDeleteProperty(display, window, prop_paste);
@@ -1225,9 +1234,7 @@ static void paste(Time time)
   XConvertSelection(display, XA_PRIMARY, xa_utf8_string, prop_paste, window, time);
 }
 
-static void append_doc_data(void* data, size_t size);
-
-static void process_data(unsigned char* buf, int count)
+static void term_process_data(unsigned char* buf, int count)
 {
   int j, k, l;
 
@@ -1238,19 +1245,19 @@ static void process_data(unsigned char* buf, int count)
   j = 0;
 
   /* Redundant character processing code for the typical case */
-  if(!terminal.escape && !terminal.insertmode && !terminal.nch)
+  if (!terminal.escape && !terminal.insertmode && !terminal.nch)
   {
-    for(; j < count; ++j)
+    for (; j < count; ++j)
     {
-      if(buf[j] >= ' ' && buf[j] <= '~')
+      if (buf[j] >= ' ' && buf[j] <= '~')
       {
-        if(terminal.cursorx == terminal.size.ws_col)
+        if (terminal.cursorx == terminal.size.ws_col)
         {
           ++terminal.cursory;
           terminal.cursorx = 0;
         }
 
-        while(terminal.cursory >= terminal.size.ws_row)
+        while (terminal.cursory >= terminal.size.ws_row)
         {
           scroll(0);
           --terminal.cursory;
@@ -1260,13 +1267,13 @@ static void process_data(unsigned char* buf, int count)
         terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
         ++terminal.cursorx;
       }
-      else if(buf[j] == '\r')
+      else if (buf[j] == '\r')
         terminal.cursorx = 0;
-      else if(buf[j] == '\n')
+      else if (buf[j] == '\n')
       {
         ++terminal.cursory;
 
-        while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+        while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
         {
           scroll(0);
           --terminal.cursory;
@@ -1277,7 +1284,7 @@ static void process_data(unsigned char* buf, int count)
     }
   }
 
-  for(; j < count; ++j)
+  for (; j < count; ++j)
   {
     switch(terminal.escape)
     {
@@ -1294,14 +1301,14 @@ static void process_data(unsigned char* buf, int count)
 
       case '\b':
 
-        if(terminal.cursorx > 0)
+        if (terminal.cursorx > 0)
           --terminal.cursorx;
 
         break;
 
       case '\t':
 
-        if(terminal.cursorx < terminal.size.ws_col - 8)
+        if (terminal.cursorx < terminal.size.ws_col - 8)
         {
           terminal.cursorx = (terminal.cursorx + 8) & ~7;
         }
@@ -1316,7 +1323,7 @@ static void process_data(unsigned char* buf, int count)
 
         ++terminal.cursory;
 
-        while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+        while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
         {
           scroll(0);
           --terminal.cursory;
@@ -1332,7 +1339,7 @@ static void process_data(unsigned char* buf, int count)
 
       case '\177':
 
-        if(terminal.cursory < terminal.size.ws_row)
+        if (terminal.cursory < terminal.size.ws_row)
           terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
 
         break;
@@ -1350,21 +1357,21 @@ static void process_data(unsigned char* buf, int count)
         assert(terminal.cursorx >= 0 && terminal.cursorx <= terminal.size.ws_col);
         assert(terminal.cursory >= 0 && terminal.cursory < terminal.size.ws_row);
 
-        if(terminal.cursorx == terminal.size.ws_col)
+        if (terminal.cursorx == terminal.size.ws_col)
         {
           ++terminal.cursory;
           terminal.cursorx = 0;
         }
 
-        while(terminal.cursory >= terminal.size.ws_row)
+        while (terminal.cursory >= terminal.size.ws_row)
         {
           scroll(0);
           --terminal.cursory;
         }
 
-        if(terminal.nch)
+        if (terminal.nch)
         {
-          if((buf[j] & 0xC0) != 0x80)
+          if ((buf[j] & 0xC0) != 0x80)
           {
             terminal.nch = 0;
             addchar(buf[j]);
@@ -1374,7 +1381,7 @@ static void process_data(unsigned char* buf, int count)
             terminal.ch <<= 6;
             terminal.ch |= buf[j] & 0x3F;
 
-            if(0 == --terminal.nch)
+            if (0 == --terminal.nch)
             {
               addchar(terminal.ch);
             }
@@ -1382,26 +1389,26 @@ static void process_data(unsigned char* buf, int count)
         }
         else
         {
-          if((buf[j] & 0x80) == 0)
+          if ((buf[j] & 0x80) == 0)
           {
             addchar(buf[j]);
           }
-          else if((buf[j] & 0xE0) == 0xC0)
+          else if ((buf[j] & 0xE0) == 0xC0)
           {
             terminal.ch = buf[j] & 0x1F;
             terminal.nch = 1;
           }
-          else if((buf[j] & 0xF0) == 0xE0)
+          else if ((buf[j] & 0xF0) == 0xE0)
           {
             terminal.ch = buf[j] & 0x0F;
             terminal.nch = 2;
           }
-          else if((buf[j] & 0xF8) == 0xF0)
+          else if ((buf[j] & 0xF8) == 0xF0)
           {
             terminal.ch = buf[j] & 0x03;
             terminal.nch = 3;
           }
-          else if((buf[j] & 0xFC) == 0xF8)
+          else if ((buf[j] & 0xFC) == 0xF8)
           {
             terminal.ch = buf[j] & 0x01;
             terminal.nch = 4;
@@ -1419,7 +1426,7 @@ static void process_data(unsigned char* buf, int count)
 
           ++terminal.cursory;
 
-          while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+          while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
             {
               scroll(0);
               --terminal.cursory;
@@ -1433,7 +1440,7 @@ static void process_data(unsigned char* buf, int count)
           terminal.cursorx = 0;
           ++terminal.cursory;
 
-          while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+          while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
             {
               scroll(0);
               --terminal.cursory;
@@ -1478,9 +1485,9 @@ static void process_data(unsigned char* buf, int count)
 
         case 'M':
 
-          if(terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
+          if (terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
             rscroll(0);
-          else if(terminal.cursory)
+          else if (terminal.cursory)
             --terminal.cursory;
 
           terminal.escape = 0;
@@ -1496,16 +1503,16 @@ static void process_data(unsigned char* buf, int count)
 
     default:
 
-      if(terminal.param[0] == -1)
+      if (terminal.param[0] == -1)
         {
           terminal.escape = 0;
         }
-      else if(terminal.param[0] == -2)
+      else if (terminal.param[0] == -2)
         {
           /* Handle ESC ] Ps ; Pt BEL */
-          if(terminal.escape == 2)
+          if (terminal.escape == 2)
             {
-              if(buf[j] >= '0' && buf[j] <= '9')
+              if (buf[j] >= '0' && buf[j] <= '9')
                 {
                   terminal.param[1] *= 10;
                   terminal.param[1] += buf[j] - '0';
@@ -1515,7 +1522,7 @@ static void process_data(unsigned char* buf, int count)
             }
           else
             {
-              if(buf[j] != '\007')
+              if (buf[j] != '\007')
                 {
                   /* XXX: Store text */
                 }
@@ -1523,7 +1530,7 @@ static void process_data(unsigned char* buf, int count)
                 terminal.escape = 0;
             }
         }
-      else if(terminal.param[0] == -4)
+      else if (terminal.param[0] == -4)
         {
           switch(buf[j])
             {
@@ -1542,37 +1549,37 @@ static void process_data(unsigned char* buf, int count)
 
           terminal.escape = 0;
         }
-      else if(terminal.param[0] == -5)
+      else if (terminal.param[0] == -5)
         {
           terminal.escape = 0;
         }
-      else if(terminal.escape == 2 && buf[j] == '?')
+      else if (terminal.escape == 2 && buf[j] == '?')
         {
           terminal.param[0] = -3;
           ++terminal.escape;
         }
-      else if(terminal.escape == 2 && buf[j] == '>')
+      else if (terminal.escape == 2 && buf[j] == '>')
         {
           terminal.param[0] = -4;
           ++terminal.escape;
         }
-      else if(buf[j] == ';')
+      else if (buf[j] == ';')
         {
-          if(terminal.escape < sizeof(terminal.param) + 1)
+          if (terminal.escape < sizeof(terminal.param) + 1)
             terminal.param[++terminal.escape - 2] = 0;
           else
             terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
         }
-      else if(buf[j] >= '0' && buf[j] <= '9')
+      else if (buf[j] >= '0' && buf[j] <= '9')
         {
           terminal.param[terminal.escape - 2] *= 10;
           terminal.param[terminal.escape - 2] += buf[j] - '0';
         }
-      else if(terminal.param[0] == -3)
+      else if (terminal.param[0] == -3)
         {
-          if(buf[j] == 'h')
+          if (buf[j] == 'h')
             {
-              for(k = 1; k < terminal.escape - 1; ++k)
+              for (k = 1; k < terminal.escape - 1; ++k)
                 {
                   switch(terminal.param[k])
                     {
@@ -1584,7 +1591,7 @@ static void process_data(unsigned char* buf, int count)
 
                     case 1049:
 
-                      if(terminal.curscreen != 1)
+                      if (terminal.curscreen != 1)
                         {
                           memset(terminal.chars[1], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
                           memset(terminal.attr[1], 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
@@ -1592,22 +1599,12 @@ static void process_data(unsigned char* buf, int count)
                         }
 
                       break;
-
-                    case 0xD0C:
-
-                      terminal.document = 1;
-                      terminal.escape = 0;
-
-                      if(j + 1 < count)
-                        append_doc_data(&buf[j + 1], count - j - 1);
-
-                      return;
                     }
                 }
             }
-          else if(buf[j] == 'l')
+          else if (buf[j] == 'l')
             {
-              for(k = 1; k < terminal.escape - 1; ++k)
+              for (k = 1; k < terminal.escape - 1; ++k)
                 {
                   switch(terminal.param[k])
                     {
@@ -1619,19 +1616,8 @@ static void process_data(unsigned char* buf, int count)
 
                     case 1049:
 
-                      if(terminal.curscreen != 0)
+                      if (terminal.curscreen != 0)
                         setscreen(0);
-
-                      break;
-
-                    case 0xD0C:
-
-                      free(terminal.doc_buf);
-                      terminal.doc_buf = 0;
-                      terminal.doc_buf_size = 0;
-                      terminal.doc_buf_payload = 0;
-                      terminal.doc_buf_alloc = 0;
-                      terminal.document = 0;
 
                       break;
                     }
@@ -1646,7 +1632,7 @@ static void process_data(unsigned char* buf, int count)
             {
             case '@':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
               insert_chars(terminal.param[0]);
@@ -1655,7 +1641,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'A':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
               terminal.cursory -= (terminal.param[0] < terminal.cursory) ? terminal.param[0] : terminal.cursory;
@@ -1664,7 +1650,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'B':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
               terminal.cursory = (terminal.param[0] + terminal.cursory < terminal.size.ws_row) ? (terminal.param[0] + terminal.cursory) : (terminal.size.ws_row - 1);
@@ -1673,7 +1659,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'C':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
               terminal.cursorx = (terminal.param[0] + terminal.cursorx < terminal.size.ws_col) ? (terminal.param[0] + terminal.cursorx) : (terminal.size.ws_col - 1);
@@ -1682,7 +1668,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'D':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
               terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
@@ -1694,7 +1680,7 @@ static void process_data(unsigned char* buf, int count)
               terminal.cursorx = 0;
               ++terminal.cursory;
 
-              while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+              while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
                 {
                   scroll(0);
                   --terminal.cursory;
@@ -1706,9 +1692,9 @@ static void process_data(unsigned char* buf, int count)
 
               terminal.cursorx = 0;
 
-              if(terminal.cursory == terminal.scrolltop)
+              if (terminal.cursory == terminal.scrolltop)
                 rscroll(0);
-              else if(terminal.cursory)
+              else if (terminal.cursory)
                 --terminal.cursory;
 
               terminal.escape = 0;
@@ -1717,7 +1703,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'G':
 
-              if(terminal.param[0] > 0)
+              if (terminal.param[0] > 0)
                 --terminal.param[0];
 
               terminal.cursorx = (terminal.param[0] < terminal.size.ws_col) ? terminal.param[0] : (terminal.size.ws_col - 1);
@@ -1727,10 +1713,10 @@ static void process_data(unsigned char* buf, int count)
             case 'H':
             case 'f':
 
-              if(terminal.param[0] > 0)
+              if (terminal.param[0] > 0)
                 --terminal.param[0];
 
-              if(terminal.param[1] > 0)
+              if (terminal.param[1] > 0)
                 --terminal.param[1];
 
               terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
@@ -1740,7 +1726,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'J':
 
-              if(terminal.param[0] == 0)
+              if (terminal.param[0] == 0)
                 {
                   /* Clear from cursor to end */
 
@@ -1750,9 +1736,9 @@ static void process_data(unsigned char* buf, int count)
                   memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
                   memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
 
-                  for(k = 0; k < terminal.image_count; )
+                  for (k = 0; k < terminal.image_count; )
                     {
-                      if(terminal.images[k].screen == terminal.curscreen
+                      if (terminal.images[k].screen == terminal.curscreen
                          && terminal.images[k].char_y + terminal.images[k].rows > terminal.cursory)
                         {
                           --terminal.image_count;
@@ -1763,7 +1749,7 @@ static void process_data(unsigned char* buf, int count)
                         ++k;
                     }
                 }
-              else if(terminal.param[0] == 1)
+              else if (terminal.param[0] == 1)
                 {
                   /* Clear from start to cursor */
 
@@ -1773,9 +1759,9 @@ static void process_data(unsigned char* buf, int count)
                   memset(terminal.curchars, 0, count * sizeof(wchar_t));
                   memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
 
-                  for(k = 0; k < terminal.image_count; )
+                  for (k = 0; k < terminal.image_count; )
                     {
-                      if(terminal.images[k].screen == terminal.curscreen
+                      if (terminal.images[k].screen == terminal.curscreen
                          && terminal.images[k].char_y <= terminal.cursory)
                         {
                           --terminal.image_count;
@@ -1786,14 +1772,14 @@ static void process_data(unsigned char* buf, int count)
                         ++k;
                     }
                 }
-              else if(terminal.param[0] == 2)
+              else if (terminal.param[0] == 2)
                 {
                   size_t screen_size, history_size;
 
                   screen_size = terminal.size.ws_col * terminal.size.ws_row;
                   history_size = terminal.size.ws_col * terminal.history_size;
 
-                  if(*terminal.curoffset + screen_size > history_size)
+                  if (*terminal.curoffset + screen_size > history_size)
                     {
                       memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
                       memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
@@ -1810,9 +1796,9 @@ static void process_data(unsigned char* buf, int count)
                   terminal.cursory = 0;
                   terminal.cursorx = 0;
 
-                  for(k = 0; k < terminal.image_count; )
+                  for (k = 0; k < terminal.image_count; )
                     {
-                      if(terminal.images[k].screen == terminal.curscreen)
+                      if (terminal.images[k].screen == terminal.curscreen)
                         {
                           --terminal.image_count;
                           cnt_image_free(&terminal.images[k].image);
@@ -1827,33 +1813,33 @@ static void process_data(unsigned char* buf, int count)
 
             case 'K':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 {
                   /* Clear from cursor to end */
 
-                  for(k = terminal.cursorx; k < terminal.size.ws_col; ++k)
+                  for (k = terminal.cursorx; k < terminal.size.ws_col; ++k)
                     {
                       terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
                       terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
                       terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
                     }
                 }
-              else if(terminal.param[0] == 1)
+              else if (terminal.param[0] == 1)
                 {
                   /* Clear from start to cursor */
 
-                  for(k = 0; k <= terminal.cursorx; ++k)
+                  for (k = 0; k <= terminal.cursorx; ++k)
                     {
                       terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
                       terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
                       terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
                     }
                 }
-              else if(terminal.param[0] == 2)
+              else if (terminal.param[0] == 2)
                 {
                   /* Clear entire line */
 
-                  for(k = 0; k < terminal.size.ws_col; ++k)
+                  for (k = 0; k < terminal.size.ws_col; ++k)
                     {
                       terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
                       terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
@@ -1865,24 +1851,24 @@ static void process_data(unsigned char* buf, int count)
 
             case 'L':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
-              else if(terminal.param[0] > terminal.size.ws_row)
+              else if (terminal.param[0] > terminal.size.ws_row)
                 terminal.param[0] = terminal.size.ws_row;
 
-              while(terminal.param[0]--)
+              while (terminal.param[0]--)
                 rscroll(1);
 
               break;
 
             case 'M':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
-              else if(terminal.param[0] > terminal.size.ws_row)
+              else if (terminal.param[0] > terminal.size.ws_row)
                 terminal.param[0] = terminal.size.ws_row;
 
-              while(terminal.param[0]--)
+              while (terminal.param[0]--)
                 scroll(1);
 
               break;
@@ -1893,12 +1879,12 @@ static void process_data(unsigned char* buf, int count)
 
               normalize_offset();
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
-              else if(terminal.param[0] > terminal.size.ws_col)
+              else if (terminal.param[0] > terminal.size.ws_col)
                 terminal.param[0] = terminal.size.ws_col;
 
-              while(terminal.param[0]--)
+              while (terminal.param[0]--)
                 {
                   memmove(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
                           &terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(wchar_t));
@@ -1912,30 +1898,30 @@ static void process_data(unsigned char* buf, int count)
 
             case 'S':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
-              while(terminal.param[0]--)
+              while (terminal.param[0]--)
                 scroll(0);
 
               break;
 
             case 'T':
 
-              if(!terminal.param[0])
+              if (!terminal.param[0])
                 terminal.param[0] = 1;
 
-              while(terminal.param[0]--)
+              while (terminal.param[0]--)
                 rscroll(0);
 
               break;
 
             case 'X':
 
-              if(terminal.param[0] <= 0)
+              if (terminal.param[0] <= 0)
                 terminal.param[0] = 1;
 
-              for(k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
+              for (k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
                 {
                   terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
                   terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
@@ -1946,7 +1932,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'd':
 
-              if(terminal.param[0] > 0)
+              if (terminal.param[0] > 0)
                 --terminal.param[0];
               else
                 terminal.param[0] = 0;
@@ -1957,7 +1943,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'h':
 
-              for(k = 0; k < terminal.escape - 1; ++k)
+              for (k = 0; k < terminal.escape - 1; ++k)
                 {
                   switch(terminal.param[k])
                     {
@@ -1973,7 +1959,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'l':
 
-              for(k = 0; k < terminal.escape - 1; ++k)
+              for (k = 0; k < terminal.escape - 1; ++k)
                 {
                   switch(terminal.param[k])
                     {
@@ -1989,7 +1975,7 @@ static void process_data(unsigned char* buf, int count)
 
             case 'm':
 
-              for(k = 0; k < terminal.escape - 1; ++k)
+              for (k = 0; k < terminal.escape - 1; ++k)
                 {
                   switch(terminal.param[k])
                     {
@@ -2011,9 +1997,9 @@ static void process_data(unsigned char* buf, int count)
 
                     default:
 
-                      for(l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
+                      for (l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
                         {
-                          if(ansi_helper[l].index == terminal.param[k])
+                          if (ansi_helper[l].index == terminal.param[k])
                             {
                               terminal.curattr &= ansi_helper[l].and_mask;
                               terminal.curattr |= ansi_helper[l].or_mask;
@@ -2030,14 +2016,14 @@ static void process_data(unsigned char* buf, int count)
 
             case 'r':
 
-              if(terminal.param[0] < terminal.param[1])
+              if (terminal.param[0] < terminal.param[1])
                 {
                   --terminal.param[0];
 
-                  if(terminal.param[1] > terminal.size.ws_row)
+                  if (terminal.param[1] > terminal.size.ws_row)
                     terminal.param[1] = terminal.size.ws_row;
 
-                  if(terminal.param[0] < 0)
+                  if (terminal.param[0] < 0)
                     terminal.param[0] = 0;
 
                   terminal.scrolltop = terminal.param[0];
@@ -2077,101 +2063,7 @@ static void process_data(unsigned char* buf, int count)
   XUnlockDisplay(display);
 }
 
-static int doc_data_callback(void** buffer, size_t* size, void* ctx)
-{
-  struct terminal* term = ctx;
-
-  *buffer = term->doc_buf;
-  *size = term->doc_buf_payload;
-
-  return 1;
-}
-
-static void append_doc_data(void* data, size_t size)
-{
-  unsigned char* end;
-
-  if(terminal.doc_buf_size + size > terminal.doc_buf_alloc)
-  {
-    terminal.doc_buf_alloc = terminal.doc_buf_alloc * 3 / 2;
-    terminal.doc_buf_alloc += (size + 0xffff) & ~0xffff;
-    terminal.doc_buf = realloc(terminal.doc_buf, terminal.doc_buf_alloc);
-  }
-
-  memcpy(terminal.doc_buf + terminal.doc_buf_size, data, size);
-  terminal.doc_buf_size += size;
-
-  if(0 != (end = memmem(terminal.doc_buf, terminal.doc_buf_size, "\033[?3340l", 8)))
-  {
-    struct cnt_image* image;
-    Picture pic;
-    size_t width, height;
-
-    unsigned char* old_buf;
-    size_t old_buf_size;
-    size_t old_buf_payload;
-
-    terminal.doc_buf_payload = end - terminal.doc_buf;
-
-    image = cnt_image_alloc();
-    cnt_image_set_data_callback(image, doc_data_callback, &terminal);
-
-    pic = cnt_image_load(&width, &height, image);
-
-    old_buf = terminal.doc_buf;
-    old_buf_size = terminal.doc_buf_size;
-    old_buf_payload = terminal.doc_buf_payload;
-
-    terminal.doc_buf = 0;
-    terminal.doc_buf_size = 0;
-    terminal.doc_buf_payload = 0;
-    terminal.doc_buf_alloc = 0;
-    terminal.document = 0;
-
-    if(pic && terminal.image_count < sizeof(terminal.images) / sizeof(terminal.images[0]))
-    {
-      size_t i, lines;
-
-      i = terminal.image_count++;
-
-      terminal.images[i].image = image;
-      terminal.images[i].pic = pic;
-      terminal.images[i].width = width;
-      terminal.images[i].height = height;
-      terminal.images[i].char_x = terminal.cursorx;
-      terminal.images[i].char_y = terminal.cursory;
-      terminal.images[i].screen = terminal.curscreen;
-      terminal.images[i].rows = (height + yskips[SMALL] - 1) / yskips[SMALL];
-      terminal.images[i].cols = (width + xskips[SMALL] - 1) / xskips[SMALL];
-      lines = terminal.images[i].rows;
-
-      while(lines--)
-      {
-        terminal.cursorx = 0;
-        ++terminal.cursory;
-
-        while(terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-        {
-          scroll(0);
-          --terminal.cursory;
-        }
-      }
-    }
-    else
-    {
-      static const char* message = "[Unrecognized document]\r\n";
-      process_data((unsigned char*) message, strlen(message));
-
-      cnt_image_free(&image);
-    }
-
-    process_data(end, old_buf_size - old_buf_payload);
-
-    free(old_buf);
-  }
-}
-
-void read_data()
+void term_read()
 {
   unsigned char buf[4096];
   int result, more, fill = 0;
@@ -2182,7 +2074,7 @@ void read_data()
   {
     result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
 
-    if(result == -1)
+    if (result == -1)
       {
         save_session();
 
@@ -2191,7 +2083,7 @@ void read_data()
 
     fill += result;
 
-    if(fill < sizeof(buf))
+    if (fill < sizeof(buf))
     {
       sched_yield();
 
@@ -2200,33 +2092,138 @@ void read_data()
     else
       more = 0;
   }
-  while(more);
+  while (more);
 
-  if(terminal.document)
-    append_doc_data(buf, fill);
-  else
-    process_data(buf, fill);
+  term_process_data(buf, fill);
 }
 
-void term_writen(const char* data, size_t len)
+void term_write(const char* data, size_t len)
 {
   size_t off = 0;
   ssize_t result;
 
-  while(off < len)
+  while (off < len)
   {
     result = write(terminal.fd, data + off, len - off);
 
-    if(result < 0)
+    if (result < 0)
       exit(EXIT_FAILURE);
 
     off += result;
   }
 }
 
-void term_write(const char* data)
+void term_strwrite(const char* data)
 {
-  term_writen(data, strlen(data));
+  term_write(data, strlen(data));
+}
+
+void x11_handle_configure(XConfigureEvent *config)
+{
+  int i;
+
+  /* Resize event -- create new buffers and copy+clip old data */
+
+  normalize_offset();
+
+  window_width = config->width;
+  window_height = config->height;
+
+  cols = window_width / terminal.xskip;
+  rows = window_height / terminal.yskip;
+
+  int oldcols = terminal.size.ws_col;
+  int oldrows = terminal.size.ws_row;
+
+  terminal.size.ws_xpixel = window_width;
+  terminal.size.ws_ypixel = window_height;
+  terminal.size.ws_col = cols;
+  terminal.size.ws_row = rows;
+  terminal.history_size = rows + scroll_extra;
+
+  if (cols != oldcols || rows != oldrows)
+    {
+      wchar_t* oldchars[2] = {terminal.chars[0], terminal.chars[1]};
+      uint16_t* oldattr[2] = {terminal.attr[0], terminal.attr[1]};
+
+      char *oldbuffer = terminal.buffer;
+      terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
+
+      char* c;
+      c = terminal.buffer;
+      terminal.chars[0] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
+      terminal.attr[0] = (uint16_t*) c; c += cols * terminal.history_size * sizeof(uint16_t);
+      terminal.chars[1] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
+      terminal.attr[1] = (uint16_t*) c;
+      terminal.scrollbottom = rows;
+
+      int srcoff = 0;
+      int minrows;
+
+      if (rows > oldrows)
+        minrows = oldrows;
+      else
+        {
+          if (terminal.cursory >= rows)
+            srcoff = terminal.cursory - rows + 1;
+          minrows = rows;
+        }
+
+      int mincols = (cols < oldcols) ? cols : oldcols;
+
+      for (i = 0; i < minrows; ++i)
+        {
+          memcpy(&terminal.chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
+          memcpy(&terminal.attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[0][0]));
+        }
+
+      for (i = 0; i < minrows; ++i)
+        {
+          memcpy(&terminal.chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
+          memcpy(&terminal.attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[1][0]));
+        }
+
+      free(oldbuffer);
+
+      terminal.curchars = terminal.chars[terminal.curscreen];
+      terminal.curattrs = terminal.attr[terminal.curscreen];
+
+      free(screenchars);
+      free(screenattrs);
+      screenchars = calloc(sizeof(*screenchars), cols * rows);
+      screenattrs = calloc(sizeof(*screenattrs), cols * rows);
+
+      terminal.cursory = terminal.cursory - srcoff;
+      terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
+#define CLIP_CURSOR(val, max) { if (val < 0) val = 0; else if (val >= max) val = max - 1; }
+      CLIP_CURSOR(terminal.cursorx, cols);
+      CLIP_CURSOR(terminal.cursory, rows);
+      CLIP_CURSOR(terminal.storedcursorx[1 - terminal.curscreen], cols);
+      CLIP_CURSOR(terminal.storedcursory[1 - terminal.curscreen], rows);
+#undef CLIP_CURSOR
+
+      ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
+    }
+
+  Pixmap pmap;
+
+  XRenderFreePicture(display, root_buffer);
+
+  pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
+  root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
+
+  if (root_buffer == None)
+    {
+      fprintf(stderr, "Failed to create root buffer\n");
+
+      exit(EXIT_FAILURE);
+    }
+
+  XFreePixmap(display, pmap);
+
+  XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
+  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
+  XClearArea(display, window, 0, 0, window_width, window_height, True);
 }
 
 void run_command(int fd, const char* command, const char* arg)
@@ -2234,17 +2231,17 @@ void run_command(int fd, const char* command, const char* arg)
   char path[4096];
   sprintf(path, ".cantera/commands/%s", command);
 
-  if(-1 == access(path, X_OK))
+  if (-1 == access(path, X_OK))
     sprintf(path, PKGDATADIR "/commands/%s", command);
 
-  if(-1 == access(path, X_OK))
+  if (-1 == access(path, X_OK))
     return;
 
-  if(!fork())
+  if (!fork())
   {
     char* args[3];
 
-    if(fd != -1)
+    if (fd != -1)
       dup2(fd, 1);
 
     args[0] = path;
@@ -2257,167 +2254,14 @@ void run_command(int fd, const char* command, const char* arg)
   }
 }
 
-int main(int argc, char** argv)
+int x11_process_events()
 {
-  char* args[2];
-  int i;
-  int xfd;
   int result;
-  int session_fd;
-  char* palette_str;
-  char* token;
-
-  setlocale(LC_ALL, "en_US.UTF-8");
-
-  while ((i = getopt_long (argc, argv, "", long_options, 0)) != -1)
-  {
-    switch (i)
-    {
-    case 0:
-
-      break;
-
-    case 'i':
-
-      parent_window = strtol (optarg, 0, 0);
-
-      break;
-
-    case 'p':
-
-      pty_fd = strtol (optarg, 0, 0);
-
-      break;
-
-    case '?':
-
-      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
-
-      return EXIT_FAILURE;
-    }
-  }
-
-  if (print_help)
-    {
-      printf ("Usage: %s [OPTION]...\n"
-             "\n"
-             "      --help     display this help and exit\n"
-             "      --version  display version information\n"
-             "\n"
-             "Report bugs to <morten@rashbox.org>\n", argv[0]);
-
-      return EXIT_SUCCESS;
-    }
-
-  if (print_version)
-    {
-      fprintf (stdout, "%s\n", PACKAGE_STRING);
-
-      return EXIT_SUCCESS;
-    }
-
-  if(!getenv("DISPLAY"))
-  {
-    fprintf(stderr, "DISPLAY variable not set.\n");
-
-    return EXIT_FAILURE;
-  }
-
-  session_path = getenv("SESSION_PATH");
-
-  if(session_path)
-    unsetenv("SESSION_PATH");
-
-  chdir(getenv("HOME"));
-
-  mkdir(".cantera", 0777);
-  mkdir(".cantera/commands", 0777);
-  mkdir(".cantera/file-commands", 0777);
-  mkdir(".cantera/filemanager", 0777);
-
-  config = tree_load_cfg(".cantera/config");
-
-  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
-
-  for(i = 0, token = strtok(palette_str, " "); token;
-      ++i, token = strtok(0, " "))
-    {
-      if(palette[i] < 16)
-        palette[i] = 0xff000000 | strtol(token, 0, 16);
-    }
-  scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
-  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
-
-  signal(SIGTERM, sighandler);
-  signal(SIGIO, sighandler);
-  signal(SIGPIPE, SIG_IGN);
-  signal(SIGALRM, SIG_IGN);
-
-  setenv("TERM", "xterm", 1);
-
-  window_width = 800;
-  window_height = 600;
-
-  if(session_path)
-    {
-      session_fd = open(session_path, O_RDONLY);
-
-      if(session_fd != -1)
-        {
-          struct winsize ws;
-
-          if(sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
-            {
-              window_width = ws.ws_xpixel;
-              window_height = ws.ws_ypixel;
-            }
-        }
-    }
-  else
-    session_fd = -1;
-
-  x11_connect(getenv("DISPLAY"));
-
-  args[0] = "/bin/bash";
-  args[1] = 0;
-
-  init_session(args);
-
-  if(session_fd != -1)
-    {
-      size_t size;
-
-      size = terminal.size.ws_col * terminal.history_size;
-
-      read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
-      read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
-
-      if(terminal.cursorx >= terminal.size.ws_col
-         || terminal.cursory >= terminal.size.ws_row
-         || terminal.cursorx < 0
-         || terminal.cursory < 0)
-        {
-          terminal.cursorx = 0;
-          terminal.cursory = 0;
-        }
-      else
-        {
-          read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
-          read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
-
-          if(terminal.cursory >= terminal.size.ws_row)
-            terminal.cursory = terminal.size.ws_row - 1;
-          terminal.cursorx = 0;
-        }
-
-      close(session_fd);
-      unlink(session_path);
-    }
+  int xfd;
 
   xfd = ConnectionNumber(display);
 
-  while(!done)
+  while (!done)
   {
     XEvent event;
     pid_t pid;
@@ -2429,33 +2273,33 @@ int main(int argc, char** argv)
     FD_SET(xfd, &readset);
     maxfd = xfd;
     FD_SET(terminal.fd, &readset);
-    if(terminal.fd > maxfd)
+    if (terminal.fd > maxfd)
       maxfd = terminal.fd;
 
-    if(-1 == select(maxfd + 1, &readset, 0, 0, 0))
+    if (-1 == select(maxfd + 1, &readset, 0, 0, 0))
     {
-      if(errno == EINTR)
+      if (errno == EINTR)
         continue;
 
       fprintf(stderr, "select failed: %s\n", strerror(errno));
 
-      return EXIT_FAILURE;
+      return -1;
     }
 
-    if(FD_ISSET(terminal.fd, &readset))
-      read_data();
+    if (FD_ISSET(terminal.fd, &readset))
+      term_read();
 
-    while(0 < (pid = waitpid(-1, &status, WNOHANG)))
+    while (0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
-      if(pid == terminal.pid)
+      if (pid == terminal.pid)
         {
           save_session();
 
-          return EXIT_SUCCESS;
+          return 0;
         }
     }
 
-    while(XPending(display))
+    while (XPending(display))
     {
       XNextEvent(display, &event);
 
@@ -2463,7 +2307,7 @@ int main(int argc, char** argv)
       {
       case KeyPress:
 
-        /* if(!XFilterEvent(&event, window)) */
+        /* if (!XFilterEvent(&event, window)) */
         {
           char text[32];
           Status status;
@@ -2478,16 +2322,16 @@ int main(int argc, char** argv)
 
           len = Xutf8LookupString(xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
 
-          if(!text[0])
+          if (!text[0])
             len = 0;
 
-          if(key_sym == XK_Control_L || key_sym == XK_Control_R)
+          if (key_sym == XK_Control_L || key_sym == XK_Control_R)
             ctrl_pressed = 1, history_scroll_reset = 0;
 
-          if(key_sym == XK_Super_L || key_sym == XK_Super_R)
+          if (key_sym == XK_Super_L || key_sym == XK_Super_R)
             super_pressed = 1, history_scroll_reset = 0;
 
-          if(key_sym == XK_Alt_L || key_sym == XK_Alt_R
+          if (key_sym == XK_Alt_L || key_sym == XK_Alt_R
              || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
             history_scroll_reset = 0;
 
@@ -2498,15 +2342,15 @@ int main(int argc, char** argv)
               temp_switch_screen = 0;
             }
 
-          if(event.xkey.keycode == 161 || key_sym == XK_Menu)
+          if (event.xkey.keycode == 161 || key_sym == XK_Menu)
           {
             normalize_offset();
 
-            if(shift_pressed)
+            if (shift_pressed)
             {
               select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
 
-              if(select_end == 0)
+              if (select_end == 0)
               {
                 select_begin = 0;
                 select_end = 1;
@@ -2522,197 +2366,195 @@ int main(int argc, char** argv)
             }
             else
             {
-              if(select_text)
+              if (select_text)
                 run_command(terminal.fd, "calculate", (const char*) select_text);
             }
           }
 
-          {
-            if (key_sym == XK_Insert && shift_pressed)
-            {
-              paste(event.xkey.time);
-            }
-            else if(key_sym >= XK_F1 && key_sym <= XK_F4)
-            {
-              char buf[4];
-              buf[0] = '\033';
-              buf[1] = 'O';
-              buf[2] = 'P' + key_sym - XK_F1;
-              buf[3] = 0;
+	  if (key_sym == XK_Insert && shift_pressed)
+	  {
+	    paste(event.xkey.time);
+	  }
+	  else if (key_sym >= XK_F1 && key_sym <= XK_F4)
+	  {
+	    char buf[4];
+	    buf[0] = '\033';
+	    buf[1] = 'O';
+	    buf[2] = 'P' + key_sym - XK_F1;
+	    buf[3] = 0;
 
-              term_write(buf);
-            }
-            else if(key_sym >= XK_F5 && key_sym <= XK_F12)
-            {
-              static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
+	    term_strwrite(buf);
+	  }
+	  else if (key_sym >= XK_F5 && key_sym <= XK_F12)
+	  {
+	    static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
 
-              char buf[6];
-              buf[0] = '\033';
-              buf[1] = '[';
-              buf[2] = '0' + off[key_sym - XK_F5] / 10;
-              buf[3] = '0' + off[key_sym - XK_F5] % 10;
-              buf[4] = '~';
-              buf[5] = 0;
+	    char buf[6];
+	    buf[0] = '\033';
+	    buf[1] = '[';
+	    buf[2] = '0' + off[key_sym - XK_F5] / 10;
+	    buf[3] = '0' + off[key_sym - XK_F5] % 10;
+	    buf[4] = '~';
+	    buf[5] = 0;
 
-              term_write(buf);
-            }
-            else if(key_sym == XK_Up)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+	    term_strwrite(buf);
+	  }
+	  else if (key_sym == XK_Up)
+	  {
+	    if (shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll < scroll_extra)
-                    {
-                      ++terminal.history_scroll;
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if (ctrl_pressed)
-                term_write("\033[5~");
-              else if(terminal.appcursor)
-                term_write("\033OA");
-              else
-                term_write("\033[A");
-            }
-            else if(key_sym == XK_Down)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		if (terminal.history_scroll < scroll_extra)
+		  {
+		    ++terminal.history_scroll;
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if (ctrl_pressed)
+	      term_strwrite("\033[5~");
+	    else if (terminal.appcursor)
+	      term_strwrite("\033OA");
+	    else
+	      term_strwrite("\033[A");
+	  }
+	  else if (key_sym == XK_Down)
+	  {
+	    if (shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll)
-                    {
-                      --terminal.history_scroll;
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if (ctrl_pressed)
-                term_write("\033[6~");
-              else if(terminal.appcursor)
-                term_write("\033OB");
-              else
-                term_write("\033[B");
-            }
-            else if(key_sym == XK_Right)
-            {
-              if (ctrl_pressed)
-                term_write(terminal.appcursor ? "\033OF" : "\033[F");
-              else if(terminal.appcursor)
-                term_write("\033OC");
-              else
-                term_write("\033[C");
-            }
-            else if(key_sym == XK_Left)
-            {
-              if (ctrl_pressed)
-                term_write(terminal.appcursor ? "\033OH" : "\033[H");
-              else if(terminal.appcursor)
-                term_write("\033OD");
-              else
-                term_write("\033[D");
-            }
-            else if(key_sym == XK_Insert)
-            {
-              term_write("\033[2~");
-            }
-            else if(key_sym == XK_Delete)
-            {
-              term_write("\033[3~");
-            }
-            else if(key_sym == XK_Page_Up)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		if (terminal.history_scroll)
+		  {
+		    --terminal.history_scroll;
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if (ctrl_pressed)
+	      term_strwrite("\033[6~");
+	    else if (terminal.appcursor)
+	      term_strwrite("\033OB");
+	    else
+	      term_strwrite("\033[B");
+	  }
+	  else if (key_sym == XK_Right)
+	  {
+	    if (ctrl_pressed)
+	      term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
+	    else if (terminal.appcursor)
+	      term_strwrite("\033OC");
+	    else
+	      term_strwrite("\033[C");
+	  }
+	  else if (key_sym == XK_Left)
+	  {
+	    if (ctrl_pressed)
+	      term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
+	    else if (terminal.appcursor)
+	      term_strwrite("\033OD");
+	    else
+	      term_strwrite("\033[D");
+	  }
+	  else if (key_sym == XK_Insert)
+	  {
+	    term_strwrite("\033[2~");
+	  }
+	  else if (key_sym == XK_Delete)
+	  {
+	    term_strwrite("\033[3~");
+	  }
+	  else if (key_sym == XK_Page_Up)
+	  {
+	    if (shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  terminal.history_scroll += terminal.size.ws_row;
+		terminal.history_scroll += terminal.size.ws_row;
 
-                  if(terminal.history_scroll > scroll_extra)
-                    terminal.history_scroll = scroll_extra;
+		if (terminal.history_scroll > scroll_extra)
+		  terminal.history_scroll = scroll_extra;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write("\033[5~");
-            }
-            else if(key_sym == XK_Page_Down)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite("\033[5~");
+	  }
+	  else if (key_sym == XK_Page_Down)
+	  {
+	    if (shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll > terminal.size.ws_row)
-                    terminal.history_scroll -= terminal.size.ws_row;
-                  else
-                    terminal.history_scroll = 0;
+		if (terminal.history_scroll > terminal.size.ws_row)
+		  terminal.history_scroll -= terminal.size.ws_row;
+		else
+		  terminal.history_scroll = 0;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write("\033[6~");
-            }
-            else if(key_sym == XK_Home)
-            {
-              if(shift_pressed)
-                {
-                  history_scroll_reset = 0;
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite("\033[6~");
+	  }
+	  else if (key_sym == XK_Home)
+	  {
+	    if (shift_pressed)
+	      {
+		history_scroll_reset = 0;
 
-                  if(terminal.history_scroll != scroll_extra)
-                    {
-                      terminal.history_scroll = scroll_extra;
+		if (terminal.history_scroll != scroll_extra)
+		  {
+		    terminal.history_scroll = scroll_extra;
 
-                      XClearArea(display, window, 0, 0, window_width, window_height, True);
-                    }
-                }
-              else if(terminal.appcursor)
-                term_write("\033OH");
-              else
-                term_write("\033[H");
-            }
-            else if(key_sym == XK_End)
-            {
-              if(terminal.appcursor)
-                term_write("\033OF");
-              else
-                term_write("\033[F");
-            }
-            else if(key_sym == XK_space)
-            {
-              /*
-                 if(mod1_pressed)
-                 term_write("\033");
+		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		  }
+	      }
+	    else if (terminal.appcursor)
+	      term_strwrite("\033OH");
+	    else
+	      term_strwrite("\033[H");
+	  }
+	  else if (key_sym == XK_End)
+	  {
+	    if (terminal.appcursor)
+	      term_strwrite("\033OF");
+	    else
+	      term_strwrite("\033[F");
+	  }
+	  else if (key_sym == XK_space)
+	  {
+	    /*
+	       if (mod1_pressed)
+	       term_strwrite("\033");
 
-               */
-              if(mod1_pressed)
-                {
-                  temp_switch_screen = 1;
+	     */
+	    if (mod1_pressed)
+	      {
+		temp_switch_screen = 1;
 
-                  XClearArea(display, window, 0, 0, window_width, window_height, True);
-                }
-              else
-                term_write(" ");
-            }
-            else if(key_sym == XK_Shift_L || key_sym == XK_Shift_R
-                 || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
-            {
-              /* Do not generate characters on shift key, or gus'
-               * special shift keys */
-            }
-            else if(len)
-            {
-              if(mod1_pressed)
-                term_write("\033");
+		XClearArea(display, window, 0, 0, window_width, window_height, True);
+	      }
+	    else
+	      term_strwrite(" ");
+	  }
+	  else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
+	       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
+	  {
+	    /* Do not generate characters on shift key, or gus'
+	     * special shift keys */
+	  }
+	  else if (len)
+	  {
+	    if (mod1_pressed)
+	      term_strwrite("\033");
 
-              term_writen((const char*) text, len);
-            }
-          }
+	    term_write((const char*) text, len);
+	  }
 
-          if(history_scroll_reset && terminal.history_scroll)
-            {
-              terminal.history_scroll = 0;
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
-            }
+	  if (history_scroll_reset && terminal.history_scroll)
+	  {
+	    terminal.history_scroll = 0;
+	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	  }
         }
 
         break;
@@ -2736,35 +2578,33 @@ int main(int argc, char** argv)
 
         ctrl_pressed = (event.xkey.state & ControlMask);
 
-        {
-          if(event.xbutton.state & Button1Mask)
-          {
-            int x, y, new_select_end;
-            unsigned int size;
+	if (event.xbutton.state & Button1Mask)
+	{
+	  int x, y, new_select_end;
+	  unsigned int size;
 
-            size = terminal.history_size * terminal.size.ws_col;
+	  size = terminal.history_size * terminal.size.ws_col;
 
-            x = event.xbutton.x / terminal.xskip;
-            y = event.xbutton.y / terminal.yskip;
+	  x = event.xbutton.x / terminal.xskip;
+	  y = event.xbutton.y / terminal.yskip;
 
-            new_select_end = y * terminal.size.ws_col + x;
+	  new_select_end = y * terminal.size.ws_col + x;
 
-            if(terminal.history_scroll)
-              new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
+	  if (terminal.history_scroll)
+	    new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
 
-            if(ctrl_pressed)
-            {
-              find_range(range_word_or_url, &select_begin, &new_select_end);
-            }
+	  if (ctrl_pressed)
+	  {
+	    find_range(range_word_or_url, &select_begin, &new_select_end);
+	  }
 
-            if(new_select_end != select_end)
-            {
-              select_end = new_select_end;
+	  if (new_select_end != select_end)
+	  {
+	    select_end = new_select_end;
 
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
-            }
-          }
-        }
+	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	  }
+	}
 
         break;
 
@@ -2791,12 +2631,12 @@ int main(int argc, char** argv)
 
             select_begin = y * terminal.size.ws_col + x;
 
-            if(terminal.history_scroll)
+            if (terminal.history_scroll)
               select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
 
             select_end = select_begin;
 
-            if(ctrl_pressed)
+            if (ctrl_pressed)
             {
               find_range(range_word_or_url, &select_begin, &select_end);
             }
@@ -2814,7 +2654,7 @@ int main(int argc, char** argv)
 
         case 4: /* Up */
 
-          if(terminal.history_scroll < scroll_extra)
+          if (terminal.history_scroll < scroll_extra)
             {
               ++terminal.history_scroll;
               XClearArea(display, window, 0, 0, window_width, window_height, True);
@@ -2824,7 +2664,7 @@ int main(int argc, char** argv)
 
         case 5: /* Down */
 
-          if(terminal.history_scroll)
+          if (terminal.history_scroll)
             {
               --terminal.history_scroll;
               XClearArea(display, window, 0, 0, window_width, window_height, True);
@@ -2846,7 +2686,7 @@ int main(int argc, char** argv)
 
             update_selection(event.xbutton.time);
 
-            if(select_text && (event.xkey.state & Mod1Mask))
+            if (select_text && (event.xkey.state & Mod1Mask))
               run_command(terminal.fd, "open-url", (const char*) select_text);
 
             break;
@@ -2863,7 +2703,7 @@ int main(int argc, char** argv)
 
           /* XXX: Check time */
 
-          if(request->property == None)
+          if (request->property == None)
             request->property = request->target;
 
           response.type = SelectionNotify;
@@ -2877,15 +2717,15 @@ int main(int argc, char** argv)
 
           /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
 
-          if(select_text)
+          if (select_text)
           {
-            if(request->target == XA_STRING
+            if (request->target == XA_STRING
             || request->target == xa_utf8_string)
             {
               result = XChangeProperty(display, request->requestor, request->property,
                                        request->target, 8, PropModeReplace, select_text, select_length);
 
-              if(result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
+              if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
                 response.property = request->property;
             }
           }
@@ -2908,7 +2748,7 @@ int main(int argc, char** argv)
           result = XGetWindowProperty(display, window, prop_paste, 0, 0, False, AnyPropertyType,
                                       &type, &format, &nitems, &bytes_after, &prop);
 
-          if(result != Success)
+          if (result != Success)
             break;
 
           XFree(prop);
@@ -2916,13 +2756,13 @@ int main(int argc, char** argv)
           result = XGetWindowProperty(display, window, prop_paste, 0, bytes_after, False, AnyPropertyType,
                                       &type, &format, &nitems, &bytes_after, &prop);
 
-          if(result != Success)
+          if (result != Success)
             break;
 
-          if(type != xa_utf8_string || format != 8)
+          if (type != xa_utf8_string || format != 8)
             break;
 
-          term_writen((char*) prop, nitems);
+          term_write((char*) prop, nitems);
 
           XFree(prop);
         }
@@ -2933,114 +2773,15 @@ int main(int argc, char** argv)
 
         {
           /* Skip to last ConfigureNotify event */
-          while(XCheckTypedWindowEvent(display, window, ConfigureNotify, &event))
+          while (XCheckTypedWindowEvent(display, window, ConfigureNotify, &event))
           {
             /* Do nothing */
           }
 
-          if(window_width == event.xconfigure.width && window_height == event.xconfigure.height)
+          if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
             break;
 
-          normalize_offset();
-
-          window_width = event.xconfigure.width;
-          window_height = event.xconfigure.height;
-
-          cols = window_width / terminal.xskip;
-          rows = window_height / terminal.yskip;
-
-          int oldcols = terminal.size.ws_col;
-          int oldrows = terminal.size.ws_row;
-
-          terminal.size.ws_xpixel = window_width;
-          terminal.size.ws_ypixel = window_height;
-          terminal.size.ws_col = cols;
-          terminal.size.ws_row = rows;
-          terminal.history_size = rows + scroll_extra;
-
-          if (cols != oldcols || rows != oldrows)
-          {
-            wchar_t* oldchars[2] = {terminal.chars[0], terminal.chars[1]};
-            uint16_t* oldattr[2] = {terminal.attr[0], terminal.attr[1]};
-
-            char *oldbuffer = terminal.buffer;
-            terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
-
-            char* c;
-            c = terminal.buffer;
-            terminal.chars[0] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
-            terminal.attr[0] = (uint16_t*) c; c += cols * terminal.history_size * sizeof(uint16_t);
-            terminal.chars[1] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
-            terminal.attr[1] = (uint16_t*) c;
-            terminal.scrollbottom = rows;
-
-            int srcoff = 0;
-            int minrows;
-
-            if(rows > oldrows)
-              minrows = oldrows;
-            else
-            {
-              if(terminal.cursory >= rows)
-                srcoff = terminal.cursory - rows + 1;
-              minrows = rows;
-            }
-
-            int mincols = (cols < oldcols) ? cols : oldcols;
-
-            for(i = 0; i < minrows; ++i)
-            {
-              memcpy(&terminal.chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
-              memcpy(&terminal.attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[0][0]));
-            }
-
-            for(i = 0; i < minrows; ++i)
-            {
-              memcpy(&terminal.chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols], mincols * sizeof(wchar_t));
-              memcpy(&terminal.attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols], mincols * sizeof(terminal.attr[1][0]));
-            }
-
-            free(oldbuffer);
-
-            terminal.curchars = terminal.chars[terminal.curscreen];
-            terminal.curattrs = terminal.attr[terminal.curscreen];
-
-            free(screenchars);
-            free(screenattrs);
-            screenchars = calloc(sizeof(*screenchars), cols * rows);
-            screenattrs = calloc(sizeof(*screenattrs), cols * rows);
-
-            terminal.cursory = terminal.cursory - srcoff;
-            terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
-#define CLIP_CURSOR(val, max) { if (val < 0) val = 0; else if (val >= max) val = max - 1; }
-            CLIP_CURSOR(terminal.cursorx, cols);
-            CLIP_CURSOR(terminal.cursory, rows);
-            CLIP_CURSOR(terminal.storedcursorx[1 - terminal.curscreen], cols);
-            CLIP_CURSOR(terminal.storedcursory[1 - terminal.curscreen], rows);
-#undef CLIP_CURSOR
-
-            ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
-          }
-
-          Pixmap pmap;
-
-          XRenderFreePicture(display, root_buffer);
-
-          pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
-          root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-          if(root_buffer == None)
-          {
-            fprintf(stderr, "Failed to create root buffer\n");
-
-            return EXIT_FAILURE;
-          }
-
-          XFreePixmap(display, pmap);
-
-          XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-          memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
-          XClearArea(display, window, 0, 0, window_width, window_height, True);
+          x11_handle_configure(&event.xconfigure);
         }
 
         break;
@@ -3057,12 +2798,12 @@ int main(int argc, char** argv)
           int maxx = minx + event.xexpose.width;
           int maxy = miny + event.xexpose.height;
 
-          while(XCheckTypedWindowEvent(display, window, Expose, &event))
+          while (XCheckTypedWindowEvent(display, window, Expose, &event))
           {
-            if(event.xexpose.x < minx) minx = event.xexpose.x;
-            if(event.xexpose.y < miny) miny = event.xexpose.y;
-            if(event.xexpose.x + event.xexpose.width > maxx) maxx = event.xexpose.x + event.xexpose.width;
-            if(event.xexpose.y + event.xexpose.height > maxy) maxy = event.xexpose.y + event.xexpose.height;
+            if (event.xexpose.x < minx) minx = event.xexpose.x;
+            if (event.xexpose.y < miny) miny = event.xexpose.y;
+            if (event.xexpose.x + event.xexpose.width > maxx) maxx = event.xexpose.x + event.xexpose.width;
+            if (event.xexpose.y + event.xexpose.height > maxy) maxy = event.xexpose.y + event.xexpose.height;
           }
 
           paint(minx, miny, maxx - minx, maxy - miny);
@@ -3086,6 +2827,201 @@ int main(int argc, char** argv)
       }
     }
   }
+
+  return 0;
+}
+
+int main(int argc, char** argv)
+{
+  char* args[16];
+  int i;
+  int session_fd;
+  char* palette_str;
+  char* token;
+
+  for (i = 1; i < argc; ++i)
+    if (!strcmp (argv[i], "-e"))
+      argv[i] = "--";
+
+  setlocale(LC_ALL, "en_US.UTF-8");
+
+  while ((i = getopt_long (argc, argv, "T:", long_options, 0)) != -1)
+  {
+    switch (i)
+    {
+    case 0:
+
+      break;
+
+    case 'T':
+
+      title = optarg;
+
+      break;
+
+    case 'i':
+
+      parent_window = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'p':
+
+      pty_fd = strtol (optarg, 0, 0);
+
+      break;
+
+
+    case 'w':
+
+      window_width = strtol (optarg, 0, 0);
+
+      break;
+
+    case 'h':
+
+      window_height = strtol (optarg, 0, 0);
+
+      break;
+
+    case '?':
+
+      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
+
+      return EXIT_FAILURE;
+    }
+  }
+
+  if (print_help)
+    {
+      printf ("Usage: %s [OPTION]...\n"
+             "\n"
+             "  -T, --title=TITLE          set window title to TITLE\n"
+             "  -e, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
+             "      --help     display this help and exit\n"
+             "      --version  display version information\n"
+             "\n"
+             "Report bugs to <morten@rashbox.org>\n", argv[0]);
+
+      return EXIT_SUCCESS;
+    }
+
+  if (print_version)
+    {
+      fprintf (stdout, "%s\n", PACKAGE_STRING);
+
+      return EXIT_SUCCESS;
+    }
+
+  if (!getenv("DISPLAY"))
+  {
+    fprintf(stderr, "DISPLAY variable not set.\n");
+
+    return EXIT_FAILURE;
+  }
+
+  session_path = getenv("SESSION_PATH");
+
+  if (session_path)
+    unsetenv("SESSION_PATH");
+
+  chdir(getenv("HOME"));
+
+  mkdir(".cantera", 0777);
+  mkdir(".cantera/commands", 0777);
+  mkdir(".cantera/file-commands", 0777);
+  mkdir(".cantera/filemanager", 0777);
+
+  config = tree_load_cfg(".cantera/config");
+
+  palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
+
+  for (i = 0, token = strtok(palette_str, " "); token;
+      ++i, token = strtok(0, " "))
+    {
+      if (palette[i] < 16)
+        palette[i] = 0xff000000 | strtol(token, 0, 16);
+    }
+
+  scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
+  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
+  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
+
+  signal(SIGTERM, sighandler);
+  signal(SIGIO, sighandler);
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGALRM, SIG_IGN);
+
+  setenv("TERM", "xterm", 1);
+
+  if (session_path)
+    {
+      session_fd = open(session_path, O_RDONLY);
+
+      if (session_fd != -1)
+        {
+          struct winsize ws;
+
+          if (sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
+            {
+              window_width = ws.ws_xpixel;
+              window_height = ws.ws_ypixel;
+            }
+        }
+    }
+  else
+    session_fd = -1;
+
+  x11_connect(getenv("DISPLAY"));
+
+  if (optind < argc)
+  {
+    for (i = 0; i < argc - optind && i + 1 < sizeof(args) / sizeof(args[0]); ++i)
+      args[i] = argv[optind + i];
+
+    args[i] = 0;
+  }
+  else
+  {
+    args[0] = "/bin/bash";
+    args[1] = 0;
+  }
+
+  init_session(args);
+
+  if (session_fd != -1)
+    {
+      size_t size;
+
+      size = terminal.size.ws_col * terminal.history_size;
+
+      read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
+      read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
+
+      if (terminal.cursorx >= terminal.size.ws_col
+         || terminal.cursory >= terminal.size.ws_row
+         || terminal.cursorx < 0
+         || terminal.cursory < 0)
+        {
+          terminal.cursorx = 0;
+          terminal.cursory = 0;
+        }
+      else
+        {
+          read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
+          read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
+
+          if (terminal.cursory >= terminal.size.ws_row)
+            terminal.cursory = terminal.size.ws_row - 1;
+          terminal.cursorx = 0;
+        }
+
+      close(session_fd);
+      unlink(session_path);
+    }
+
+  if (-1 == x11_process_events())
+    return EXIT_FAILURE;
 
   return EXIT_SUCCESS;
 }
