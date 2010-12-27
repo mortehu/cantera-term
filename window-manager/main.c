@@ -535,7 +535,7 @@ pid_t launch(const char* command, Time when)
     setsid();
 
     sprintf(buf, "%llu", (unsigned long long int) when);
-    setenv("DESKTOP_START_ID", buf, 1);
+    setenv("DESKTOP_STARTUP_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
     setenv("HISTFILE", buf, 1);
