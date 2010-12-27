@@ -784,6 +784,8 @@ static void x11_connect(const char* display_name)
           return;
         }
 
+      font_init(pmap, visual, DefaultColormap(display, 0));
+
       XFreePixmap(display, pmap);
 
       screens[i].active_terminal = 0;
@@ -853,8 +855,6 @@ static void x11_connect(const char* display_name)
   }
 
   composite_init();
-
-  font_init();
 
   menu_init();
 

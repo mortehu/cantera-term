@@ -6,7 +6,6 @@ AC_PROG_RANLIB
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
-AC_CHECK_LIB([freetype], [FT_Load_Glyph], [], [AC_MSG_ERROR([libfreetype6 is required (apt-get install libfreetype6-dev)])])
 AC_CHECK_LIB([png], [png_read_info], [], [AC_MSG_ERROR([libpng is required (apt-get install libpng12-dev)])])
 AC_CHECK_LIB([gif], [DGifOpen], [], [AC_MSG_ERROR([libgif is required (apt-get install libgif-dev)])])
 AC_CHECK_LIB([jpeg], [jpeg_read_header], [], [AC_MSG_ERROR([libjpeg is required (apt-get install libjpeg62-dev)])])

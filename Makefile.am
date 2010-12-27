@@ -5,7 +5,7 @@ pkgdata_DATA = lock/gfx/fonts/vera-sans-mono.dat lock/gfx/fonts/vera-sans-mono_0
 
 CONVERT = @CONVERT@
 
-XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lfreetype -lXrender -lpng -ljpeg -lgif -lXpm
+XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lXrender -lXft -lXpm -lpng -ljpeg -lgif
 AM_CFLAGS = -g -Wall -pthread
 AM_CPPFLAGS = -I$(srcdir)/common -I/usr/include/freetype2 -I/usr/include/libxml2 -DBINDIR=\"$(bindir)\" -DPKGDATADIR=\"$(pkgdatadir)\" -D_BSD_SOURCE -D_GNU_SOURCE -D_XOPEN_SOURCE -D_REENTRANT -D_FILE_OFFSET_BITS=64
 

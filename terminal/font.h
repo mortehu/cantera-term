@@ -1,7 +1,9 @@
 #ifndef FONT_H_
 #define FONT_H_ 1
 
-void font_init();
+#define FONT_BOLD 1
+
+void font_init(Drawable drawable, Visual *visual, Colormap colormap);
 void font_free();
 void loadglyph(int size, unsigned int n);
 void drawtext(Picture dest, const wchar_t* text, size_t length, int x, int y, int color, int size);

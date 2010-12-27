@@ -71,7 +71,7 @@ extern char** environ;
 
 int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
-int font_sizes[] = { 12, 36 };
+int font_sizes[] = { 12 };
 
 unsigned int palette[16];
 
@@ -1052,8 +1052,6 @@ static void x11_connect(const char* display_name)
     return;
   }
 
-  font_init();
-
   XRenderPictureAttributes pa;
   pa.subwindow_mode = IncludeInferiors;
 
@@ -1071,6 +1069,8 @@ static void x11_connect(const char* display_name)
 
       return;
     }
+
+    font_init(pmap, visual, DefaultColormap(display, 0));
 
     XFreePixmap(display, pmap);
   }
@@ -2944,7 +2944,7 @@ int main(int argc, char** argv)
     }
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
+  font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
   font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
 
   signal(SIGTERM, sighandler);
