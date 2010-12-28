@@ -65,8 +65,6 @@ void font_init(Drawable drawable, Visual *visual, Colormap colormap)
           exit(EXIT_FAILURE);
         }
 
-      printf ("%d %d\n", font_faces[i]->max_advance_width, font_faces[i]->height);
-
       xskips[i] = ceil(font_faces[i]->max_advance_width);
       yskips[i] = round(font_faces[i]->height);
     }
