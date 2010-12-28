@@ -122,6 +122,22 @@ void menu_draw(struct screen* screen)
   menu_draw_desktops(screen, screen->root_buffer, screen->height);
 }
 
+long read_proc_int (const char *path)
+{
+  FILE *f;
+  long result;
+
+  f = fopen (path, "r");
+
+  if (!f)
+    return -1;
+
+  fscanf (f, "%ld", &result);
+  fclose (f);
+
+  return result;
+}
+
 void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
 {
   int thumb_width, thumb_height, thumb_margin;
@@ -131,12 +147,24 @@ void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
   wchar_t wbuf[256];
   char buf[256];
 
+  long charge_now = -1, charge_full = -1;
+
   menu_thumbnail_dimensions(screen, &thumb_width, &thumb_height, &thumb_margin);
+
+  charge_now =  read_proc_int ("/sys/class/power_supply/BAT1/charge_now");
+  charge_full = read_proc_int ("/sys/class/power_supply/BAT1/charge_full");
 
   ttnow = time(0);
   tmnow = localtime(&ttnow);
   strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tmnow);
   swprintf(wbuf, sizeof(wbuf), L"%s", buf);
+
+  if (charge_now >= 0 && charge_full >= 0)
+  {
+    swprintf (wcschr (wbuf, 0), sizeof(wbuf),
+              L"  Battery: %.2f%%",
+              100.0 * charge_now / charge_full);
+  }
 
   x = thumb_margin;
 
