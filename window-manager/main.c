@@ -338,10 +338,16 @@ static void grab_thumbnail(struct window* w)
 
   if(prop && format == 32)
     {
-      unsigned long* buf = (unsigned long*) prop;
-      unsigned int width = buf[0];
-      unsigned int height = buf[1];
+      XImage temp_image;
+      Pixmap temp_pixmap;
+      GC temp_gc;
+
+      unsigned long *buf, *end;
+      unsigned int width, height;
       unsigned int i;
+
+      unsigned long *icon_start, *best;
+      unsigned int best_area = 0;
 
       union
         {
@@ -352,27 +358,52 @@ static void grab_thumbnail(struct window* w)
             } c;
         } *colors;
 
-      colors = calloc(sizeof(*colors), width * height);
+      buf = (unsigned long*) prop;
+      end = buf + nitems;
 
-      for(i = 0; i < width * height; ++i)
+      while (buf < end)
+      {
+        icon_start = buf;
+
+        width = *buf++;
+        height = *buf++;
+        buf += width * height;
+
+        if (width >= thumb_width || height >= thumb_height)
+          continue;
+
+        if (width * height > best_area)
         {
-          colors[i].rgba = buf[i + 2];
+          best_area = width * height;
+          best = icon_start;
+        }
+      }
+
+      buf = best ? best : (unsigned long *) prop;
+
+      width = *buf++;
+      height = *buf++;
+
+      colors = malloc (sizeof(*colors) * width * height);
+
+      for (i = 0; i < width * height; ++i)
+        {
+          colors[i].rgba = *buf++;
 
           colors[i].c.r = (colors[i].c.r * colors[i].c.a) / 255;
           colors[i].c.g = (colors[i].c.g * colors[i].c.a) / 255;
           colors[i].c.b = (colors[i].c.b * colors[i].c.a) / 255;
         }
 
-      XImage temp_image;
       init_ximage(&temp_image, width, height, colors);
 
-      Pixmap temp_pixmap = XCreatePixmap(display, w->screen->window, thumb_width, thumb_height, format);
+      temp_pixmap = XCreatePixmap(display, w->screen->window, thumb_width, thumb_height, format);
 
-      GC tmp_gc = XCreateGC(display, temp_pixmap, 0, 0);
-      XFillRectangle(display, temp_pixmap, tmp_gc, 0, 0, thumb_width, thumb_height);
-      XPutImage(display, temp_pixmap, tmp_gc, &temp_image, 0, 0,
+      temp_gc = XCreateGC(display, temp_pixmap, 0, 0);
+      XFillRectangle(display, temp_pixmap, temp_gc, 0, 0, thumb_width, thumb_height);
+      XPutImage(display, temp_pixmap, temp_gc, &temp_image, 0, 0,
                 thumb_width / 2 - width / 2, thumb_height / 2 - height / 2, width, height);
-      XFreeGC(display, tmp_gc);
+      XFreeGC(display, temp_gc);
 
       w->desktop->thumbnail
         = XRenderCreatePicture(display, temp_pixmap,
@@ -495,7 +526,7 @@ set_focus(struct screen* screen, terminal* t, Time when)
 static void
 set_active_terminal(struct screen* screen, unsigned int terminal_index, Time when)
 {
-  Window tmp_window;
+  Window temp_window;
   int i;
 
   if(terminal_index == screen->active_terminal)
@@ -507,9 +538,9 @@ set_active_terminal(struct screen* screen, unsigned int terminal_index, Time whe
     {
       if(ARRAY_GET(&windows, i).desktop == screen->at)
         {
-          tmp_window = ARRAY_GET(&windows, i).xwindow;
-          XUnmapWindow(display, tmp_window);
-          set_map_state(tmp_window, 0);
+          temp_window = ARRAY_GET(&windows, i).xwindow;
+          XUnmapWindow(display, temp_window);
+          set_map_state(temp_window, 0);
         }
     }
 
@@ -1389,20 +1420,20 @@ process_events:
 
                 {
                   XClientMessageEvent cme;
-                  Window tmp_window;
+                  Window temp_window;
 
-                  if(0 != (tmp_window = find_xwindow(current_screen->at)))
+                  if(0 != (temp_window = find_xwindow(current_screen->at)))
                     {
                       cme.type = ClientMessage;
                       cme.send_event = True;
                       cme.display = display;
-                      cme.window = tmp_window;
+                      cme.window = temp_window;
                       cme.message_type = xa_wm_protocols;
                       cme.format = 32;
                       cme.data.l[0] = xa_wm_delete_window;
                       cme.data.l[1] = event.xkey.time;
 
-                      XSendEvent(display, tmp_window, False, 0, (XEvent*) &cme);
+                      XSendEvent(display, temp_window, False, 0, (XEvent*) &cme);
                     }
                 }
 
