@@ -15,7 +15,16 @@ cantera_term_SOURCES = terminal/font.h terminal/term.c terminal/font.c terminal/
 cantera_term_LDFLAGS = $(XLDFLAGS) -lutil -lm
 cantera_term_LDADD = libcommon.a
 
-cantera_wm_SOURCES = window-manager/wm-font.c window-manager/font.h window-manager/globals.h window-manager/main.c window-manager/menu.c window-manager/menu.h window-manager/utf8.c
+cantera_wm_SOURCES = \
+  window-manager/font.h \
+  window-manager/globals.h \
+  window-manager/main.c \
+  window-manager/menu.c \
+  window-manager/menu.h \
+  window-manager/utf8.c \
+  window-manager/wm-font.c \
+  window-manager/wm-window-type.c \
+  window-manager/wm-window-type.h
 cantera_wm_LDFLAGS = -L/usr/X11R6/lib $(XLDFLAGS) -lutil -lm -lXinerama -rdynamic -lXfixes -ldl
 cantera_wm_LDADD = libcommon.a
 
