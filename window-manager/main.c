@@ -535,7 +535,7 @@ pid_t launch(const char* command, Time when)
     setsid();
 
     sprintf(buf, "%llu", (unsigned long long int) when);
-    setenv("DESKTOP_START_ID", buf, 1);
+    setenv("DESKTOP_STARTUP_ID", buf, 1);
 
     sprintf(buf, ".cantera/bash-history-%02d", current_screen->active_terminal);
     setenv("HISTFILE", buf, 1);
@@ -784,6 +784,8 @@ static void x11_connect(const char* display_name)
           return;
         }
 
+      font_init(pmap, visual, DefaultColormap(display, 0));
+
       XFreePixmap(display, pmap);
 
       screens[i].active_terminal = 0;
@@ -853,8 +855,6 @@ static void x11_connect(const char* display_name)
   }
 
   composite_init();
-
-  font_init();
 
   menu_init();
 
