@@ -39,12 +39,22 @@ struct picture
   size_t height;
 };
 
+#define RESIZE_BUFFERS 3
+static Picture resize_buffers[RESIZE_BUFFERS];
+
 static void drawtext_bar(Picture target, const wchar_t* text, size_t len, int x, int y)
 {
+  XRenderColor fill_color;
+
   if(!len)
     return;
 
-  XRenderFillRectangle(display, PictOpOver, target, &xrpalette[19],
+  fill_color.red = 0x0000;
+  fill_color.green = 0x0000;
+  fill_color.blue = 0x0000;
+  fill_color.alpha = 0x7f7f;
+
+  XRenderFillRectangle(display, PictOpOver, target, &fill_color,
                        x - 2, y, len * xskips[SMALL] + 4, yskips[SMALL]);
   drawtext(target, text, len, x, y, 15, SMALL);
 }
@@ -73,6 +83,29 @@ void menu_init()
 {
   char** init_commands;
   size_t i, init_command_count;
+  size_t max_width = 0, max_height = 0;
+
+  for (i = 0; i < screen_count; ++i)
+    {
+      if (screens[i].width > max_width)
+        max_width = screens[i].width;
+
+      if (screens[i].height > max_height)
+        max_height = screens[i].height;
+    }
+
+  for (i = 0; i < RESIZE_BUFFERS; ++i)
+    {
+      Pixmap temp_pixmap;
+      
+      temp_pixmap = XCreatePixmap(display, screens[0].window, max_width >> (i + 1), max_height >> (i + 1), 32);
+
+      resize_buffers[i] = XRenderCreatePicture(display, temp_pixmap, XRenderFindStandardFormat(display, PictStandardARGB32), 0, 0);
+
+      XRenderSetPictureFilter(display, resize_buffers[i], FilterBilinear, 0, 0);
+
+      XFreePixmap(display, temp_pixmap);
+    }
 
   init_command_count = tree_get_strings(config, "menu.init", &init_commands);
 
@@ -126,7 +159,7 @@ void menu_draw(struct screen* screen)
   drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin + 1, y + 1, 0, LARGE);
   drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin, y, 15, LARGE);
 
-  menu_draw_desktops(screen, screen->root_buffer, screen->height);
+  menu_draw_desktops(screen);
 }
 
 long read_proc_int (const char *path)
@@ -145,14 +178,24 @@ long read_proc_int (const char *path)
   return result;
 }
 
-void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
+void menu_draw_desktops (struct screen* screen)
 {
   int thumb_width, thumb_height, thumb_margin;
-  int i, x = 0, y;
+  int i, j, x = 0, y;
   time_t ttnow;
   struct tm* tmnow;
   wchar_t wbuf[256];
   char buf[256];
+
+  XTransform xform_scaled;
+  XTransform xform_identity =
+    {
+        {
+            { 0x10000, 0, 0 },
+            { 0, 0x10000, 0 },
+            { 0, 0, 0x10000 }
+        }
+    };
 
   long charge_now = -1, charge_full = -1;
 
@@ -168,21 +211,22 @@ void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
 
   if (charge_now >= 0 && charge_full >= 0)
   {
-    swprintf (wcschr (wbuf, 0), sizeof(wbuf),
+    swprintf (wcschr (wbuf, 0), sizeof (wbuf),
               L"  Battery: %.2f%%",
               100.0 * charge_now / charge_full);
   }
 
+  swprintf (wcschr (wbuf, 0), sizeof (wbuf),
+            L"  %s", PACKAGE_STRING);
+
   x = thumb_margin;
 
-  drawtext_bar(buffer, wbuf, wcslen(wbuf), x, height - yskips[SMALL] - 4);
-  x += (wcslen(wbuf) + 2) * xskips[SMALL];
-
-  swprintf(wbuf, sizeof(wbuf), L"%s", PACKAGE_STRING);
-  drawtext_bar(buffer, wbuf, wcslen(wbuf), x, height - yskips[SMALL] - 4);
+  drawtext_bar(screen->root_buffer, wbuf, wcslen(wbuf), x, screen->height - yskips[SMALL] - 4);
 
   for(i = 0; i < 24; ++i)
   {
+    XRenderColor border_color, fill_color;
+
     x = thumb_margin + (i % 12) * (thumb_width + thumb_margin);
 
     if((i % 12) > 7)
@@ -191,28 +235,119 @@ void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
       x += 2 * thumb_margin;
 
     if(i < 12)
-      y = height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL];
+      y = screen->height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL];
     else
-      y = height - thumb_height - thumb_margin - yskips[SMALL];
+      y = screen->height - thumb_height - thumb_margin - yskips[SMALL];
 
-    int border_color = 7;
+    border_color.alpha = 0xffff;
 
-    if(i == screen->active_terminal
-       && current_screen == screen)
-      border_color = 12;
+    if(i == screen->active_terminal && current_screen == screen)
+      {
+        border_color.red = 0xffff;
+        border_color.green = 0x5050;
+        border_color.blue = 0x5050;
+      }
     else if(screen->terminals[i].mode == mode_menu)
-      border_color = 8;
-
-    XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y - 1, 1, thumb_height + 2);
-    XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x + thumb_width, y - 1, 1, thumb_height + 2);
-    XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y - 1, thumb_width + 2, 1);
-    XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[border_color], x - 1, y + thumb_height, thumb_width + 2, 1);
-
-    if(!screen->terminals[i].thumbnail)
-      XRenderFillRectangle(display, PictOpOver, buffer, &xrpalette[19],
-                           x, y, thumb_width, thumb_height);
+      {
+        border_color.red = 0x5050;
+        border_color.green = 0x5050;
+        border_color.blue = 0x5050;
+      }
     else
-      XRenderComposite(display, PictOpSrc, screen->terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
+      {
+        border_color.red = 0x7070;
+        border_color.green = 0x7070;
+        border_color.blue = 0x7070;
+      }
+
+    XRenderFillRectangle(display, PictOpSrc, screen->root_buffer, &border_color, x - 1, y - 1, 1, thumb_height + 2);
+    XRenderFillRectangle(display, PictOpSrc, screen->root_buffer, &border_color, x + thumb_width, y - 1, 1, thumb_height + 2);
+    XRenderFillRectangle(display, PictOpSrc, screen->root_buffer, &border_color, x - 1, y - 1, thumb_width + 2, 1);
+    XRenderFillRectangle(display, PictOpSrc, screen->root_buffer, &border_color, x - 1, y + thumb_height, thumb_width + 2, 1);
+
+    xform_scaled = xform_identity;
+
+    /* XXX: Paint dialog boxes etc */
+
+    for (j = 0; j < ARRAY_COUNT(&windows); ++j)
+      {
+        struct window *w;
+
+        w = &ARRAY_GET(&windows, j);
+
+        if (w->desktop == &screen->terminals[i])
+          {
+            unsigned int buffer_width, buffer_height;
+
+            /* Copy from window's render target to half size buffer */
+
+            buffer_width = w->target.width / 2;
+            buffer_height = w->target.height / 2;
+
+            xform_scaled.matrix[2][2] = XDoubleToFixed((double) buffer_width / w->target.width);
+            XRenderSetPictureTransform(display, w->xpicture, &xform_scaled);
+            XRenderSetPictureFilter(display, w->xpicture, FilterBilinear, 0, 0);
+
+            XRenderComposite(display, PictOpSrc, w->xpicture, None, resize_buffers[0],
+                             0, 0,
+                             0, 0,
+                             0, 0, buffer_width, buffer_height);
+
+            XRenderSetPictureFilter(display, w->xpicture, FilterNearest, 0, 0);
+            XRenderSetPictureTransform(display, w->xpicture, &xform_identity);
+
+            /* Copy from half size buffer to quarter size buffer */
+
+            xform_scaled.matrix[2][2] = XDoubleToFixed((double) (buffer_width / 2) / buffer_width);
+            buffer_width /= 2;
+            buffer_height /= 2;
+            XRenderSetPictureTransform(display, resize_buffers[0], &xform_scaled);
+
+            XRenderComposite(display, PictOpSrc, resize_buffers[0], None, resize_buffers[1],
+                             0, 0,
+                             0, 0,
+                             0, 0, buffer_width, buffer_height);
+
+            /* Copy from half size buffer to eigth size buffer */
+
+            xform_scaled.matrix[2][2] = XDoubleToFixed((double) (buffer_width / 2) / buffer_width);
+            buffer_width /= 2;
+            buffer_height /= 2;
+            XRenderSetPictureTransform(display, resize_buffers[1], &xform_scaled);
+
+            XRenderComposite(display, PictOpSrc, resize_buffers[1], None, resize_buffers[2],
+                             0, 0,
+                             0, 0,
+                             0, 0, buffer_width, buffer_height);
+
+            /* Copy from eight size buffer to menu's render target */
+
+            xform_scaled.matrix[2][2] = XDoubleToFixed((double) thumb_width / buffer_width);
+            XRenderSetPictureTransform(display, resize_buffers[2], &xform_scaled);
+
+            XRenderComposite(display, PictOpSrc, resize_buffers[2], None, screen->root_buffer,
+                             0, 0,
+                             0, 0,
+                             x, y, thumb_width, thumb_height);
+
+            break;
+          }
+      }
+
+    if (j == ARRAY_COUNT(&windows))
+      {
+        if(screen->terminals[i].thumbnail)
+          XRenderComposite(display, PictOpSrc, screen->terminals[i].thumbnail, None, screen->root_buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
+        else
+          {
+            fill_color.red = 0x0000;
+            fill_color.green = 0x0000;
+            fill_color.blue = 0x0000;
+            fill_color.alpha = 0x7f7f;
+
+            XRenderFillRectangle(display, PictOpOver, screen->root_buffer, &fill_color, x, y, thumb_width, thumb_height);
+          }
+      }
   }
 }
 

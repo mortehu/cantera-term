@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <pty.h>
 
+#include "array.h"
 #include "wm-window-type.h"
 
 enum mode
@@ -27,6 +28,12 @@ typedef struct terminal terminal;
 #define WINDOW_DIRTY              0x0004
 #define WINDOW_UNMANAGED          0x0008
 
+struct rect
+{
+  int x, y;
+  unsigned int width, height;
+};
+
 struct window
 {
   Window xwindow;
@@ -34,8 +41,8 @@ struct window
   Damage xdamage;
   XserverRegion damage_region;
 
-  int x, y;
-  unsigned int width, height;
+  struct rect target;
+  struct rect position;
 
   enum wm_window_type type;
 
@@ -44,6 +51,11 @@ struct window
   Window transient_for;
   terminal* desktop;
   struct screen* screen;
+};
+
+struct window_list
+{
+  ARRAY_MEMBERS(struct window);
 };
 
 struct terminal
@@ -82,7 +94,11 @@ struct screen
   terminal* at;
 };
 
-extern struct screen* current_screen;
+extern struct screen *current_screen;
+extern struct screen *screens;
+extern int screen_count;
+
+extern struct window_list windows;
 
 extern int xskips[];
 extern int yskips[];
