@@ -25,6 +25,7 @@
 #include <X11/keysym.h>
 #include <X11/cursorfont.h>
 
+#include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrender.h>
 
@@ -34,7 +35,6 @@
 #include "globals.h"
 #include "menu.h"
 #include "tree.h"
-#include "wm-window-type.h"
 
 #define PARTIAL_REPAINT 1
 
@@ -68,36 +68,22 @@ Cursor other_cursor;
 XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
 
-struct screen* screens;
-int screen_count = 0;
+struct
+{
+  int width, height;
+  Window window;
+} terminal_list;
 
-int terminal_list_width;
-int terminal_list_height;
-Window terminal_list_popup = 0;
+struct screen *screens;
+int screen_count = 0;
 
 void run_command(int fd, const char* command, const char* arg);
 void init_ximage(XImage* image, int width, int height, void* data);
 
-struct window*
-new_window(Window window, XCreateWindowEvent* cwe);
-
 void
-window_gone(Window xwindow);
+destroy_notify(Window xwindow);
 
 Window window;
-
-struct window
-{
-  Window xwindow;
-  int x, y;
-  unsigned int width, height;
-
-  enum wm_window_type type;
-
-  Window transient_for;
-  terminal* desktop;
-  struct screen* screen;
-};
 
 struct
 {
@@ -142,12 +128,19 @@ Visual* visual;
 XVisualInfo visual_template;
 XVisualInfo* visual_info;
 Window root_window;
+Picture root_picture;
 XWindowAttributes root_window_attr;
+
+int damage_eventbase;
+int damage_errorbase;
+
 Atom xa_utf8_string;
 Atom xa_compound_text;
 Atom xa_targets;
 Atom xa_net_wm_icon;
 Atom xa_net_wm_pid;
+Atom xa_net_wm_user_time;
+Atom xa_net_wm_user_time_window;
 Atom xa_wm_state;
 Atom xa_wm_transient_for;
 Atom xa_wm_protocols;
@@ -168,6 +161,9 @@ int button1_pressed = 0;
 struct screen* current_screen;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
+
+struct window *
+create_notify (XCreateWindowEvent* cwe);
 
 void
 clear()
@@ -234,23 +230,62 @@ history_add(struct screen *s, int terminal)
   s->history[s->history_size++] = terminal;
 }
 
+void
+composite_init_window(struct window *w)
+{
+  XWindowAttributes attr;
+  XRenderPictFormat *format;
+  XRenderPictureAttributes pa;
+
+  if (w->xpicture)
+    return;
+
+  XGetWindowAttributes (display, w->xwindow, &attr);
+
+  format = XRenderFindVisualFormat(display, attr.visual);
+
+  if (!format)
+    return;
+
+  memset(&pa, 0, sizeof(pa));
+  pa.subwindow_mode = IncludeInferiors;
+
+  w->xpicture = XRenderCreatePicture(display, w->xwindow, format, CPSubwindowMode, &pa);
+  w->xdamage = XDamageCreate(display, w->xwindow, XDamageReportNonEmpty);
+}
+
+void
+composite_destroy_window(struct window *w)
+{
+  if (!w->xpicture)
+    return;
+
+  XDamageDestroy(display, w->xdamage);
+  XRenderFreePicture(display, w->xpicture);
+
+  w->xdamage = 0;
+  w->xpicture = 0;
+}
+
 static void paint(Window window, int x, int y, int width, int height)
 {
-  unsigned int i;
+  struct window *w;
 
-  for(i = 0; i < screen_count; ++i)
-    {
-      if(screens[i].window == window)
-          menu_draw(&screens[i]);
+  w = find_window (window);
 
-      XRenderComposite(display, PictOpSrc,
-                       screens[i].root_buffer,
-                       None,
-                       screens[i].root_picture,
-                       x, y,
-                       0, 0,
-                       x, y, width, height);
-    }
+  if (!w || w->type != wm_window_type_wm)
+    return;
+
+  if (w->screen->at->mode == mode_menu)
+        menu_draw(w->screen);
+
+  XRenderComposite(display, PictOpSrc,
+                   w->screen->root_buffer,
+                   None,
+                   w->screen->root_picture,
+                   x, y,
+                   0, 0,
+                   x, y, width, height);
 }
 
 int get_int_property(Window window, Atom property, int* result)
@@ -261,7 +296,30 @@ int get_int_property(Window window, Atom property, int* result)
   unsigned long bytes_after;
   uint32_t* prop;
 
-  if(Success != XGetWindowProperty(display, window, property, 0, 4, False,
+  if(Success != XGetWindowProperty(display, window, property, 0, sizeof (*result) / 4, False,
+                                   AnyPropertyType, &type, &format, &nitems,
+                                   &bytes_after, (unsigned char**) &prop))
+    return -1;
+
+  if(!prop)
+    return -1;
+
+  *result = *prop;
+
+  XFree(prop);
+
+  return 0;
+}
+
+int get_time_property(Window window, Atom property, Time* result)
+{
+  Atom type;
+  int format;
+  unsigned long nitems;
+  unsigned long bytes_after;
+  uint32_t* prop;
+
+  if(Success != XGetWindowProperty(display, window, property, 0, sizeof (*result) / 4, False,
                                    AnyPropertyType, &type, &format, &nitems,
                                    &bytes_after, (unsigned char**) &prop))
     return -1;
@@ -423,30 +481,40 @@ static void grab_thumbnail(struct window* w)
 
 static void paint_terminal_list_popup();
 
+static int
+terminal_list_height(struct screen *screen)
+{
+  int thumb_height, thumb_margin;
+
+  menu_thumbnail_dimensions(&screens[0], 0, &thumb_height, &thumb_margin);
+
+  return 2 * thumb_height + 3 * thumb_margin + yskips[SMALL];
+}
+
 static void create_terminal_list_popup()
 {
   XSetWindowAttributes window_attr;
   int thumb_width, thumb_height, thumb_margin;
 
-  if(current_screen->at->mode == mode_menu || terminal_list_popup)
+  if(current_screen->at->mode == mode_menu || terminal_list.window)
     return;
 
   menu_thumbnail_dimensions(current_screen, &thumb_width, &thumb_height,
                             &thumb_margin);
 
-  terminal_list_width = current_screen->width;
-  terminal_list_height = 2 * thumb_height + 3 * thumb_margin + yskips[SMALL];
+  terminal_list.width = current_screen->width;
+  terminal_list.height = 2 * thumb_height + 3 * thumb_margin + yskips[SMALL];
 
   window_attr.override_redirect = True;
 
-  terminal_list_popup
+  terminal_list.window
     = XCreateWindow(display, RootWindow(display, screenidx),
                     current_screen->x_org,
-                    current_screen->y_org + current_screen->height - terminal_list_height,
-                    terminal_list_width, terminal_list_height,
+                    current_screen->y_org + current_screen->height - terminal_list.height,
+                    terminal_list.width, terminal_list.height,
                     0, visual_info->depth, InputOutput, visual, CWOverrideRedirect, &window_attr);
 
-  XMapWindow(display, terminal_list_popup);
+  XMapWindow(display, terminal_list.window);
 
   paint_terminal_list_popup();
 }
@@ -457,18 +525,18 @@ static void paint_terminal_list_popup()
   Picture windowpic;
   Picture buffer;
 
-  windowpic = XRenderCreatePicture(display, terminal_list_popup, xrenderpictformat, 0, 0);
+  windowpic = XRenderCreatePicture(display, terminal_list.window, xrenderpictformat, 0, 0);
 
-  pmap = XCreatePixmap(display, terminal_list_popup, terminal_list_width, terminal_list_height, visual_info->depth);
+  pmap = XCreatePixmap(display, terminal_list.window, terminal_list.width, terminal_list.height, visual_info->depth);
   buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
 
   XFreePixmap(display, pmap);
 
-  XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[0], 0, 0, terminal_list_width, terminal_list_height);
+  XRenderFillRectangle(display, PictOpSrc, buffer, &xrpalette[0], 0, 0, terminal_list.width, terminal_list.height);
 
-  menu_draw_desktops(current_screen, buffer, terminal_list_height);
+  menu_draw_desktops(current_screen, buffer, terminal_list.height);
 
-  XRenderComposite(display, PictOpSrc, buffer, None, windowpic, 0, 0, 0, 0, 0, 0, terminal_list_width, terminal_list_height);
+  XRenderComposite(display, PictOpSrc, buffer, None, windowpic, 0, 0, 0, 0, 0, 0, terminal_list.width, terminal_list.height);
 
   XRenderFreePicture(display, buffer);
   XRenderFreePicture(display, windowpic);
@@ -476,79 +544,113 @@ static void paint_terminal_list_popup()
 
 static void destroy_terminal_list_popup()
 {
-  if(!terminal_list_popup)
+  if(!terminal_list.window)
     return;
 
-  XDestroyWindow(display, terminal_list_popup);
-  terminal_list_popup = 0;
+  XDestroyWindow(display, terminal_list.window);
+  terminal_list.window = 0;
+}
+
+static void
+map_window (struct window *w)
+{
+  set_map_state(w->xwindow, 1);
+  XMapRaised(display, w->xwindow);
+
+  w->flags &= ~WINDOW_WANT_UNMAPPED;
+  w->flags |= WINDOW_IS_MAPPED;
 }
 
 static void
 set_focus(struct screen* screen, terminal* t, Time when)
 {
   Window focus;
+  struct window* w;
+  size_t i;
 
   focus = screen->window;
 
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if (w->screen != screen || !(w->flags & WINDOW_IS_MAPPED))
+        continue;
+
+      w->flags |= WINDOW_WANT_UNMAPPED;
+    }
+
   switch (t->mode)
     {
+    case mode_menu:
+
+      map_window (screen->background);
+
+      for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+        {
+          w = &ARRAY_GET(&windows, i);
+
+          if(w->screen == screen && w->type == wm_window_type_desktop)
+            {
+              map_window (w);
+
+              break;
+            }
+        }
+
+      break;
+
     case mode_x11:
 
+      screen->background->flags |= WINDOW_WANT_UNMAPPED;
+
+      for(i = 0; i < ARRAY_COUNT(&windows); ++i)
         {
-          struct window* w;
-          size_t i;
+          w = &ARRAY_GET(&windows, i);
 
-          for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+          if(w->type == wm_window_type_normal && w->desktop == t)
             {
-              w = &ARRAY_GET(&windows, i);
+              focus = w->xwindow;
+              map_window (w);
 
-              if(w->type == wm_window_type_normal && w->desktop == t)
-                {
-                  focus = w->xwindow;
-                  set_map_state(focus, 1);
-                  XMapRaised(display, w->xwindow);
-
-                  break;
-                }
+              break;
             }
+        }
 
-          for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+      for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+        {
+          w = &ARRAY_GET(&windows, i);
+
+          if(w->type != wm_window_type_normal && w->desktop == t)
             {
-              w = &ARRAY_GET(&windows, i);
-
-              if(w->type != wm_window_type_normal && w->desktop == t)
-                {
-                  focus = w->xwindow;
-                  set_map_state(focus, 1);
-                  XMapRaised(display, w->xwindow);
-                }
-            }
-
-          for(i = 0; i < ARRAY_COUNT(&windows); ++i)
-            {
-              w = &ARRAY_GET(&windows, i);
-
-              if(w->type == wm_window_type_dock)
-                {
-                  set_map_state(w->xwindow, 1);
-                  XMapRaised(display, w->xwindow);
-                }
+              focus = w->xwindow;
+              map_window (w);
             }
         }
 
       break;
 
     default:;
+
+            fprintf (stderr, "Some other mode\n");
     }
 
-  if(screen == current_screen)
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if(w->type == wm_window_type_dock)
+        map_window (w);
+    }
+
+  if(screen == current_screen && focus)
     XSetInputFocus(display, focus, RevertToPointerRoot, when);
 }
 
 static void
 set_active_terminal(struct screen* screen, unsigned int terminal_index, Time when)
 {
-  Window temp_window;
+  struct window* w;
   int i;
 
   if(terminal_index == screen->active_terminal)
@@ -556,21 +658,27 @@ set_active_terminal(struct screen* screen, unsigned int terminal_index, Time whe
 
   set_focus(screen, &screen->terminals[terminal_index], when);
 
-  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
-    {
-      if(ARRAY_GET(&windows, i).desktop == screen->at)
-        {
-          temp_window = ARRAY_GET(&windows, i).xwindow;
-          XUnmapWindow(display, temp_window);
-          set_map_state(temp_window, 0);
-        }
-    }
-
   screen->active_terminal = terminal_index;
   screen->at = &screen->terminals[terminal_index];
 
   if(screen->at->mode == mode_menu)
     destroy_terminal_list_popup();
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if (w->flags & WINDOW_WANT_UNMAPPED)
+        {
+          if (w->flags & WINDOW_IS_MAPPED)
+            {
+              XUnmapWindow(display, w->xwindow);
+              set_map_state(w->xwindow, 0);
+            }
+
+          w->flags &= ~(WINDOW_WANT_UNMAPPED | WINDOW_IS_MAPPED);
+        }
+    }
 }
 
 pid_t launch(const char* command, Time when)
@@ -607,7 +715,10 @@ pid_t launch(const char* command, Time when)
   }
 
   if(current_screen->at->mode == mode_menu)
-    current_screen->at->pid = pid;
+    {
+      current_screen->at->pid = pid;
+      current_screen->at->startup = when;
+    }
 
   return pid;
 }
@@ -659,7 +770,7 @@ static int xerror_handler(Display* display, XErrorEvent* error)
   XGetErrorText(display, error->error_code, errorbuf, sizeof(errorbuf));
 
   if(error->error_code == BadWindow)
-    window_gone(error->resourceid);
+    destroy_notify(error->resourceid);
 
   fprintf(stderr, "X error: %s (request: %d, minor: %d)  ID: %08X\n", errorbuf,
           error->request_code, error->minor_code, (unsigned int) error->resourceid);
@@ -702,25 +813,41 @@ create_menu_cursor()
 
 static void composite_init()
 {
-#if 0
+  XWindowAttributes attr;
+  XRenderPictFormat *format;
   XRenderPictureAttributes pa;
-  int major, minor;
+  int major = 0, minor = 2;
+  int i;
 
   if(!XCompositeQueryExtension(display, &i, &i))
-    return;
+    {
+      fprintf (stderr, "No XComposite\n");
+
+      return;
+    }
+
+  if(!XDamageQueryExtension(display, &damage_eventbase, &damage_errorbase))
+    {
+      fprintf (stderr, "No XDamage\n");
+
+      return;
+    }
 
   XCompositeQueryVersion(display, &major, &minor);
 
   if(!(major > 0 || minor >= 2))
     return;
 
-  if(!XDamageQueryExtension(display, &damage_eventbase, &damage_errorbase))
-    return;
+  XCompositeRedirectSubwindows(display, root_window, CompositeRedirectManual);
 
+  XGetWindowAttributes (display, root_window, &attr);
+
+  format = XRenderFindVisualFormat(display, attr.visual);
+
+  memset(&pa, 0, sizeof(pa));
   pa.subwindow_mode = IncludeInferiors;
 
-  XCompositeRedirectSubwindows(display, root_window, CompositeRedirectManual);
-#endif
+  root_picture = XRenderCreatePicture(display, root_window, xrenderpictformat, CPSubwindowMode, &pa);
 }
 
 static void x11_connect(const char* display_name)
@@ -799,7 +926,10 @@ static void x11_connect(const char* display_name)
     {
       XRenderPictureAttributes pa;
       Pixmap pmap;
+      XCreateWindowEvent cwe;
+      struct window *w;
 
+      memset(&pa, 0, sizeof(pa));
       pa.subwindow_mode = IncludeInferiors;
 
       screens[i].width = xinerama_screens[i].width;
@@ -843,6 +973,21 @@ static void x11_connect(const char* display_name)
 
       screens[i].active_terminal = 0;
       screens[i].at = &screens[i].terminals[0];
+
+      memset (&cwe, 0, sizeof (cwe));
+      cwe.window = screens[i].window;
+      cwe.width = screens[i].width;
+      cwe.height = screens[i].height;
+      cwe.x = screens[i].x_org;
+      cwe.y = screens[i].y_org;
+      cwe.override_redirect = 1;
+
+      w = create_notify (&cwe);
+      w->screen = &screens[i];
+      w->flags |= WINDOW_IS_MAPPED;
+      w->type = wm_window_type_wm;
+
+      screens[i].background = w;
     }
 
   window = screens[0].window;
@@ -855,6 +1000,8 @@ static void x11_connect(const char* display_name)
   xa_wm_state = XInternAtom(display, "WM_STATE", False);
   xa_net_wm_icon = XInternAtom(display, "_NET_WM_ICON", False);
   xa_net_wm_pid = XInternAtom(display, "_NET_WM_PID", False);
+  xa_net_wm_user_time = XInternAtom(display, "_NET_WM_USER_TIME", False);
+  xa_net_wm_user_time_window = XInternAtom(display, "_NET_WM_USER_TIME_WINDOW", False);
   xa_wm_transient_for = XInternAtom(display, "WM_TRANSIENT_FOR", False);
   xa_wm_protocols = XInternAtom(display, "WM_PROTOCOLS", False);
   xa_wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
@@ -884,6 +1031,7 @@ static void x11_connect(const char* display_name)
 
     return;
   }
+
   a8pictformat = XRenderFindStandardFormat(display, PictStandardA8);
 
   for(i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
@@ -914,7 +1062,7 @@ static void x11_connect(const char* display_name)
 
   xfd = ConnectionNumber(display);
 
-  XSynchronize(display, False);
+  /*XSynchronize(display, False);*/
 
   x11_connected = 1;
 }
@@ -977,7 +1125,8 @@ get_window_hints (struct window *w)
   XSync(display, False);
   XSetErrorHandler(xerror_discarder);
 
-  w->type = wm_window_type_get (display, w->xwindow);
+  if (w->type == wm_window_type_unknown)
+    w->type = wm_window_type_get (display, w->xwindow);
 
   XGetTransientForHint(display, w->xwindow, &w->transient_for);
 
@@ -1002,7 +1151,7 @@ get_window_hints (struct window *w)
 }
 
 void
-window_gone(Window xwindow)
+destroy_notify(Window xwindow)
 {
   struct screen* screen;
   terminal* desktop;
@@ -1060,26 +1209,27 @@ window_gone(Window xwindow)
           clear();
         }
     }
+
+  /*
+  composite_destroy_window (w);
+  */
 }
 
-struct window*
-new_window(Window window, XCreateWindowEvent* cwe)
+struct window *
+create_notify (XCreateWindowEvent* cwe)
 {
   struct window new_window;
-  unsigned int i;
+  struct window *w;
 
-  for(i = 0; i < screen_count; ++i)
-    {
-      if(window == screens[i].window)
-        break;
-    }
-
-  if(i != screen_count)
-    return 0;
+  if (0 != (w = find_window (cwe->window)))
+    return w;
 
   memset(&new_window, 0, sizeof(new_window));
 
-  new_window.xwindow = window;
+  if (cwe->override_redirect)
+    new_window.flags |= WINDOW_UNMANAGED;
+
+  new_window.xwindow = cwe->window;
   new_window.x = cwe->x;
   new_window.y = cwe->y;
   new_window.width = cwe->width;
@@ -1090,7 +1240,134 @@ new_window(Window window, XCreateWindowEvent* cwe)
   return &ARRAY_GET(&windows, ARRAY_COUNT(&windows) - 1);
 }
 
+int window_size(XWindowChanges *wc, const struct window *w)
+{
+  int x, y, width, height;
+
+  if (!w->screen || (w->flags & WINDOW_UNMANAGED))
+    return 0;
+
+  x = wc->x;
+  y = wc->y;
+  width = wc->width;
+  height = wc->height;
+
+  switch (w->type)
+    {
+    case wm_window_type_normal:
+
+      x = w->screen->x_org;
+      y = w->screen->y_org;
+      width = w->screen->width;
+      height = w->screen->height;
+
+      break;
+
+    case wm_window_type_desktop:
+
+      x = w->screen->x_org;
+      y = w->screen->y_org;
+      width = w->screen->width;
+      height = w->screen->height - terminal_list_height(w->screen);
+
+      break;
+
+    default:
+
+      if (x < w->screen->x_org)
+        x = w->screen->x_org;
+
+      if (y < w->screen->y_org)
+        y = w->screen->y_org;
+
+      if (x + width > w->screen->width)
+        width = w->screen->width - x;
+
+      if (y + height > w->screen->height)
+        height = w->screen->height - y;
+
+      break;
+    }
+
+  if (wc->x != x || wc->y != y
+      || wc->width != w->screen->width
+      || wc->height != w->screen->height)
+    {
+      wc->x = x;
+      wc->y = y;
+      wc->width = width;
+      wc->height = height;
+
+      return 1;
+    }
+
+  return 0;
+}
+
 extern struct tree* config;
+
+void
+paint_dirty_windows()
+{
+  size_t i, j;
+  struct window *w;
+
+  for(i = 0; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if ((w->flags & (WINDOW_IS_MAPPED | WINDOW_DIRTY)) == (WINDOW_IS_MAPPED | WINDOW_DIRTY))
+        break;
+    }
+
+  for(; i < ARRAY_COUNT(&windows); ++i)
+    {
+      w = &ARRAY_GET(&windows, i);
+
+      if (!(w->flags & WINDOW_IS_MAPPED))
+        continue;
+
+      if (!w->xpicture)
+        continue;
+
+      if (w->flags & WINDOW_UNMANAGED)
+        {
+          for (j = 0; j < screen_count; ++j)
+            {
+              XRenderComposite(display, PictOpSrc,
+                               w->xpicture,
+                               None,
+                               screens[j].root_buffer,
+                               0, 0,
+                               0, 0,
+                               w->x - screens[j].x_org, w->y - screens[j].y_org, w->width, w->height);
+            }
+        }
+      else if (w->type != wm_window_type_wm)
+        {
+          XRenderComposite(display, PictOpSrc,
+                           w->xpicture,
+                           None,
+                           w->screen->root_buffer,
+                           0, 0,
+                           0, 0,
+                           w->x - w->screen->x_org, w->y - w->screen->y_org, w->width, w->height);
+        }
+
+      w->flags &= ~WINDOW_DIRTY;
+    }
+
+  for(i = 0; i < screen_count; ++i)
+    {
+      XRenderComposite(display, PictOpSrc,
+                       screens[i].root_buffer,
+                       None,
+                       root_picture,
+                       0, 0,
+                       0, 0,
+                       screens[i].x_org, screens[i].y_org, screens[i].width, screens[i].height);
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -1303,6 +1580,28 @@ process_events:
       {
         XNextEvent(display, &event);
 
+        if(event.type == damage_eventbase + XDamageNotify)
+          {
+            XDamageNotifyEvent* e = (XDamageNotifyEvent*) &event;
+            struct window *w;
+
+            w = find_window (e->drawable);
+
+            if (w)
+              {
+                if(!w->damage_region)
+                  w->damage_region = XFixesCreateRegion(display, 0, 0);
+
+                XDamageSubtract(display, e->damage, None, w->damage_region);
+
+                w->flags |= WINDOW_DIRTY;
+              }
+            else
+              XDamageSubtract(display, e->damage, None, None);
+
+            continue;
+          }
+
         switch(event.type)
         {
         case KeyPress:
@@ -1421,7 +1720,7 @@ process_events:
                 else
                 {
                     history_reset(current_screen, new_terminal);
-                  set_active_terminal(current_screen, new_terminal, event.xkey.time);
+                    set_active_terminal(current_screen, new_terminal, event.xkey.time);
                 }
               }
 
@@ -1515,7 +1814,7 @@ process_events:
 
         case DestroyNotify:
 
-          window_gone(event.xdestroywindow.window);
+          destroy_notify(event.xdestroywindow.window);
 
           break;
 
@@ -1529,13 +1828,15 @@ process_events:
               while(XCheckTypedWindowEvent(display, root_window, DestroyNotify,
                                            &destroy_event))
                 {
-                  window_gone(destroy_event.xdestroywindow.window);
+                  destroy_notify(destroy_event.xdestroywindow.window);
                 }
 
               w = find_window(event.xunmap.window);
 
               if(!w)
                 break;
+
+              composite_destroy_window (w);
 
               if(w->screen && w->desktop == w->screen->at)
                 set_focus(w->screen, w->screen->at, CurrentTime);
@@ -1588,20 +1889,15 @@ process_events:
 
         case CreateNotify:
 
-          {
-            if(event.xcreatewindow.override_redirect)
-              break;
-
-            new_window(event.xcreatewindow.window, &event.xcreatewindow);
-          }
+          create_notify (&event.xcreatewindow);
 
           break;
 
         case ConfigureRequest:
 
             {
+              XWindowAttributes attr;
               XWindowChanges wc;
-              XConfigureEvent ce;
               XConfigureRequestEvent* request = &event.xconfigurerequest;
               int mask;
               struct window* w;
@@ -1615,7 +1911,6 @@ process_events:
               if(!w)
                 break;
 
-              XWindowAttributes attr;
               XGetWindowAttributes(display, w->xwindow, &attr);
 
               get_window_hints (w);
@@ -1640,33 +1935,11 @@ process_events:
               if(!(mask & CWHeight))
                 wc.height = w->height;
 
-              if(screen_count == 1)
-                w->screen = &screens[0];
-
-              if(w->type == wm_window_type_normal && w->screen)
-                {
-                  wc.x = w->screen->x_org;
-                  wc.y = w->screen->y_org;
-                  wc.width = w->screen->width;
-                  wc.height = w->screen->height;
-                }
+              window_size(&wc, w);
 
               mask |= CWX | CWY | CWWidth | CWHeight;
 
               XConfigureWindow(display, request->window, mask, &wc);
-
-              memset(&ce, 0, sizeof(ce));
-              ce.type = ConfigureNotify;
-              ce.display = display;
-              ce.event = request->window;
-              ce.window = request->window;
-
-              ce.x = wc.x;
-              ce.y = wc.y;
-              ce.width = wc.width;
-              ce.height = wc.height;
-
-              XSendEvent(display, request->window, False, StructureNotifyMask, (XEvent*) &ce);
 
               w->x = wc.x;
               w->y = wc.y;
@@ -1676,9 +1949,24 @@ process_events:
 
           break;
 
+        case MapNotify:
+
+            {
+              struct window *w;
+
+              if (0 == (w = find_window (event.xmap.window)))
+                break;
+
+              composite_init_window (w);
+              w->flags |= WINDOW_DIRTY | WINDOW_IS_MAPPED;
+            }
+
+          break;
+
         case MapRequest:
 
           {
+            XWindowChanges wc;
             struct window* w;
             int pid;
 
@@ -1688,6 +1976,29 @@ process_events:
               break;
 
             get_window_hints (w);
+
+            if (0)
+              {
+                int x = 0, ww = 0;
+                unsigned int screen_index;
+                unsigned int term_index;
+
+                get_int_property(w->xwindow, xa_net_wm_user_time_window, &ww);
+                get_int_property(ww ? (Window) ww : w->xwindow, xa_net_wm_user_time, &x);
+
+                printf ("New: user time: %d  user time window: %d\n", x, ww);
+
+                if (x)
+                  {
+                    for(screen_index = 0; screen_index < screen_count; ++screen_index)
+                      {
+                        for(term_index = 0; term_index < TERMINAL_COUNT; ++term_index)
+                          {
+                            printf ("  Screen: %d\n", (int) screens[screen_index].terminals[term_index].startup);
+                          }
+                      }
+                  }
+              }
 
             if(!w->desktop
                && w->type == wm_window_type_normal
@@ -1725,48 +2036,48 @@ process_events:
                 history_add(current_screen, new_terminal);
                 set_active_terminal(current_screen, new_terminal, CurrentTime);
               }
-
-            switch (w->type)
+            else if (w->type == wm_window_type_desktop)
               {
-              case wm_window_type_normal:
+                struct window *w;
 
-                if (w->x != w->screen->x_org
-                    || w->y != w->screen->y_org
-                    || w->width != w->screen->width
-                    || w->height != w->screen->height)
+                for (i = 0; i < screen_count; ++i)
                   {
-                    XWindowChanges wc;
+                    for(j = 0; j < ARRAY_COUNT(&windows); ++j)
+                      {
+                        w = &ARRAY_GET(&windows, j);
 
-                    w->x = wc.x = w->screen->x_org;
-                    w->y = wc.y = w->screen->y_org;
-                    w->width = wc.width = w->screen->width;
-                    w->height = wc.height = w->screen->height;
+                        if (w->type == wm_window_type_desktop && w->screen == &screens[i])
+                          break;
+                      }
 
-                    XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
+                    if (j == ARRAY_COUNT(&windows))
+                      w->screen = &screens[i];
                   }
 
-                grab_thumbnail(w);
-
-                /* Fall through */
-
-              default:
-
-                if(w->desktop == w->screen->at)
-                  {
-                    set_map_state(w->xwindow, 1);
-                    XMapRaised(display, w->xwindow);
-                    XSetInputFocus(display, w->xwindow, RevertToPointerRoot, CurrentTime);
-                  }
-
-                break;
-
-              case wm_window_type_dock:
-
-                set_map_state(w->xwindow, 1);
-                XMapRaised(display, w->xwindow);
-
-                break;
+                if (i == screen_count)
+                  w->screen = &screens[0];
               }
+
+            wc.x = w->x;
+            wc.y = w->y;
+            wc.width = w->width;
+            wc.height = w->height;
+
+            if (window_size(&wc, w))
+              {
+                XConfigureWindow(display, w->xwindow, CWX | CWY | CWWidth | CWHeight, &wc);
+
+                w->x = wc.x;
+                w->y = wc.y;
+                w->width = wc.width;
+                w->height = wc.height;
+              }
+
+            if (w->type == wm_window_type_normal)
+              grab_thumbnail(w);
+
+            if(w->desktop == w->screen->at || w->type == wm_window_type_dock)
+              set_focus (w->screen, w->screen->at, CurrentTime);
           }
 
           break;
@@ -1774,8 +2085,10 @@ process_events:
       }
     }
 
-    if(x11_connected && terminal_list_popup)
+    if(x11_connected && terminal_list.window)
       paint_terminal_list_popup();
+
+    paint_dirty_windows ();
   }
 
   return EXIT_SUCCESS;

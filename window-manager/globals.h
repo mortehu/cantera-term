@@ -2,11 +2,14 @@
 #define GLOBALS_H_ 1
 
 #include <X11/extensions/Xinerama.h>
+#include <X11/extensions/Xdamage.h>
 
 #include <stdint.h>
 
 #include <sys/time.h>
 #include <pty.h>
+
+#include "wm-window-type.h"
 
 enum mode
 {
@@ -16,6 +19,33 @@ enum mode
 
 #define MAX_QUERIES 16
 
+struct screen;
+typedef struct terminal terminal;
+
+#define WINDOW_IS_MAPPED          0x0001
+#define WINDOW_WANT_UNMAPPED      0x0002
+#define WINDOW_DIRTY              0x0004
+#define WINDOW_UNMANAGED          0x0008
+
+struct window
+{
+  Window xwindow;
+  Picture xpicture;
+  Damage xdamage;
+  XserverRegion damage_region;
+
+  int x, y;
+  unsigned int width, height;
+
+  enum wm_window_type type;
+
+  int flags;
+
+  Window transient_for;
+  terminal* desktop;
+  struct screen* screen;
+};
+
 struct terminal
 {
   Picture thumbnail;
@@ -24,12 +54,11 @@ struct terminal
   enum mode return_mode;
 
   pid_t pid;
+  Time startup;
   int fd;
 
   struct timeval next_update;
 };
-
-typedef struct terminal terminal;
 
 #define TERMINAL_COUNT 24
 
@@ -43,6 +72,8 @@ struct screen
   Picture root_buffer;
   Picture root_picture;
   terminal terminals[TERMINAL_COUNT];
+
+  struct window *background;
 
   int history[TERMINAL_COUNT];
   int history_size;

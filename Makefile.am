@@ -5,7 +5,7 @@ pkgdata_DATA = lock/gfx/fonts/vera-sans-mono.dat lock/gfx/fonts/vera-sans-mono_0
 
 CONVERT = @CONVERT@
 
-XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lXrender -lXft -lXpm -lpng -ljpeg -lgif
+XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lXrender -lXft -lXcomposite -lXdamage -lXpm -lpng -ljpeg -lgif
 AM_CFLAGS = -g -Wall -pthread
 AM_CPPFLAGS = -I$(srcdir)/common -I/usr/include/freetype2 -I/usr/include/libxml2 -DBINDIR=\"$(bindir)\" -DPKGDATADIR=\"$(pkgdatadir)\" -D_BSD_SOURCE -D_GNU_SOURCE -D_XOPEN_SOURCE -D_REENTRANT -D_FILE_OFFSET_BITS=64
 
@@ -41,7 +41,13 @@ cantera_lock_SOURCES = \
   lock/lock.c
 cantera_lock_LDADD = -lX11 -lGL -lGLU -lm -lXxf86vm -lpng -lXinerama -lcrypt
 
-EXTRA_DIST = terminal/cantera-term.desktop terminal/doc/cantera-term.1 window-manager/cantera-wm.desktop window-manager/doc/cantera-wm.1 cantera-lock/gfx/fonts/vera-sans-mono.dat cantera-lock/gfx/fonts/vera-sans-mono_0.png
+EXTRA_DIST = \
+  terminal/cantera-term.desktop \
+  terminal/doc/cantera-term.1 \
+  window-manager/cantera-wm.desktop \
+  window-manager/doc/cantera-wm.1 \
+  cantera-lock/gfx/fonts/vera-sans-mono.dat \
+  cantera-lock/gfx/fonts/vera-sans-mono_0.png
 
 install-data-local:
 	install -m 0755 -d $(DESTDIR)$(datadir)/applications

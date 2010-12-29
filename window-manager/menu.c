@@ -87,8 +87,15 @@ void menu_init()
 void menu_thumbnail_dimensions(struct screen* screen, int* width, int* height, int* margin)
 {
   int tmp_margin = 10;
-  *width = (screen->width - tmp_margin * 17) / 12;
-  *height = screen->height * *width / screen->width;
+  int tmp_width;
+
+  tmp_width = (screen->width - tmp_margin * 17) / 12;
+
+  if (width)
+    *width = tmp_width;
+
+  if (height)
+    *height = screen->height * tmp_width / screen->width;
 
   if(margin)
     *margin = tmp_margin;

@@ -13,7 +13,9 @@ enum wm_window_type
   wm_window_type_utility,
   wm_window_type_splash,
   wm_window_type_dialog,
-  wm_window_type_normal
+  wm_window_type_normal,
+
+  wm_window_type_wm
 };
 
 void
