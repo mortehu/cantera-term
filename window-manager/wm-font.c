@@ -50,7 +50,11 @@ font_load(const char* name, unsigned int size, int flags)
 
 void font_init(Drawable drawable, Visual *visual, Colormap colormap)
 {
+  FT_UInt init_glyphs[256];
   int i;
+
+  for (i = 0; i < sizeof(init_glyphs) / sizeof(init_glyphs[0]); ++i)
+    init_glyphs[i] = i;
 
   fontdraw = XftDrawCreate(display, drawable, visual, colormap);
 
@@ -67,6 +71,8 @@ void font_init(Drawable drawable, Visual *visual, Colormap colormap)
 
       xskips[i] = ceil(font_faces[i]->max_advance_width);
       yskips[i] = round(font_faces[i]->height);
+
+      XftFontLoadGlyphs (display, font_faces[i], 0, init_glyphs, sizeof(init_glyphs) / sizeof(init_glyphs[0]));
     }
 }
 
