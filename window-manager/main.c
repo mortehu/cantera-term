@@ -62,8 +62,6 @@ unsigned int palette[] =
 };
 
 Cursor menu_cursor;
-Cursor shell_cursor;
-Cursor other_cursor;
 
 XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
 Picture picpalette[sizeof(palette) / sizeof(palette[0])];
@@ -880,9 +878,6 @@ static void x11_connect(const char* display_name)
   XChangeWindowAttributes(display, root_window, CWEventMask, &window_attr);
 
   XGetWindowAttributes(display, root_window, &root_window_attr);
-
-  shell_cursor = XCreateFontCursor(display, XC_left_ptr);
-  other_cursor = XCreateFontCursor(display, XC_left_ptr);
 
   XSetErrorHandler(xerror_handler);
   //XSetIOErrorHandler(xioerror_handler);
