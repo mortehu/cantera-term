@@ -111,8 +111,9 @@
       assert((array)->array_result == 0);                                     \
       --(array)->array_element_count;                                         \
       memmove((array)->array_elements + (index),                              \
-              (array)->array_elements + (array)->array_element_count,         \
-              sizeof(*(array)->array_elements));                              \
+              (array)->array_elements + (index) + 1,                          \
+              sizeof(*(array)->array_elements)                                \
+                * ((array)->array_element_count - (index)));                  \
     }                                                                         \
   while(0)
 
