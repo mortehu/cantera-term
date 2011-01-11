@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <err.h>
 #include <pwd.h>
 #include <shadow.h>
 #include <unistd.h>
@@ -30,6 +31,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sysexits.h>
 #include <time.h>
 
 #include <X11/Xlib.h>
@@ -105,7 +107,7 @@ get_password_hash()
   p = getpwnam(user_name);
 
   if(!p)
-    exit(EXIT_FAILURE);
+    errx(EXIT_FAILURE, "Unable to get password for '%s'", user_name);
 
   password_hash = p->pw_passwd;
 
@@ -114,7 +116,7 @@ get_password_hash()
       s = getspnam(user_name);
 
       if(!s)
-        exit(EXIT_FAILURE);
+	errx(EXIT_FAILURE, "Unable to get password for '%s' from shadow file", user_name);
 
       password_hash = s->sp_pwdp;
     }
@@ -127,6 +129,9 @@ int main(int argc, char** argv)
   const char *display_name;
 
   display_name = getenv("DISPLAY");
+
+  if (!display_name)
+    errx (EX_USAGE, "Missing DISPLAY environment variable");
 
   display = XOpenDisplay(display_name);
 
@@ -709,6 +714,9 @@ static char* get_user_name()
   }
 
   endpwent();
+
+  if (*result == '+')
+    ++result;
 
   return result;
 }

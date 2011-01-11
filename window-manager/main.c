@@ -1751,7 +1751,7 @@ process_events:
 
               default:
 
-                if(w->desktop == w->screen->at)
+                if(w->screen && w->desktop == w->screen->at)
                   {
                     set_map_state(w->xwindow, 1);
                     XMapRaised(display, w->xwindow);
