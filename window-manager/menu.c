@@ -156,7 +156,7 @@ void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
 
   ttnow = time(0);
   tmnow = localtime(&ttnow);
-  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tmnow);
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S | %G-%V-%u", tmnow);
   swprintf(wbuf, sizeof(wbuf), L"%s", buf);
 
   if (charge_now >= 0 && charge_full >= 0)
