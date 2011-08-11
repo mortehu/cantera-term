@@ -596,6 +596,9 @@ pid_t launch(const char* command, Time when)
     sprintf(buf, ".cantera/session-%02d", current_screen->active_terminal);
     setenv("SESSION_PATH", buf, 1);
 
+    sprintf(buf, "%d", (int) (current_screen - screens));
+    setenv("CURRENT_SCREEN", buf, 1);
+
     args[0] = "/bin/sh";
     args[1] = "-c";
     asprintf(&args[2], "%s", command);
@@ -700,29 +703,6 @@ create_menu_cursor()
   XFreeGC(display, gc);
 }
 
-static void composite_init()
-{
-#if 0
-  XRenderPictureAttributes pa;
-  int major, minor;
-
-  if(!XCompositeQueryExtension(display, &i, &i))
-    return;
-
-  XCompositeQueryVersion(display, &major, &minor);
-
-  if(!(major > 0 || minor >= 2))
-    return;
-
-  if(!XDamageQueryExtension(display, &damage_eventbase, &damage_errorbase))
-    return;
-
-  pa.subwindow_mode = IncludeInferiors;
-
-  XCompositeRedirectSubwindows(display, root_window, CompositeRedirectManual);
-#endif
-}
-
 static void x11_connect(const char* display_name)
 {
   XSetWindowAttributes window_attr;
@@ -758,7 +738,6 @@ static void x11_connect(const char* display_name)
   other_cursor = XCreateFontCursor(display, XC_left_ptr);
 
   XSetErrorHandler(xerror_handler);
-  //XSetIOErrorHandler(xioerror_handler);
 
   screenidx = DefaultScreen(display);
   screen = DefaultScreenOfDisplay(display);
@@ -905,8 +884,6 @@ static void x11_connect(const char* display_name)
 
     return;
   }
-
-  composite_init();
 
   menu_init();
 
@@ -1471,14 +1448,6 @@ process_events:
 
               default:;
               }
-            }
-            else if(current_screen->at->mode == mode_x11)
-            {
-            }
-            else if(current_screen->at->mode == mode_menu)
-            {
-              if(0 != menu_handle_char(current_screen, text[0]))
-                menu_keypress(current_screen, key_sym, text, len, event.xkey.time);
             }
           }
 

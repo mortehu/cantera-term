@@ -96,7 +96,6 @@ void menu_thumbnail_dimensions(struct screen* screen, int* width, int* height, i
 
 void menu_draw(struct screen* screen)
 {
-  wchar_t buf[260];
   int thumb_width, thumb_height, thumb_margin;
 
   menu_thumbnail_dimensions(screen, &thumb_width, &thumb_height, &thumb_margin);
@@ -109,15 +108,6 @@ void menu_draw(struct screen* screen)
     XRenderComposite(display, PictOpSrc, background.pic, None, screen->root_buffer,
                      0, 0, 0, 0, 0, 0, screen->width, screen->height);
   }
-
-  int margin_y = screen->height * 75 / 1000;
-
-  int y = margin_y;
-
-  swprintf(buf, sizeof(buf), L"Query: %ls", screen->query);
-  y = screen->height - 2 * thumb_height - 2 * thumb_margin - yskips[SMALL] - yskips[LARGE] - 15;
-  drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin + 1, y + 1, 0, LARGE);
-  drawtext(screen->root_buffer, buf, wcslen(buf), thumb_margin, y, 15, LARGE);
 
   menu_draw_desktops(screen, screen->root_buffer, screen->height);
 }
@@ -207,79 +197,4 @@ void menu_draw_desktops(struct screen* screen, Picture buffer, int height)
     else
       XRenderComposite(display, PictOpSrc, screen->terminals[i].thumbnail, None, buffer, 0, 0, 0, 0, x, y, thumb_width, thumb_height);
   }
-}
-
-void menu_keypress(struct screen* screen, int key_sym, const char* text, int textlen, Time time)
-{
-  switch(key_sym)
-  {
-  case XK_Escape:
-
-    screen->query[0] = 0;
-
-    break;
-
-  case XK_Return:
-
-      {
-        char command[4096];
-
-        wcstombs(command, screen->query, sizeof(command));
-
-        launch(command, time);
-
-        screen->query[0] = 0;
-      }
-
-    break;
-
-  case XK_BackSpace:
-
-    if(wcslen(screen->query))
-      screen->query[wcslen(screen->query) - 1] = 0;
-
-    break;
-
-  default:
-
-    return;
-  }
-
-  XClearArea(display, screen->window, 0, 0, screen->width, screen->height, True);
-}
-
-int menu_handle_char(struct screen* screen, int ch)
-{
-  switch(ch)
-  {
-  case ('U' & 0x3F):
-
-    screen->query[0] = 0;
-
-    break;
-
-  default:
-
-    if(isgraph(ch) || ch == ' ')
-    {
-      if(ch == ' ' && !screen->query[0])
-        return 0;
-
-      size_t querylen = wcslen(screen->query);
-
-      if(querylen < sizeof(screen->query) / sizeof(screen->query[0]) - 1)
-      {
-        screen->query[querylen++] = ch;
-        screen->query[querylen] = 0;
-      }
-
-      break;
-    }
-
-    return -1;
-  }
-
-  XClearArea(display, screen->window, 0, 0, screen->width, screen->height, True);
-
-  return 0;
 }
