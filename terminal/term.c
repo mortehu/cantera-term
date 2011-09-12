@@ -2411,8 +2411,6 @@ int x11_process_events()
 		    XClearArea(display, window, 0, 0, window_width, window_height, True);
 		  }
 	      }
-	    else if (ctrl_pressed)
-	      term_strwrite("\033[5~");
 	    else if (terminal.appcursor)
 	      term_strwrite("\033OA");
 	    else
@@ -2430,8 +2428,6 @@ int x11_process_events()
 		    XClearArea(display, window, 0, 0, window_width, window_height, True);
 		  }
 	      }
-	    else if (ctrl_pressed)
-	      term_strwrite("\033[6~");
 	    else if (terminal.appcursor)
 	      term_strwrite("\033OB");
 	    else
