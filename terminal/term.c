@@ -2057,10 +2057,8 @@ static void term_process_data(unsigned char* buf, int count)
     }
   }
 
-  XLockDisplay(display);
   XClearArea(display, window, 0, 0, window_width, window_height, True);
   XFlush(display);
-  XUnlockDisplay(display);
 }
 
 void term_read()

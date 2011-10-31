@@ -729,7 +729,7 @@ static void x11_connect(const char* display_name)
 
   root_window = RootWindow(display, screenidx);
 
-  window_attr.event_mask = SubstructureRedirectMask | SubstructureNotifyMask | EnterWindowMask;
+  window_attr.event_mask = SubstructureRedirectMask | SubstructureNotifyMask;
   XChangeWindowAttributes(display, root_window, CWEventMask, &window_attr);
 
   XGetWindowAttributes(display, root_window, &root_window_attr);
@@ -1285,171 +1285,163 @@ process_events:
         case KeyPress:
 
           if(!XFilterEvent(&event, event.xkey.window))
-          {
-            char text[32];
-            Status status;
-            KeySym key_sym;
-            int len;
-
-            ctrl_pressed = (event.xkey.state & ControlMask);
-            mod1_pressed = (event.xkey.state & Mod1Mask);
-            super_pressed = (event.xkey.state & Mod4Mask);
-            shift_pressed = (event.xkey.state & ShiftMask);
-
-            len = Xutf8LookupString(xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
-
-            if(!text[0])
-              len = 0;
-
-            if(key_sym == XK_Control_L || key_sym == XK_Control_R)
-              ctrl_pressed = 1;
-
-            if(key_sym == XK_Super_L || key_sym == XK_Super_R)
-              super_pressed = 1;
-
-            if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
-              mod1_pressed = 1;
-
-            /* Logitech cordless keyboard (S510) */
-
-            /* right side keys */
-            if(event.xkey.keycode == 129)
-              run_command(-1, "music", 0);
-            else if(event.xkey.keycode == 162)
-              run_command(-1, "play_pause", 0);
-            else if(event.xkey.keycode == 164)
-              run_command(-1, "stop", 0);
-            else if(event.xkey.keycode == 153)
-              run_command(-1, "next", 0);
-            else if(event.xkey.keycode == 144)
-              run_command(-1, "previous", 0);
-            else if(event.xkey.keycode == 176)
-              run_command(-1, "increase-sound-volume", 0);
-            else if(event.xkey.keycode == 174)
-              run_command(-1, "decrease-sound-volume", 0);
-            else if(event.xkey.keycode == 160)
-              run_command(-1, "toggle-mute", 0);
-            /* left side keys */
-            else if(event.xkey.keycode == 223)
-              run_command(-1, "standby", 0);
-            else if(event.xkey.keycode == 130)
-              run_command(-1, "home", 0);
-            /* other */
-            else if(ctrl_pressed && event.xkey.keycode == 110)
-              run_command(-1, "coffee", 0);
-            else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
-              {
-                char key[10];
-                const char* command;
-
-                sprintf(key, "hotkey.%c", (int) key_sym);
-
-                command = tree_get_string_default(config, key, 0);
-
-                if(command)
-                  launch(command, event.xkey.time);
-              }
-            else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
             {
-              unsigned int new_terminal;
+              char text[32];
+              Status status;
+              KeySym key_sym;
+              int len;
 
-              new_terminal = key_sym - XK_F1;
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
 
-              if(super_pressed)
-                new_terminal += 12;
+              len = Xutf8LookupString(xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
 
-              if(new_terminal != current_screen->active_terminal)
-              {
-                  history_reset(current_screen, new_terminal);
-                  set_active_terminal(current_screen, new_terminal, event.xkey.time);
-              }
-            }
-            else if((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
-            {
-              exit(EXIT_SUCCESS);
-            }
-            else if(super_pressed && (mod1_pressed ^ ctrl_pressed))
-            {
-              int new_terminal;
-              int direction = 0;
+              if(!text[0])
+                len = 0;
 
-              if(key_sym == XK_Right)
-                direction = 1;
-              else if(key_sym == XK_Left)
-                direction = -1;
-              else if(key_sym == XK_Down)
-                direction = TERMINAL_COUNT / 2;
-              else if(key_sym == XK_Up)
-                direction = -TERMINAL_COUNT / 2;
+              if(key_sym == XK_Control_L || key_sym == XK_Control_R)
+                ctrl_pressed = 1;
 
-              if(direction)
-              {
-                new_terminal = (TERMINAL_COUNT + current_screen->active_terminal + direction) % TERMINAL_COUNT;
+              if(key_sym == XK_Super_L || key_sym == XK_Super_R)
+                super_pressed = 1;
 
-                if(ctrl_pressed)
+              if(key_sym == XK_Alt_L || key_sym == XK_Alt_R)
+                mod1_pressed = 1;
+
+              /* Logitech cordless keyboard (S510) */
+
+              /* right side keys */
+              if(event.xkey.keycode == 129)
+                run_command(-1, "music", 0);
+              else if(event.xkey.keycode == 162)
+                run_command(-1, "play_pause", 0);
+              else if(event.xkey.keycode == 164)
+                run_command(-1, "stop", 0);
+              else if(event.xkey.keycode == 153)
+                run_command(-1, "next", 0);
+              else if(event.xkey.keycode == 144)
+                run_command(-1, "previous", 0);
+              else if(event.xkey.keycode == 176)
+                run_command(-1, "increase-sound-volume", 0);
+              else if(event.xkey.keycode == 174)
+                run_command(-1, "decrease-sound-volume", 0);
+              else if(event.xkey.keycode == 160)
+                run_command(-1, "toggle-mute", 0);
+              /* left side keys */
+              else if(event.xkey.keycode == 223)
+                run_command(-1, "standby", 0);
+              else if(event.xkey.keycode == 130)
+                run_command(-1, "home", 0);
+              /* other */
+              else if(ctrl_pressed && event.xkey.keycode == 110)
+                run_command(-1, "coffee", 0);
+              else if(key_sym >= 'a' && key_sym <= 'z' && super_pressed)
                 {
-                  swap_terminals(new_terminal, current_screen->active_terminal);
+                  char key[10];
+                  const char* command;
 
-                  current_screen->history[current_screen->history_size - 1] = new_terminal;
+                  sprintf(key, "hotkey.%c", (int) key_sym);
 
-                  current_screen->active_terminal = new_terminal;
-                  current_screen->at = &current_screen->terminals[current_screen->active_terminal];
+                  command = tree_get_string_default(config, key, 0);
+
+                  if(command)
+                    launch(command, event.xkey.time);
                 }
-                else
+              else if((super_pressed ^ ctrl_pressed) && key_sym >= XK_F1 && key_sym <= XK_F12)
                 {
-                    history_reset(current_screen, new_terminal);
-                  set_active_terminal(current_screen, new_terminal, event.xkey.time);
-                }
-              }
+                  unsigned int new_terminal;
 
-              create_terminal_list_popup();
-            }
-            else if(super_pressed && key_sym >= XK_1 && key_sym <= XK_9)
-            {
-              unsigned int screen = key_sym - XK_1;
+                  new_terminal = key_sym - XK_F1;
 
-              if(screen >= screen_count)
-                break;
+                  if(super_pressed)
+                    new_terminal += 12;
 
-              current_screen = &screens[screen];
-
-              set_focus(current_screen, current_screen->at, event.xkey.time);
-            }
-            else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
-            {
-              launch("xkill", event.xkey.time);
-            }
-            else if(mod1_pressed && key_sym == XK_F4)
-            {
-              switch(current_screen->at->mode)
-              {
-              case mode_x11:
-
-                {
-                  XClientMessageEvent cme;
-                  Window temp_window;
-
-                  if(0 != (temp_window = find_xwindow(current_screen->at)))
+                  if(new_terminal != current_screen->active_terminal)
                     {
-                      cme.type = ClientMessage;
-                      cme.send_event = True;
-                      cme.display = display;
-                      cme.window = temp_window;
-                      cme.message_type = xa_wm_protocols;
-                      cme.format = 32;
-                      cme.data.l[0] = xa_wm_delete_window;
-                      cme.data.l[1] = event.xkey.time;
-
-                      XSendEvent(display, temp_window, False, 0, (XEvent*) &cme);
+                      history_reset(current_screen, new_terminal);
+                      set_active_terminal(current_screen, new_terminal, event.xkey.time);
                     }
                 }
+              else if((key_sym == XK_q || key_sym == XK_Q) && (ctrl_pressed && mod1_pressed))
+                {
+                  exit(EXIT_SUCCESS);
+                }
+              else if(super_pressed && (mod1_pressed ^ ctrl_pressed))
+                {
+                  int new_terminal;
+                  int direction = 0;
 
-                break;
+                  if(key_sym == XK_Right)
+                    direction = 1;
+                  else if(key_sym == XK_Left)
+                    direction = -1;
+                  else if(key_sym == XK_Down)
+                    direction = TERMINAL_COUNT / 2;
+                  else if(key_sym == XK_Up)
+                    direction = -TERMINAL_COUNT / 2;
 
-              default:;
-              }
+                  if(direction)
+                    {
+                      new_terminal = (TERMINAL_COUNT + current_screen->active_terminal + direction) % TERMINAL_COUNT;
+
+                      if(ctrl_pressed)
+                        {
+                          swap_terminals(new_terminal, current_screen->active_terminal);
+
+                          current_screen->history[current_screen->history_size - 1] = new_terminal;
+
+                          current_screen->active_terminal = new_terminal;
+                          current_screen->at = &current_screen->terminals[current_screen->active_terminal];
+                        }
+                      else
+                        {
+                          history_reset(current_screen, new_terminal);
+                          set_active_terminal(current_screen, new_terminal, event.xkey.time);
+                        }
+                    }
+
+                  create_terminal_list_popup();
+                }
+              else if(super_pressed && key_sym >= XK_1 && key_sym <= XK_9)
+                {
+                  unsigned int screen = key_sym - XK_1;
+
+                  if(screen >= screen_count)
+                    break;
+
+                  current_screen = &screens[screen];
+
+                  set_focus(current_screen, current_screen->at, event.xkey.time);
+                }
+              else if(ctrl_pressed && mod1_pressed && (key_sym == XK_Escape))
+                {
+                  launch("xkill", event.xkey.time);
+                }
+              else if(mod1_pressed && key_sym == XK_F4)
+                {
+                  if (current_screen->at->mode == mode_x11)
+                    {
+                      XClientMessageEvent cme;
+                      Window temp_window;
+
+                      if(0 != (temp_window = find_xwindow(current_screen->at)))
+                        {
+                          cme.type = ClientMessage;
+                          cme.send_event = True;
+                          cme.display = display;
+                          cme.window = temp_window;
+                          cme.message_type = xa_wm_protocols;
+                          cme.format = 32;
+                          cme.data.l[0] = xa_wm_delete_window;
+                          cme.data.l[1] = event.xkey.time;
+
+                          XSendEvent(display, temp_window, False, 0, (XEvent*) &cme);
+                        }
+                    }
+                }
             }
-          }
 
           clear();
 
@@ -1720,7 +1712,7 @@ process_events:
 
               default:
 
-                if(w->screen && w->desktop == w->screen->at)
+                if(!w->screen || w->desktop == w->screen->at)
                   {
                     set_map_state(w->xwindow, 1);
                     XMapRaised(display, w->xwindow);
