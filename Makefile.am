@@ -6,7 +6,7 @@ pkgdata_DATA = lock/gfx/fonts/vera-sans-mono.dat lock/gfx/fonts/vera-sans-mono_0
 CONVERT = @CONVERT@
 
 XLDFLAGS =  -L/usr/X11R6/lib -lX11 -lXrender -lXft -lXpm -lpng -ljpeg -lgif
-AM_CFLAGS = -g -Wall -pthread
+AM_CFLAGS = -g -Wall -pthread $(DBUS_CFLAGS)
 AM_CPPFLAGS = -I$(srcdir)/common -I/usr/include/freetype2 -I/usr/include/libxml2 -DBINDIR=\"$(bindir)\" -DPKGDATADIR=\"$(pkgdatadir)\" -D_BSD_SOURCE -D_GNU_SOURCE -D_XOPEN_SOURCE -D_REENTRANT -D_FILE_OFFSET_BITS=64
 
 libcommon_a_SOURCES = common/image.c common/file.c common/common.h common/tree.c common/tree.h common/arena.c common/arena.h common/io.c common/io.h
@@ -18,6 +18,7 @@ cantera_term_LDADD = libcommon.a
 cantera_wm_SOURCES = \
   window-manager/font.h \
   window-manager/globals.h \
+  window-manager/dbus.c \
   window-manager/main.c \
   window-manager/menu.c \
   window-manager/menu.h \
@@ -26,7 +27,7 @@ cantera_wm_SOURCES = \
   window-manager/wm-window-type.c \
   window-manager/wm-window-type.h
 cantera_wm_LDFLAGS = -L/usr/X11R6/lib $(XLDFLAGS) -lutil -lm -lXinerama -rdynamic -lXfixes -ldl
-cantera_wm_LDADD = libcommon.a
+cantera_wm_LDADD = libcommon.a $(DBUS_LIBS)
 
 cantera_lock_SOURCES = \
   lock/draw.h lock/draw.c \

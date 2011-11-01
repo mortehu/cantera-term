@@ -78,6 +78,16 @@ Window terminal_list_popup = 0;
 void run_command(int fd, const char* command, const char* arg);
 void init_ximage(XImage* image, int width, int height, void* data);
 
+/****************************************************************************/
+
+void
+dbus_init ();
+
+void
+dbus_poll ();
+
+/****************************************************************************/
+
 struct window*
 new_window(Window window, XCreateWindowEvent* cwe);
 
@@ -349,7 +359,7 @@ static void grab_thumbnail(struct window* w)
       unsigned int width, height;
       unsigned int i;
 
-      unsigned long *icon_start, *best;
+      unsigned long *icon_start, *best = 0;
       unsigned int best_area = 0;
 
       union
@@ -706,7 +716,7 @@ create_menu_cursor()
 static void x11_connect(const char* display_name)
 {
   XSetWindowAttributes window_attr;
-  XineramaScreenInfo* xinerama_screens;
+  XineramaScreenInfo* xinerama_screens = 0;
   int i;
   int nitems;
   char* c;
@@ -1152,6 +1162,8 @@ int main(int argc, char** argv)
       history_reset(&screens[j], 0);
     }
 
+  dbus_init ();
+
   set_focus(current_screen, current_screen->at, CurrentTime);
 
   while(!done)
@@ -1162,6 +1174,8 @@ int main(int argc, char** argv)
     fd_set readset;
     fd_set writeset;
     struct timeval timeout;
+
+    dbus_poll ();
 
     while(0 < (pid = waitpid(-1, &status, WNOHANG)))
       ;
