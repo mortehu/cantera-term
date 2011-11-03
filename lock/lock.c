@@ -1,7 +1,10 @@
-#include <string.h>
+#include <err.h>
 #include <math.h>
+#include <pwd.h>
+#include <shadow.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
@@ -9,31 +12,20 @@
 #include <GL/gl.h>
 #include <X11/extensions/Xinerama.h>
 
-#include "error.h"
-#include "draw.h"
-#include "font.h"
-#include "input.h"
+#include "gui.h"
 
-static int font;
+struct gui_instance *gui;
+struct gui_font *font;
+
 static time_t begin_lock;
 static time_t hide_hud = 0;
 
-void game_init()
-{
-  begin_lock = time(0);
-  font = font_load("vera-sans-mono");
+char* user_name;
+char* host_name;
+char* password_hash;
 
-  hide_hud = begin_lock + 60;
-}
-
-static double now;
-
-extern char* user_name;
-extern char* host_name;
-extern char* password_hash;
-
-extern XineramaScreenInfo* screens;
-extern int screen_count;
+XineramaScreenInfo* screens;
+int screen_count;
 
 static char pass[1024];
 
@@ -43,30 +35,113 @@ static const char* hash_for_password(const char* password, const char* salt)
 }
 
 void
-game_process_frame(float width, float height, double delta_time)
+lock_paint(struct gui_instance *gi, unsigned int x, unsigned int y, unsigned int width, unsigned int height)
 {
-  device_state* devices;
-  int device_count;
   int i, j;
-  float x, y;
   char* buf;
-  time_t now_tt;
+  time_t now;
 
-  now_tt = time(0);
+  gui_draw_quad(gi, 0, 0, width, height, 0x000000);
 
-  now += delta_time * 0.2;
+  now = time (0);
 
-  devices = input_get_device_states(&device_count);
-
-  for(i = 0; i < devices[0].button_count; ++i)
+  /*if(now < hide_hud)*/
     {
-      if(devices[0].button_states[i] & button_pressed)
-        hide_hud = now_tt + 20;
+      for(i = 0; i < screen_count; ++i)
+        {
+          char date[24];
+          struct tm* lt;
+
+          lt = localtime(&begin_lock);
+          strftime(date, sizeof(date), "%Y-%m-%d %H:%M %Z", lt);
+
+          x = screens[i].x_org;
+          y = screens[i].y_org;
+
+          asprintf(&buf, "%s at %s", user_name, host_name);
+          gui_draw_text(gi, font, x, y, buf, 0xffffffff, 0);
+          free(buf);
+
+          y += 25.0f;
+          asprintf(&buf, "Locked since %s", date);
+          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          free(buf);
+
+          unsigned int diff = (now - begin_lock);
+
+          if(diff < 120)
+            asprintf(&buf, "%u seconds ago", diff);
+          else if(diff < 3600)
+            asprintf(&buf, "%u:%02u minutes ago", diff / 60, diff % 60);
+          else
+            asprintf(&buf, "%u:%02u hours ago", diff / 3600, (diff / 60) % 60);
+
+          y += 25.0f;
+          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          free(buf);
+
+          buf = malloc(strlen(pass) + sizeof("Password: "));
+          strcpy(buf, "Password: ");
+          for(j = 0; pass[j]; ++j)
+            strcat(buf, "*");
+
+          y += 25.0f;
+          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          free(buf);
+        }
+    }
+}
+
+static void
+lock_init(struct gui_instance *gi)
+{
+  XWindowAttributes root_window_attr;
+  int i;
+
+  XGetWindowAttributes(GUI_display, RootWindow(GUI_display, DefaultScreen(GUI_display)), &root_window_attr);
+
+  font = gui_font_load ("Bitstream Vera Sans Mono", 18, 0);
+
+  if(XineramaQueryExtension(GUI_display, &i, &i))
+    {
+      if(XineramaIsActive(GUI_display))
+        screens = XineramaQueryScreens(GUI_display, &screen_count);
     }
 
-  if(devices[0].text[0])
+  if(!screen_count)
     {
-      switch(devices[0].text[0])
+      screen_count = 1;
+      screens = malloc(sizeof(XineramaScreenInfo) * 1);
+      screens[0].x_org = 0;
+      screens[0].y_org = 0;
+      screens[0].width = root_window_attr.width;
+      screens[0].height = root_window_attr.height;
+    }
+}
+
+void
+lock_key_pressed (struct gui_instance *gi, unsigned int key, const wchar_t *text, unsigned int modmask)
+{
+  char ctext[32];
+  size_t ctextlen;
+
+  switch (key)
+    {
+    case XK_BackSpace:
+
+      if(pass[0])
+        pass[strlen(pass) - 1] = 0;
+
+      break;
+
+    default:
+
+      ctextlen = wcstombs(ctext, text, sizeof (ctext));
+
+      if (ctextlen == sizeof (ctext))
+        return;
+
+      switch(ctext[0])
         {
         case '\b':
 
@@ -83,100 +158,105 @@ game_process_frame(float width, float height, double delta_time)
 
         default:
 
-          if(strlen(pass) + strlen(devices[0].text) < sizeof(pass) - 1)
-            strcat(pass, devices[0].text);
-        }
-
-      if(!strcmp(password_hash, hash_for_password(pass, password_hash)))
-        exit(0);
-
-      devices[0].text[0] = 0;
-      hide_hud = now_tt + 20;
-    }
-
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_BLEND);
-  glEnable(GL_TEXTURE_2D);
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glOrtho(0.0, width, height, 0.0, 0.0, -1.0);
-
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  draw_bind_texture(0);
-
-  glLineWidth(8.0);
-
-  glColor4f(0.6, 0.8, 1.0, 0.5);
-
-  glBegin(GL_LINE_STRIP);
-
-  for(i = 0; i <= 200; ++i)
-    {
-      x = i * width / 200.0;
-      y = 0.1 * sin(i * 0.07
-                    + cos(i * 0.03 + now + sin(i * 0.09 + now) * 0.2));
-
-      y = y * height + height * 0.5;
-
-      glVertex2f(x, y);
-    }
-
-  glEnd();
-
-  if(now_tt < hide_hud)
-    {
-      for(i = 0; i < screen_count; ++i)
-        {
-          char date[24];
-          struct tm* lt;
-
-          lt = localtime(&begin_lock);
-          strftime(date, sizeof(date), "%Y-%m-%d %H:%M %Z", lt);
-
-          x = screens[i].x_org;
-          y = screens[i].y_org;
-
-          draw_set_color(0xffffffff);
-
-          asprintf(&buf, "%s at %s", user_name, host_name);
-          font_draw(font, 18, buf, x + 10.0, y + 20.0, 0);
-          free(buf);
-
-          y += 25.0f;
-          draw_set_color(0xffcccccc);
-          asprintf(&buf, "Locked since %s", date);
-          font_draw(font, 18, buf, x + 10.0, y + 20.0, 0);
-          free(buf);
-
-          unsigned int diff = (now_tt - begin_lock);
-
-          if(diff < 120)
-            asprintf(&buf, "%u seconds ago", diff);
-          else if(diff < 3600)
-            asprintf(&buf, "%u:%02u minutes ago", diff / 60, diff % 60);
-          else
-            asprintf(&buf, "%u:%02u hours ago", diff / 3600, (diff / 60) % 60);
-
-          y += 25.0f;
-          font_draw(font, 18, buf, x + 10.0, y + 20.0, 0);
-          free(buf);
-
-          buf = malloc(strlen(pass) + sizeof("Password: "));
-          strcpy(buf, "Password: ");
-          for(j = 0; pass[j]; ++j)
-            strcat(buf, "*");
-
-          y += 25.0f;
-          font_draw(font, 18, buf, x + 10.0, y + 20.0, 0);
-          free(buf);
+          if(strlen(pass) + strlen(ctext) < sizeof(pass) - 1)
+            strcat(pass, ctext);
         }
     }
 
-  draw_flush();
+  if(!strcmp(password_hash, hash_for_password(pass, password_hash)))
+    exit(0);
 
-  usleep(20000);
+  hide_hud = time (0) + 20;
+
+  gui_repaint();
+}
+
+static char*
+get_user_name()
+{
+  char* result = 0;
+  uid_t euid;
+  struct passwd* pwent;
+
+  euid = getuid();
+
+  while(0 != (pwent = getpwent()))
+  {
+    if(pwent->pw_uid == euid)
+    {
+      result = strdup(pwent->pw_name);
+
+      break;
+    }
+  }
+
+  endpwent();
+
+  if (*result == '+')
+    ++result;
+
+  return result;
+}
+
+static char*
+get_host_name()
+{
+  static char host_name[32];
+
+  gethostname(host_name, sizeof(host_name));
+  host_name[sizeof(host_name) - 1] = 0;
+
+  return host_name;
+}
+
+void
+get_password_hash()
+{
+  struct passwd* p;
+  struct spwd* s;
+
+  p = getpwnam(user_name);
+
+  if(!p)
+    errx(EXIT_FAILURE, "Unable to get password for '%s'", user_name);
+
+  password_hash = p->pw_passwd;
+
+  if(!strcmp(password_hash, "x"))
+    {
+      s = getspnam(user_name);
+
+      if(!s)
+	errx(EXIT_FAILURE, "Unable to get password for '%s' from shadow file", user_name);
+
+      password_hash = s->sp_pwdp;
+    }
+}
+
+int
+main (int argc, char **argv)
+{
+  struct gui_definition def;
+
+  begin_lock = time(0);
+
+  hide_hud = begin_lock + 60;
+
+  user_name = get_user_name();
+  host_name = get_host_name();
+
+  get_password_hash();
+
+  memset(&def, 0, sizeof(def));
+
+  def.flags = GUI_OVERRIDE_REDIRECT;
+  def.init = lock_init;
+  def.paint = lock_paint;
+  def.key_pressed = lock_key_pressed;
+
+  gui = gui_instance(&def);
+
+  gui_main_loop ();
+
+  return EXIT_SUCCESS;
 }

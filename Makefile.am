@@ -30,17 +30,9 @@ cantera_wm_LDFLAGS = -L/usr/X11R6/lib $(XLDFLAGS) -lutil -lm -lXinerama -rdynami
 cantera_wm_LDADD = libcommon.a $(DBUS_LIBS)
 
 cantera_lock_SOURCES = \
-  lock/draw.h lock/draw.c \
-  lock/error.h lock/error.c \
-  lock/font.h lock/lock-font.c \
-  lock/hashmap.h lock/hashmap.c \
-  lock/util.h lock/util.c \
-  lock/texture.h lock/texture.c \
-  lock/vector.h lock/vector.c \
-  lock/var.h lock/var.c \
-  lock/input.h lock/main_x11.c \
+  lock/gui.h lock/gui.c \
   lock/lock.c
-cantera_lock_LDADD = -lX11 -lGL -lGLU -lm -lXxf86vm -lpng -lXinerama -lcrypt
+cantera_lock_LDADD = -lX11 -lXft -lm -lXinerama -lcrypt
 
 EXTRA_DIST = terminal/cantera-term.desktop terminal/doc/cantera-term.1 window-manager/cantera-wm.desktop window-manager/doc/cantera-wm.1 cantera-lock/gfx/fonts/vera-sans-mono.dat cantera-lock/gfx/fonts/vera-sans-mono_0.png
 
