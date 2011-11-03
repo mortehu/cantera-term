@@ -1,5 +1,6 @@
 #include <err.h>
 #include <math.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <shadow.h>
 #include <stdio.h>
@@ -45,7 +46,7 @@ lock_paint(struct gui_instance *gi, unsigned int x, unsigned int y, unsigned int
 
   now = time (0);
 
-  /*if(now < hide_hud)*/
+  if(now < hide_hud)
     {
       for(i = 0; i < screen_count; ++i)
         {
@@ -64,7 +65,7 @@ lock_paint(struct gui_instance *gi, unsigned int x, unsigned int y, unsigned int
 
           y += 25.0f;
           asprintf(&buf, "Locked since %s", date);
-          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          gui_draw_text(gi, font, x + 20, y + 20, buf, 0xffcccccc, 0);
           free(buf);
 
           unsigned int diff = (now - begin_lock);
@@ -77,7 +78,7 @@ lock_paint(struct gui_instance *gi, unsigned int x, unsigned int y, unsigned int
             asprintf(&buf, "%u:%02u hours ago", diff / 3600, (diff / 60) % 60);
 
           y += 25.0f;
-          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          gui_draw_text(gi, font, x + 20, y + 20, buf, 0xffcccccc, 0);
           free(buf);
 
           buf = malloc(strlen(pass) + sizeof("Password: "));
@@ -86,17 +87,34 @@ lock_paint(struct gui_instance *gi, unsigned int x, unsigned int y, unsigned int
             strcat(buf, "*");
 
           y += 25.0f;
-          gui_draw_text(gi, font, x + 10, y + 20, buf, 0xffcccccc, 0);
+          gui_draw_text(gi, font, x + 20, y + 20, buf, 0xffcccccc, 0);
           free(buf);
         }
     }
+}
+
+static void *
+repaint_thread (void *arg)
+{
+  for (;;)
+    {
+      sleep (1);
+
+      gui_repaint ();
+    }
+
+  return 0;
 }
 
 static void
 lock_init(struct gui_instance *gi)
 {
   XWindowAttributes root_window_attr;
+  pthread_t th;
   int i;
+
+  pthread_create (&th, 0, repaint_thread, 0);
+  pthread_detach (th);
 
   XGetWindowAttributes(GUI_display, RootWindow(GUI_display, DefaultScreen(GUI_display)), &root_window_attr);
 
