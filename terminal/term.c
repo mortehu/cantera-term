@@ -2130,6 +2130,12 @@ void x11_handle_configure(XConfigureEvent *config)
   cols = window_width / terminal.xskip;
   rows = window_height / terminal.yskip;
 
+  if (!cols)
+    cols = 1;
+
+  if (!rows)
+    rows = 1;
+
   int oldcols = terminal.size.ws_col;
   int oldrows = terminal.size.ws_row;
 
