@@ -32,7 +32,7 @@ cantera_wm_LDADD = libcommon.a $(DBUS_LIBS)
 cantera_lock_SOURCES = \
   lock/gui.h lock/gui.c \
   lock/lock.c
-cantera_lock_LDADD = -lX11 -lXft -lm -lXinerama -lcrypt
+cantera_lock_LDADD = $(XLDFLAGS) -lm -lXinerama -lcrypt
 
 EXTRA_DIST = terminal/cantera-term.desktop terminal/doc/cantera-term.1 window-manager/cantera-wm.desktop window-manager/doc/cantera-wm.1 cantera-lock/gfx/fonts/vera-sans-mono.dat cantera-lock/gfx/fonts/vera-sans-mono_0.png
 
