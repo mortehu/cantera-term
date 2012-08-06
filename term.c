@@ -37,7 +37,6 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/keysym.h>
 
-#include "font.h"
 #include "tree.h"
 #include "x11.h"
 
@@ -69,11 +68,7 @@ const char* font_name;
 
 extern char** environ;
 
-int xskips[] = { 1, 1 };
-int yskips[] = { 1, 1 };
-int font_sizes[] = { 12, 36 };
-
-unsigned int palette[16];
+static unsigned int palette[16];
 
 struct terminal
 {
@@ -129,10 +124,6 @@ static unsigned short alt_charset[62] =
 static int done;
 static const char* session_path;
 static int focused;
-
-XRenderColor xrpalette[sizeof(palette) / sizeof(palette[0])];
-Picture picpalette[sizeof(palette) / sizeof(palette[0])];
-Picture picgradients[256];
 
 unsigned int window_width = 800, window_height = 600;
 
@@ -330,9 +321,11 @@ static void addchar(int ch)
   }
 }
 
-static void paint(int x, int y, int width, int height)
+static void
+paint(int x, int y, int width, int height)
 {
-#if 0
+  glClear (GL_COLOR_BUFFER_BIT);
+
   int row, i, selbegin, selend;
   int minx = x;
   int miny = y;
@@ -365,22 +358,23 @@ static void paint(int x, int y, int width, int height)
       curoffset = *terminal.curoffset;
     }
 
-  {
-    if (select_begin < select_end)
+  if (select_begin < select_end)
     {
       selbegin = select_begin;
       selend = select_end;
     }
-    else
+  else
     {
       selbegin = select_end;
       selend = select_begin;
     }
 
-    selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
-    selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
+  selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
+  selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
 
-    for (row = 0; row < terminal.size.ws_row; ++row)
+  glBegin (GL_QUADS);
+
+  for (row = 0; row < terminal.size.ws_row; ++row)
     {
       size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + curoffset) % size;
       wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
@@ -390,169 +384,128 @@ static void paint(int x, int y, int width, int height)
       int start = 0, end, x = 0;
 
       while (start < terminal.size.ws_col)
-      {
-        int width, height;
-        int printable;
-        int update;
-        int attr = attrline[start];
-        int localattr = -1;
-
-        if (focused
-           && row == cursory + terminal.history_scroll
-           && start == cursorx)
         {
-          attr = REVERSE(attr);
+          int width, height;
+          int printable;
+          int attr = attrline[start];
+          int localattr = -1;
 
-          if (!attr)
-            attr = BG(ATTR_WHITE);
-        }
-
-        printable = (line[start] != 0);
-
-        if (row * terminal.size.ws_col + start == selbegin)
-          in_selection = 1;
-
-        if (row * terminal.size.ws_col + start == selend)
-          in_selection = 0;
-
-        if (in_selection)
-          {
-            if (line[start] != screenline[start] && !button1_pressed)
-              {
-                in_selection = 0;
-                select_begin = -1;
-                select_end = -1;
-              }
-            else
+          if (focused
+              && row == cursory + terminal.history_scroll
+              && start == cursorx)
+            {
               attr = REVERSE(attr);
-          }
 
-#if PARTIAL_REPAINT
-        update = (line[start] != screenline[start]) || (attr != screenattrline[start]);
-#else
-        update = 1;
-#endif
-
-        end = start + 1;
-
-        while (end < terminal.size.ws_col)
-        {
-          localattr = attrline[end];
-
-          if (row * terminal.size.ws_col + end >= selbegin
-          && row * terminal.size.ws_col + end < selend)
-          {
-            if (line[end] != screenline[end] && !button1_pressed)
-            {
-              selbegin = select_begin = -1;
-              selend = select_end = -1;
+              if (!attr)
+                attr = BG(ATTR_WHITE);
             }
-            else
-              localattr = REVERSE(localattr);
-          }
 
-          if (localattr != attr)
-            break;
+          printable = (line[start] != 0);
 
-          if (row == cursory && end == cursorx)
-            break;
+          if (row * terminal.size.ws_col + start == selbegin)
+            in_selection = 1;
 
-          if ((line[end] != 0) != printable)
-            break;
+          if (row * terminal.size.ws_col + start == selend)
+            in_selection = 0;
 
-#if PARTIAL_REPAINT
-          if (update)
-          {
-            if (line[end] == screenline[end] && attr == screenattrline[end])
-              break;
-          }
-          else
-          {
-            if (line[end] != screenline[end] || attr != screenattrline[end])
-              break;
-          }
-#endif
-
-          ++end;
-        }
-
-        width = (end - start) * terminal.xskip;
-        height = terminal.yskip;
-
-        for (i = start; i < end; ++i)
-        {
-          screenline[i] = line[i];
-          screenattrline[i] = attr;
-        }
-
-        if (!printable)
-        {
-          if (update || !PARTIAL_REPAINT)
-          {
-            if (x < minx) minx =x;
-            if (row * terminal.yskip < miny) miny = row * terminal.yskip;
-            if (x + width > maxx) maxx = x + width;
-            if (row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
-            XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[(attr >> 4) & 0x07], x, row * terminal.yskip, width, height);
-
-            if (attr & ATTR_UNDERLINE)
+          if (in_selection)
             {
-              XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[attr & 0x0F], x, (row + 1) * terminal.yskip - 1, width, 1);
+              if (line[start] != screenline[start] && !button1_pressed)
+                {
+                  in_selection = 0;
+                  select_begin = -1;
+                  select_end = -1;
+                }
+              else
+                attr = REVERSE(attr);
             }
-          }
 
-          x += width;
-          start = end;
+          end = start + 1;
 
-          continue;
-        }
+          while (end < terminal.size.ws_col)
+            {
+              localattr = attrline[end];
 
-        if (update || !PARTIAL_REPAINT)
-        {
+              if (row * terminal.size.ws_col + end >= selbegin
+                  && row * terminal.size.ws_col + end < selend)
+                {
+                  if (line[end] != screenline[end] && !button1_pressed)
+                    {
+                      selbegin = select_begin = -1;
+                      selend = select_end = -1;
+                    }
+                  else
+                    localattr = REVERSE(localattr);
+                }
+
+              if (localattr != attr)
+                break;
+
+              if (row == cursory && end == cursorx)
+                break;
+
+              if ((line[end] != 0) != printable)
+                break;
+
+              ++end;
+            }
+
+          width = (end - start) * terminal.xskip;
+          height = terminal.yskip;
+
+          for (i = start; i < end; ++i)
+            {
+              screenline[i] = line[i];
+              screenattrline[i] = attr;
+            }
+
           if (x < minx) minx =x;
           if (row * terminal.yskip < miny) miny = row * terminal.yskip;
           if (x + width > maxx) maxx = x + width;
           if (row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
-          XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[(attr >> 4) & 0x07], x, row * terminal.yskip, width, height);
 
+          /* color: (attr >> 4) & 7 */
+
+          unsigned int color;
+          color = palette[(attr >> 4) & 7];
+          glColor3ub (color >> 16, color >> 8, color);
+
+          glVertex2f (x,         row * terminal.yskip);
+          glVertex2f (x,         row * terminal.yskip + height);
+          glVertex2f (x + width, row * terminal.yskip + height);
+          glVertex2f (x + width, row * terminal.yskip);
+
+          color = palette[attr & 0x0f];
+          glColor3ub (color >> 16, color >> 8, color);
+
+          if (printable)
+            {
+              glVertex2f (x,         row * terminal.yskip);
+              glVertex2f (x,         row * terminal.yskip + height);
+              glVertex2f (x + width, row * terminal.yskip + height);
+              glVertex2f (x + width, row * terminal.yskip);
+            }
+#if 0
           drawtext(root_buffer, &line[start], end - start, x, row * terminal.yskip, attr & 0x0F, SMALL);
+#endif
 
           if (attr & ATTR_UNDERLINE)
-          {
-            XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[attr & 0x0F], x, (row + 1) * terminal.yskip - 1, width, 1);
-          }
+            {
+              glVertex2f (x,         (row + 1) * terminal.yskip - 1);
+              glVertex2f (x,         (row + 1) * terminal.yskip);
+              glVertex2f (x + width, (row + 1) * terminal.yskip);
+              glVertex2f (x + width, (row + 1) * terminal.yskip - 1);
+            }
+
+          x += width;
+
+          start = end;
         }
-
-        x += width;
-
-        start = end;
-      }
     }
 
-    i = terminal.size.ws_row * terminal.yskip;
+  glEnd ();
 
-    if (i < window_height)
-    {
-      XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
-                           0, i, window_width, window_height - i);
-    }
-
-    i = terminal.size.ws_col * terminal.xskip;
-
-    if (i < window_width)
-    {
-      XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0],
-                           i, 0,
-                           window_width - i, window_height);
-    }
-  }
-
-  if (root_buffer != root_picture)
-  {
-    XRenderComposite(display, PictOpSrc, root_buffer, None, root_picture,
-                     x, y, 0, 0, x, y, width, height);
-  }
-#endif
+  glXSwapBuffers (X11_display, X11_window);
 }
 
 static void normalize_offset()
@@ -759,8 +712,8 @@ void init_session(char* const* args)
 
   memset(&terminal, 0, sizeof(terminal));
 
-  terminal.xskip = xskips[terminal.fontsize];
-  terminal.yskip = yskips[terminal.fontsize];
+  terminal.xskip = 8;
+  terminal.yskip = 8;
   terminal.size.ws_xpixel = window_width;
   terminal.size.ws_ypixel = window_height;
   terminal.size.ws_col = window_width / terminal.xskip;
@@ -782,8 +735,8 @@ void init_session(char* const* args)
 
       if (!terminal.pid)
         {
-          terminal.xskip = xskips[terminal.fontsize];
-          terminal.yskip = yskips[terminal.fontsize];
+          terminal.xskip = 8;
+          terminal.yskip = 8;
 
           if (-1 == execve(args[0], args, environ))
 	  {
@@ -809,137 +762,6 @@ void init_session(char* const* args)
 
   setscreen(0);
 }
-
-#if 0
-static void x11_connect(const char* display_name)
-{
-  int i;
-  int nitems;
-  char* c;
-  long pid;
-
-  pid = getpid();
-
-  XInitThreads();
-
-  display = XOpenDisplay(display_name);
-
-  if (!display)
-  {
-    fprintf(stderr, "Failed to open display %s\n", display_name);
-
-    exit(EXIT_FAILURE);
-  }
-
-  XSynchronize(display, True);
-
-  screenidx = DefaultScreen(display);
-  screen = DefaultScreenOfDisplay(display);
-  visual = DefaultVisual(display, screenidx);
-  visual_info = XGetVisualInfo(display, VisualNoMask, &visual_template, &nitems);
-
-  memset(&window_attr, 0, sizeof(window_attr));
-  window_attr.cursor = XCreateFontCursor(display, XC_left_ptr);
-
-  window_attr.colormap = DefaultColormap(display, 0);
-  window_attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask | FocusChangeMask;
-
-  if (!parent_window)
-    parent_window = RootWindow(display, screenidx);
-  else
-    {
-      Window tmp_window;
-      int x, y;
-      unsigned int border_width, depth;
-
-      XGetGeometry (display, parent_window, &tmp_window, &x, &y, &window_width, &window_height, &border_width, &depth);
-    }
-
-  window = XCreateWindow(display, parent_window, 0, 0,
-                         window_width, window_height, 0, visual_info->depth,
-                         InputOutput, visual,
-                         CWColormap | CWEventMask | CWCursor, &window_attr);
-
-  prop_paste = XInternAtom(display, "CANTERA_PASTE", False);
-  xa_utf8_string = XInternAtom(display, "UTF8_STRING", False);
-  xa_compound_text = XInternAtom(display, "COMPOUND_TEXT", False);
-  xa_targets = XInternAtom(display, "TARGETS", False);
-  xa_wm_state = XInternAtom(display, "WM_STATE", False);
-  xa_net_wm_icon = XInternAtom(display, "_NET_WM_ICON", False);
-  xa_net_wm_pid = XInternAtom(display, "_NET_WM_PID", False);
-  xa_wm_transient_for = XInternAtom(display, "WM_TRANSIENT_FOR", False);
-  xa_wm_protocols = XInternAtom(display, "WM_PROTOCOLS", False);
-  xa_wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
-
-  XChangeProperty(display, window, xa_net_wm_pid, XA_CARDINAL, 32,
-                  PropModeReplace, (unsigned char *) &pid, 1);
-
-  XStoreName(display, window, title);
-  XMapWindow(display, window);
-
-  focused = 1;
-
-  xim = 0;
-
-  if ((c = XSetLocaleModifiers("")) && *c)
-    xim = XOpenIM(display, 0, 0, 0);
-
-  if (!xim && (c = XSetLocaleModifiers("@im=none")) && *c)
-    xim = XOpenIM(display, 0, 0, 0);
-
-  if (!xim)
-  {
-    fprintf(stderr, "Failed to open X Input Method\n");
-
-    return;
-  }
-
-  xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
-                  XNClientWindow, window, XNFocusWindow, window, NULL);
-
-  if (!xic)
-  {
-    fprintf(stderr, "Failed to create X Input Context\n");
-
-    return;
-  }
-
-  xrenderpictformat = XRenderFindVisualFormat(display, visual);
-
-  if (!xrenderpictformat)
-  {
-    fprintf(stderr, "XRenderFindVisualFormat failed.\n");
-
-    return;
-  }
-
-  a8pictformat = XRenderFindStandardFormat(display, PictStandardA8);
-
-  gc = XCreateGC(display, window, 0, 0);
-
-  font_init();
-
-#if 0
-  for (i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
-    {
-      Pixmap pmap;
-      XRenderPictureAttributes attr;
-
-      xrpalette[i].alpha = ((palette[i] & 0xff000000) >> 24) * 0x0101;
-      xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
-      xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
-      xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
-    }
-#endif
-
-  cols = window_width / xskips[0];
-  rows = window_height / yskips[0];
-
-  screenchars = calloc(cols * rows, sizeof(*screenchars));
-  screenattrs = calloc(cols * rows, sizeof(*screenattrs));
-  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
-}
-#endif
 
 static void save_session()
 {
@@ -1872,6 +1694,9 @@ static void term_process_data(unsigned char* buf, int count)
         }
     }
   }
+
+  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
+  XFlush(X11_display);
 }
 
 void term_read()
@@ -1939,6 +1764,11 @@ void x11_handle_configure(XConfigureEvent *config)
 
   window_width = config->width;
   window_height = config->height;
+
+  glViewport (0, 0, window_width, window_height);
+  glMatrixMode (GL_PROJECTION);
+  glLoadIdentity ();
+  glOrtho (0.0f, window_width, window_height, 0.0f, 0.0f, 1.0f);
 
   cols = window_width / terminal.xskip;
   rows = window_height / terminal.yskip;
@@ -2751,7 +2581,7 @@ int main(int argc, char** argv)
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
   font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
-  font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
+  /*font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);*/
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
