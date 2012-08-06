@@ -71,7 +71,7 @@ extern char** environ;
 
 int xskips[] = { 1, 1 };
 int yskips[] = { 1, 1 };
-int font_sizes[] = { 12 };
+int font_sizes[] = { 12, 36 };
 
 unsigned int palette[16];
 
@@ -920,6 +920,8 @@ static void x11_connect(const char* display_name)
 
   gc = XCreateGC(display, window, 0, 0);
 
+  font_init();
+
 #if 0
   for (i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
     {
@@ -930,18 +932,6 @@ static void x11_connect(const char* display_name)
       xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
       xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
       xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
-
-      pmap = XCreatePixmap(display, window, 1, 1, xrenderpictformat->depth);
-
-      memset(&attr, 0, sizeof(attr));
-      attr.repeat = True;
-
-      picpalette[i] = XRenderCreatePicture(display, pmap, xrenderpictformat, CPRepeat, &attr);
-
-      XFreePixmap(display, pmap);
-
-      XRenderFillRectangle(display, PictOpSrc, picpalette[i],
-                           &xrpalette[i], 0, 0, 1, 1);
     }
 #endif
 
@@ -2763,7 +2753,7 @@ int main(int argc, char** argv)
     }
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
+  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
   font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);
 
   signal(SIGTERM, sighandler);
