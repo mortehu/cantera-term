@@ -39,6 +39,7 @@
 
 #include "font.h"
 #include "tree.h"
+#include "x11.h"
 
 #define PARTIAL_REPAINT 1
 
@@ -76,8 +77,6 @@ unsigned int palette[16];
 
 struct terminal
 {
-  Window window;
-
   pid_t pid;
   int fd;
 
@@ -200,16 +199,9 @@ const struct
 };
 
 struct terminal terminal;
-Display* display;
 int damage_eventbase;
 int damage_errorbase;
 int screenidx;
-Screen* screen;
-Visual* visual;
-XVisualInfo visual_template;
-XVisualInfo* visual_info;
-XSetWindowAttributes window_attr;
-Window window;
 Atom prop_paste;
 Atom xa_utf8_string;
 Atom xa_compound_text;
@@ -221,10 +213,6 @@ Atom xa_wm_transient_for;
 Atom xa_wm_protocols;
 Atom xa_wm_delete_window;
 GC gc;
-XRenderPictFormat* xrenderpictformat;
-XRenderPictFormat* argb32pictformat;
-XRenderPictFormat* a8pictformat;
-GlyphSet alpha_glyphs[2];
 int cols;
 int rows;
 XIM xim = 0;
@@ -242,8 +230,6 @@ int select_end = -1;
 unsigned char* select_text = 0;
 unsigned long select_alloc = 0;
 unsigned long select_length;
-Picture root_picture;
-Picture root_buffer;
 
 int temp_switch_screen = 0;
 
@@ -349,6 +335,7 @@ static void addchar(int ch)
 
 static void paint(int x, int y, int width, int height)
 {
+#if 0
   int row, i, selbegin, selend;
   int minx = x;
   int miny = y;
@@ -438,8 +425,6 @@ static void paint(int x, int y, int width, int height)
                 in_selection = 0;
                 select_begin = -1;
                 select_end = -1;
-
-                XClearArea(display, window, 0, 0, window_width, window_height, True);
               }
             else
               attr = REVERSE(attr);
@@ -570,6 +555,7 @@ static void paint(int x, int y, int width, int height)
     XRenderComposite(display, PictOpSrc, root_buffer, None, root_picture,
                      x, y, 0, 0, x, y, width, height);
   }
+#endif
 }
 
 static void normalize_offset()
@@ -827,6 +813,7 @@ void init_session(char* const* args)
   setscreen(0);
 }
 
+#if 0
 static void x11_connect(const char* display_name)
 {
   int i;
@@ -933,84 +920,30 @@ static void x11_connect(const char* display_name)
 
   gc = XCreateGC(display, window, 0, 0);
 
+#if 0
   for (i = 0; i < sizeof(palette) / sizeof(palette[0]); ++i)
-  {
-    Pixmap pmap;
-    XRenderPictureAttributes attr;
-
-    xrpalette[i].alpha = ((palette[i] & 0xff000000) >> 24) * 0x0101;
-    xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
-    xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
-    xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
-
-    pmap = XCreatePixmap(display, window, 1, 1, xrenderpictformat->depth);
-
-    memset(&attr, 0, sizeof(attr));
-    attr.repeat = True;
-
-    picpalette[i] = XRenderCreatePicture(display, pmap, xrenderpictformat, CPRepeat, &attr);
-
-    XFreePixmap(display, pmap);
-
-    XRenderFillRectangle(display, PictOpSrc, picpalette[i],
-                         &xrpalette[i], 0, 0, 1, 1);
-  }
-
-  for (i = 0; i < 256; ++i)
-  {
-    Pixmap pmap;
-    XRenderPictureAttributes attr;
-
-    XRenderColor color;
-    color.alpha = i * 0x0101;
-    color.red = 0xffff;
-    color.green = 0xffff;
-    color.blue = 0xffff;
-
-    pmap = XCreatePixmap(display, window, 1, 1, a8pictformat->depth);
-
-    memset(&attr, 0, sizeof(attr));
-    attr.repeat = True;
-
-    picgradients[i] = XRenderCreatePicture(display, pmap, a8pictformat, CPRepeat, &attr);
-
-    XFreePixmap(display, pmap);
-
-    XRenderFillRectangle(display, PictOpSrc, picgradients[i], &color, 0, 0, 1, 1);
-  }
-
-  alpha_glyphs[0] = XRenderCreateGlyphSet(display, a8pictformat);
-  alpha_glyphs[1] = XRenderCreateGlyphSet(display, a8pictformat);
-
-  if (!alpha_glyphs[0] || !alpha_glyphs[1])
-  {
-    fprintf(stderr, "XRenderCreateGlyphSet failed.\n");
-
-    return;
-  }
-
-  XRenderPictureAttributes pa;
-  pa.subwindow_mode = IncludeInferiors;
-
-  root_picture = XRenderCreatePicture(display, window, xrenderpictformat, CPSubwindowMode, &pa);
-
-  {
-    Pixmap pmap;
-
-    pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
-    root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-    if (root_buffer == None)
     {
-      fprintf(stderr, "Failed to create root buffer\n");
+      Pixmap pmap;
+      XRenderPictureAttributes attr;
 
-      return;
+      xrpalette[i].alpha = ((palette[i] & 0xff000000) >> 24) * 0x0101;
+      xrpalette[i].red = ((palette[i] & 0xff0000) >> 16) * 0x0101;
+      xrpalette[i].green = ((palette[i] & 0x00ff00) >> 8) * 0x0101;
+      xrpalette[i].blue = (palette[i] & 0x0000ff) * 0x0101;
+
+      pmap = XCreatePixmap(display, window, 1, 1, xrenderpictformat->depth);
+
+      memset(&attr, 0, sizeof(attr));
+      attr.repeat = True;
+
+      picpalette[i] = XRenderCreatePicture(display, pmap, xrenderpictformat, CPRepeat, &attr);
+
+      XFreePixmap(display, pmap);
+
+      XRenderFillRectangle(display, PictOpSrc, picpalette[i],
+                           &xrpalette[i], 0, 0, 1, 1);
     }
-
-    font_init(pmap, visual, DefaultColormap(display, 0));
-
-    XFreePixmap(display, pmap);
-  }
+#endif
 
   cols = window_width / xskips[0];
   rows = window_height / yskips[0];
@@ -1018,11 +951,8 @@ static void x11_connect(const char* display_name)
   screenchars = calloc(cols * rows, sizeof(*screenchars));
   screenattrs = calloc(cols * rows, sizeof(*screenattrs));
   memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
-
-  XSynchronize(display, False);
-
-  XClearArea(display, window, 0, 0, window_width, window_height, True);
 }
+#endif
 
 static void save_session()
 {
@@ -1147,9 +1077,9 @@ static void update_selection(Time time)
   select_length = last_graph;
   select_text[select_length] = 0;
 
-  XSetSelectionOwner(display, XA_PRIMARY, window, time);
+  XSetSelectionOwner (X11_display, XA_PRIMARY, X11_window, time);
 
-  if (window != XGetSelectionOwner(display, XA_PRIMARY))
+  if (X11_window != XGetSelectionOwner (X11_display, XA_PRIMARY))
   {
     select_begin = select_end;
     free(select_text);
@@ -1161,14 +1091,14 @@ static void paste(Time time)
 {
   Window selowner;
 
-  selowner = XGetSelectionOwner(display, XA_PRIMARY);
+  selowner = XGetSelectionOwner(X11_display, XA_PRIMARY);
 
   if (selowner == None)
     return;
 
-  XDeleteProperty(display, window, prop_paste);
+  XDeleteProperty(X11_display, X11_window, prop_paste);
 
-  XConvertSelection(display, XA_PRIMARY, xa_utf8_string, prop_paste, window, time);
+  XConvertSelection(X11_display, XA_PRIMARY, xa_utf8_string, prop_paste, X11_window, time);
 }
 
 static void term_process_data(unsigned char* buf, int count)
@@ -1955,9 +1885,6 @@ static void term_process_data(unsigned char* buf, int count)
         }
     }
   }
-
-  XClearArea(display, window, 0, 0, window_width, window_height, True);
-  XFlush(display);
 }
 
 void term_read()
@@ -2107,26 +2034,6 @@ void x11_handle_configure(XConfigureEvent *config)
 
       ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
     }
-
-  Pixmap pmap;
-
-  XRenderFreePicture(display, root_buffer);
-
-  pmap = XCreatePixmap(display, window, window_width, window_height, visual_info->depth);
-  root_buffer = XRenderCreatePicture(display, pmap, xrenderpictformat, 0, 0);
-
-  if (root_buffer == None)
-    {
-      fprintf(stderr, "Failed to create root buffer\n");
-
-      exit(EXIT_FAILURE);
-    }
-
-  XFreePixmap(display, pmap);
-
-  XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-  memset(screenchars, 0xff, cols * rows * sizeof(*screenchars));
-  XClearArea(display, window, 0, 0, window_width, window_height, True);
 }
 
 void run_command(int fd, const char* command, const char* arg)
@@ -2162,7 +2069,7 @@ int x11_process_events()
   int result;
   int xfd;
 
-  xfd = ConnectionNumber(display);
+  xfd = ConnectionNumber(X11_display);
 
   while (!done)
   {
@@ -2202,9 +2109,9 @@ int x11_process_events()
         }
     }
 
-    while (XPending(display))
+    while (XPending(X11_display))
     {
-      XNextEvent(display, &event);
+      XNextEvent(X11_display, &event);
 
       switch(event.type)
       {
@@ -2240,7 +2147,7 @@ int x11_process_events()
 
           if (temp_switch_screen)
             {
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
+              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 
               temp_switch_screen = 0;
             }
@@ -2265,7 +2172,7 @@ int x11_process_events()
 
               update_selection(CurrentTime);
 
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
+              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
             }
             else
             {
@@ -2311,7 +2218,7 @@ int x11_process_events()
 		if (terminal.history_scroll < scroll_extra)
 		  {
 		    ++terminal.history_scroll;
-		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 		  }
 	      }
 	    else if (terminal.appcursor)
@@ -2328,7 +2235,7 @@ int x11_process_events()
 		if (terminal.history_scroll)
 		  {
 		    --terminal.history_scroll;
-		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 		  }
 	      }
 	    else if (terminal.appcursor)
@@ -2373,7 +2280,7 @@ int x11_process_events()
 		if (terminal.history_scroll > scroll_extra)
 		  terminal.history_scroll = scroll_extra;
 
-		XClearArea(display, window, 0, 0, window_width, window_height, True);
+		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	      }
 	    else
 	      term_strwrite("\033[5~");
@@ -2389,7 +2296,7 @@ int x11_process_events()
 		else
 		  terminal.history_scroll = 0;
 
-		XClearArea(display, window, 0, 0, window_width, window_height, True);
+		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	      }
 	    else
 	      term_strwrite("\033[6~");
@@ -2404,7 +2311,7 @@ int x11_process_events()
 		  {
 		    terminal.history_scroll = scroll_extra;
 
-		    XClearArea(display, window, 0, 0, window_width, window_height, True);
+		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 		  }
 	      }
 	    else if (terminal.appcursor)
@@ -2430,7 +2337,7 @@ int x11_process_events()
 	      {
 		temp_switch_screen = 1;
 
-		XClearArea(display, window, 0, 0, window_width, window_height, True);
+		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	      }
 	    else
 	      term_strwrite(" ");
@@ -2469,7 +2376,7 @@ int x11_process_events()
 	  if (history_scroll_reset && terminal.history_scroll)
 	  {
 	    terminal.history_scroll = 0;
-	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	  }
         }
 
@@ -2514,7 +2421,7 @@ int x11_process_events()
 	  {
 	    select_end = new_select_end;
 
-	    XClearArea(display, window, 0, 0, window_width, window_height, True);
+	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	  }
 	}
 
@@ -2553,7 +2460,7 @@ int x11_process_events()
               find_range(range_word_or_url, &select_begin, &select_end);
             }
 
-            XClearArea(display, window, 0, 0, window_width, window_height, True);
+            XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
           }
 
           break;
@@ -2569,7 +2476,7 @@ int x11_process_events()
           if (terminal.history_scroll < scroll_extra)
             {
               ++terminal.history_scroll;
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
+              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
             }
 
           break;
@@ -2579,7 +2486,7 @@ int x11_process_events()
           if (terminal.history_scroll)
             {
               --terminal.history_scroll;
-              XClearArea(display, window, 0, 0, window_width, window_height, True);
+              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
             }
 
           break;
@@ -2620,7 +2527,7 @@ int x11_process_events()
 
           response.type = SelectionNotify;
           response.send_event = True;
-          response.display = display;
+          response.display = X11_display;
           response.requestor = request->requestor;
           response.selection = request->selection;
           response.target = request->target;
@@ -2634,7 +2541,7 @@ int x11_process_events()
             if (request->target == XA_STRING
             || request->target == xa_utf8_string)
             {
-              result = XChangeProperty(display, request->requestor, request->property,
+              result = XChangeProperty(X11_display, request->requestor, request->property,
                                        request->target, 8, PropModeReplace, select_text, select_length);
 
               if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
@@ -2657,7 +2564,7 @@ int x11_process_events()
           unsigned long bytes_after;
           unsigned char* prop;
 
-          result = XGetWindowProperty(display, window, prop_paste, 0, 0, False, AnyPropertyType,
+          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
                                       &type, &format, &nitems, &bytes_after, &prop);
 
           if (result != Success)
@@ -2665,7 +2572,7 @@ int x11_process_events()
 
           XFree(prop);
 
-          result = XGetWindowProperty(display, window, prop_paste, 0, bytes_after, False, AnyPropertyType,
+          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
                                       &type, &format, &nitems, &bytes_after, &prop);
 
           if (result != Success)
@@ -2685,7 +2592,7 @@ int x11_process_events()
 
         {
           /* Skip to last ConfigureNotify event */
-          while (XCheckTypedWindowEvent(display, window, ConfigureNotify, &event))
+          while (XCheckTypedWindowEvent(X11_display, X11_window, ConfigureNotify, &event))
           {
             /* Do nothing */
           }
@@ -2710,7 +2617,7 @@ int x11_process_events()
           int maxx = minx + event.xexpose.width;
           int maxy = miny + event.xexpose.height;
 
-          while (XCheckTypedWindowEvent(display, window, Expose, &event))
+          while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
           {
             if (event.xexpose.x < minx) minx = event.xexpose.x;
             if (event.xexpose.y < miny) miny = event.xexpose.y;
@@ -2726,14 +2633,14 @@ int x11_process_events()
       case FocusIn:
 
         focused = 1;
-        XClearArea(display, window, 0, 0, window_width, window_height, True);
+        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 
         break;
 
       case FocusOut:
 
         focused = 0;
-        XClearArea(display, window, 0, 0, window_width, window_height, True);
+        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 
         break;
       }
@@ -2884,7 +2791,7 @@ int main(int argc, char** argv)
   else
     session_fd = -1;
 
-  x11_connect(getenv("DISPLAY"));
+  X11_Setup ();
 
   if (optind < argc)
   {
