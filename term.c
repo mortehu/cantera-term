@@ -37,7 +37,6 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/keysym.h>
 
-#include "common.h"
 #include "font.h"
 #include "tree.h"
 
@@ -113,18 +112,6 @@ struct terminal
   unsigned int ch, nch;
 
   unsigned int history_scroll;
-
-  struct
-  {
-    struct cnt_image* image;
-    Picture pic;
-    size_t width, height;
-    int char_x, char_y;
-    int rows, cols;
-    int screen;
-  } images[256];
-
-  size_t image_count;
 };
 
 /* Alternate characters, from 0x41 to 0x7E, inclusive */
@@ -362,7 +349,7 @@ static void addchar(int ch)
 
 static void paint(int x, int y, int width, int height)
 {
-  int row, col, i, selbegin, selend;
+  int row, i, selbegin, selend;
   int minx = x;
   int miny = y;
   int maxx = x + width;
@@ -371,12 +358,6 @@ static void paint(int x, int y, int width, int height)
   int in_selection = 0;
 
   size = terminal.history_size * terminal.size.ws_col;
-
-  if (terminal.image_count)
-  {
-    XRenderFillRectangle(display, PictOpSrc, root_buffer, &xrpalette[0], 0, 0, window_width, window_height);
-    memset(screenchars, 0xff, cols * rows * sizeof(wchar_t));
-  }
 
   const wchar_t* curchars;
   const uint16_t* curattrs;
@@ -566,43 +547,6 @@ static void paint(int x, int y, int width, int height)
       }
     }
 
-    for (i = 0; i < terminal.image_count; )
-    {
-      if (terminal.images[i].screen != terminal.curscreen)
-      {
-        ++i;
-
-        continue;
-      }
-
-      if (terminal.images[i].char_y + terminal.images[i].rows < 0)
-      {
-        --terminal.image_count;
-        cnt_image_free(&terminal.images[i].image);
-        memmove(&terminal.images[i], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-      }
-      else
-      {
-        XRenderComposite(display, PictOpSrc, terminal.images[i].pic, None, root_buffer,
-                         0, 0,
-                         0, 0,
-                         terminal.images[i].char_x * xskips[SMALL],
-                         terminal.images[i].char_y * yskips[SMALL],
-                         terminal.images[i].width, terminal.images[i].height);
-
-        for (row = terminal.images[i].char_y; row < terminal.images[i].char_y + rows; ++row)
-        {
-          for (col = terminal.images[i].char_x; col < terminal.images[i].char_x + cols; ++col)
-          {
-            if (row >= 0 && col >= 0 && row < terminal.size.ws_row && col < terminal.size.ws_col)
-              screenchars[row * terminal.size.ws_col + col] = 0xffff;
-          }
-        }
-
-        ++i;
-      }
-    }
-
     i = terminal.size.ws_row * terminal.yskip;
 
     if (i < window_height)
@@ -666,14 +610,7 @@ static void normalize_offset()
 
 static void scroll(int fromcursor)
 {
-  size_t i;
   int first, length;
-
-  for (i = 0; i < terminal.image_count; ++i)
-  {
-    if (terminal.images[i].screen == terminal.curscreen)
-      --terminal.images[i].char_y;
-  }
 
   if (!fromcursor && terminal.scrolltop == 0 && terminal.scrollbottom == terminal.size.ws_row)
   {
@@ -1735,19 +1672,6 @@ static void term_process_data(unsigned char* buf, int count)
                   int count = terminal.size.ws_col * (terminal.size.ws_row - terminal.cursory - 1) + (terminal.size.ws_col - terminal.cursorx);
                   memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
                   memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
-
-                  for (k = 0; k < terminal.image_count; )
-                    {
-                      if (terminal.images[k].screen == terminal.curscreen
-                         && terminal.images[k].char_y + terminal.images[k].rows > terminal.cursory)
-                        {
-                          --terminal.image_count;
-                          cnt_image_free(&terminal.images[k].image);
-                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-                        }
-                      else
-                        ++k;
-                    }
                 }
               else if (terminal.param[0] == 1)
                 {
@@ -1758,19 +1682,6 @@ static void term_process_data(unsigned char* buf, int count)
                   int count = (terminal.size.ws_col * terminal.cursory + terminal.cursorx);
                   memset(terminal.curchars, 0, count * sizeof(wchar_t));
                   memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
-
-                  for (k = 0; k < terminal.image_count; )
-                    {
-                      if (terminal.images[k].screen == terminal.curscreen
-                         && terminal.images[k].char_y <= terminal.cursory)
-                        {
-                          --terminal.image_count;
-                          cnt_image_free(&terminal.images[k].image);
-                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-                        }
-                      else
-                        ++k;
-                    }
                 }
               else if (terminal.param[0] == 2)
                 {
@@ -1795,18 +1706,6 @@ static void term_process_data(unsigned char* buf, int count)
 
                   terminal.cursory = 0;
                   terminal.cursorx = 0;
-
-                  for (k = 0; k < terminal.image_count; )
-                    {
-                      if (terminal.images[k].screen == terminal.curscreen)
-                        {
-                          --terminal.image_count;
-                          cnt_image_free(&terminal.images[k].image);
-                          memmove(&terminal.images[k], &terminal.images[terminal.image_count], sizeof(terminal.images[0]));
-                        }
-                      else
-                        ++k;
-                    }
                 }
 
               break;
@@ -2579,10 +2478,6 @@ int x11_process_events()
       case KeyRelease:
 
         {
-          KeySym key_sym;
-
-          key_sym = XLookupKeysym(&event.xkey, 0);
-
           ctrl_pressed = (event.xkey.state & ControlMask);
           mod1_pressed = (event.xkey.state & Mod1Mask);
           super_pressed = (event.xkey.state & Mod4Mask);

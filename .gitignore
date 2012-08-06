@@ -15,9 +15,7 @@
 Makefile
 Makefile.in
 aclocal.m4
-cantera-lock
 cantera-term
-cantera-wm
 config.h
 configure
 libtool

@@ -1,15 +1,13 @@
 #include <ctype.h>
-#include <errno.h>
-#include <setjmp.h>
-#include <string.h>
-
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
 #include <sysexits.h>
 #include <unistd.h>
 
 #include "arena.h"
+#include "io.h"
 #include "tree.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
@@ -23,8 +21,6 @@ struct tree_node
 struct tree
 {
   struct arena_info arena;
-
-  jmp_buf on_error;
 
   char* name;
 
@@ -244,27 +240,6 @@ is_symbol_char(int ch)
   return isalnum(ch) || ch == '-' || ch == '_' || ch == '!';
 }
 
-static void
-read_all(int fd, void* buf, size_t total, const char* path)
-{
-  char* cbuf = buf;
-  size_t offset = 0;
-  int ret;
-
-  while(offset < total)
-    {
-      ret = read(fd, cbuf, total - offset);
-
-      if(ret == -1)
-        err(EXIT_FAILURE, "%s: read error", path);
-
-      if(ret == 0)
-        errx(EXIT_FAILURE, "%s: file was truncated while reading (read returned 0)", path);
-
-      offset += ret;
-    }
-}
-
 struct tree*
 tree_load_cfg(const char* path)
 {
@@ -288,26 +263,20 @@ tree_load_cfg(const char* path)
   if(-1 == (fd = open(path, O_RDONLY)))
     return result;
 
-  if (-1 == (size = lseek(fd, 0, SEEK_END)))
-    fprintf (stderr, "%s: failed to seek to end of file: %s", path, strerror (errno));
+  if(-1 == (size = lseek(fd, 0, SEEK_END)))
+    err(EX_OSERR, "%s: failed to seek to end of file", path);
 
-  if (-1 == lseek(fd, 0, SEEK_SET))
-    fprintf (stderr, "%s: failed to seek to start of file: %s", path, strerror (errno));
+  if(-1 == lseek(fd, 0, SEEK_SET))
+    err(EX_OSERR, "%s: failed to seek to start of file", path);
 
-  if (0 == (data = malloc(size + 1)))
-    fprintf (stderr, "%s: failed to allocate %zu bytes for parsing: %s", path, (size_t) (size + 1), strerror (errno));
+  if(0 == (data = malloc(size + 1)))
+    err(EX_OSERR, "%s: failed to allocate %zu bytes for parsing", path,
+        (size_t) (size + 1));
 
   read_all(fd, data, size, path);
   data[size] = 0;
 
   close(fd);
-
-  if (setjmp (result->on_error))
-    {
-      free (data);
-
-      return result;
-    }
 
   c = data;
 
@@ -335,11 +304,7 @@ tree_load_cfg(const char* path)
       if(*c == '}')
         {
           if(!section_stackp)
-            {
-              fprintf(stderr, "%s:%d: unexpected '}'", path, lineno);
-
-              longjmp (result->on_error, 1);
-            }
+            errx(EX_DATAERR, "%s:%d: unexpected '}'", path, lineno);
 
           if(!--section_stackp)
             symbol_len = 0;
@@ -356,21 +321,17 @@ tree_load_cfg(const char* path)
           if(!is_symbol_char(*c))
             {
               if(isprint(*c))
-                fprintf(stderr, "%s:%d: unexpected '%c' while looking for symbol", path, lineno, *c);
+                errx(EX_DATAERR, "%s:%d: unexpected '%c' while looking for symbol",
+                     path, lineno, *c);
               else
-                fprintf(stderr, "%s:%d: unexpected 0x%02x while looking for symbol", path, lineno, *c);
-
-              longjmp (result->on_error, 1);
+                errx(EX_DATAERR, "%s:%d: unexpected 0x%02x while looking for symbol",
+                     path, lineno, *c);
             }
 
           if(symbol_len)
             {
               if(symbol_len + 1 == ARRAY_SIZE(symbol))
-                {
-                  fprintf(stderr, "%s:%d: symbol stack overflow", path, lineno);
-
-                  longjmp (result->on_error, 1);
-                }
+                errx(EX_DATAERR, "%s:%d: symbol stack overflow", path, lineno);
 
               symbol[symbol_len++] = '.';
             }
@@ -378,11 +339,7 @@ tree_load_cfg(const char* path)
           while(is_symbol_char(*c))
             {
               if(symbol_len + 1 == ARRAY_SIZE(symbol))
-                {
-                  fprintf(stderr, "%s:%d: symbol stack overflow", path, lineno);
-
-                  longjmp (result->on_error, 1);
-                }
+                errx(EX_DATAERR, "%s:%d: symbol stack overflow", path, lineno);
 
               symbol[symbol_len++] = *c++;
             }
@@ -398,9 +355,8 @@ tree_load_cfg(const char* path)
             {
             case 0:
 
-              fprintf(stderr, "%s:%d: unexpected end-of-file after symbol", path, lineno);
-
-              longjmp (result->on_error, 1);
+              errx(EX_DATAERR, "%s:%d: unexpected end-of-file after symbol",
+                   path, lineno);
 
             case '.':
 
@@ -412,11 +368,8 @@ tree_load_cfg(const char* path)
             case '{':
 
               if(section_stackp == ARRAY_SIZE(section_stack))
-                {
-                  fprintf(stderr, "%s:%d: too many nested sections", path, lineno);
-
-                  longjmp (result->on_error, 1);
-                }
+                errx(EX_DATAERR, "%s:%d: too many nested sections", path,
+                     lineno);
 
               section_stack[section_stackp++] = symbol_len;
               expecting_symbol = 1;
@@ -426,9 +379,8 @@ tree_load_cfg(const char* path)
 
             case '}':
 
-              fprintf (stderr, "%s:%d: unexpected '%c' after symbol", path, lineno, *c);
-
-              longjmp (result->on_error, 1);
+              errx(EX_DATAERR, "%s:%d: unexpected '%c' after symbol", path,
+                   lineno, *c);
 
             default:
 
@@ -449,19 +401,15 @@ tree_load_cfg(const char* path)
                 {
                   if(!*c)
                     {
-                      fprintf (stderr, "%s:%d: unexpected end-of-file in " "string", path, lineno);
-
-                      longjmp (result->on_error, 1);
+                      errx(EX_DATAERR, "%s:%d: unexpected end-of-file in "
+                           "string", path, lineno);
                     }
 
                   if(*c == '\\')
                     {
                       if(!*(c + 1))
-                        {
-                          fprintf (stderr, "%s:%d: unexpected end-of-file in " "string", path, lineno);
-
-                          longjmp (result->on_error, 1);
-                        }
+                        errx(EX_DATAERR, "%s:%d: unexpected end-of-file in "
+                             "string", path, lineno);
 
                       ++c;
                       *o++ = *c++;
