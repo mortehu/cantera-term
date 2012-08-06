@@ -212,11 +212,8 @@ Atom xa_wm_state;
 Atom xa_wm_transient_for;
 Atom xa_wm_protocols;
 Atom xa_wm_delete_window;
-GC gc;
 int cols;
 int rows;
-XIM xim = 0;
-XIC xic;
 int ctrl_pressed = 0;
 int mod1_pressed = 0;
 int super_pressed = 0;
@@ -2120,7 +2117,7 @@ int x11_process_events()
           super_pressed = (event.xkey.state & Mod4Mask);
           shift_pressed = (event.xkey.state & ShiftMask);
 
-          len = Xutf8LookupString(xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
+          len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
 
           if (!text[0])
             len = 0;
