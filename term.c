@@ -37,6 +37,8 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/keysym.h>
 
+#include "font.h"
+#include "glyph.h"
 #include "tree.h"
 #include "x11.h"
 
@@ -64,7 +66,10 @@ static struct option long_options[] =
 struct tree* config = 0;
 
 unsigned int scroll_extra;
+
 const char* font_name;
+unsigned int font_size;
+struct FONT_Data *font;
 
 extern char** environ;
 
@@ -88,8 +93,6 @@ struct terminal
   struct winsize size;
   unsigned int history_size;
   int fontsize;
-  int xskip;
-  int yskip;
   int storedcursorx[2];
   int storedcursory[2];
   int scrolltop;
@@ -193,16 +196,6 @@ struct terminal terminal;
 int damage_eventbase;
 int damage_errorbase;
 int screenidx;
-Atom prop_paste;
-Atom xa_utf8_string;
-Atom xa_compound_text;
-Atom xa_targets;
-Atom xa_net_wm_icon;
-Atom xa_net_wm_pid;
-Atom xa_wm_state;
-Atom xa_wm_transient_for;
-Atom xa_wm_protocols;
-Atom xa_wm_delete_window;
 int cols;
 int rows;
 int ctrl_pressed = 0;
@@ -211,8 +204,6 @@ int super_pressed = 0;
 int shift_pressed = 0;
 int button1_pressed = 0;
 struct timeval lastpaint = { 0, 0 };
-wchar_t* screenchars;
-uint16_t* screenattrs;
 int select_begin = -1;
 int select_end = -1;
 unsigned char* select_text = 0;
@@ -271,6 +262,19 @@ static void insert_chars(int count)
   }
 }
 
+static void
+term_LoadGlyph (wchar_t character)
+{
+  struct FONT_Glyph *glyph;
+
+  if (!(glyph = FONT_GlyphForCharacter (font, character)))
+    fprintf (stderr, "Failed to get glyph for '%d'", character);
+
+  GLYPH_Add (character, glyph);
+
+  free (glyph);
+}
+
 static void addchar(int ch)
 {
   int size;
@@ -299,6 +303,9 @@ static void addchar(int ch)
   if (!width)
     return;
 
+  if (!GLYPH_IsLoaded (ch))
+    term_LoadGlyph (ch);
+
   if (width > 1)
   {
     terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
@@ -322,15 +329,13 @@ static void addchar(int ch)
 }
 
 static void
-paint(int x, int y, int width, int height)
+paint (void)
 {
   glClear (GL_COLOR_BUFFER_BIT);
 
-  int row, i, selbegin, selend;
-  int minx = x;
-  int miny = y;
-  int maxx = x + width;
-  int maxy = y + height;
+#if 1
+  unsigned int ascent, spaceWidth, lineHeight;
+  int y, row, selbegin, selend;
   unsigned int size;
   int in_selection = 0;
 
@@ -372,27 +377,27 @@ paint(int x, int y, int width, int height)
   selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
   selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
 
-  glBegin (GL_QUADS);
+  ascent = FONT_Ascent (font);
+  lineHeight = FONT_LineHeight (font);
+  spaceWidth = FONT_SpaceWidth (font);
+
+  y = ascent;
 
   for (row = 0; row < terminal.size.ws_row; ++row)
     {
       size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + curoffset) % size;
-      wchar_t* screenline = &screenchars[row * terminal.size.ws_col];
-      uint16_t* screenattrline = &screenattrs[row * terminal.size.ws_col];
       const wchar_t* line = &curchars[pos];
       const uint16_t* attrline = &curattrs[pos];
-      int start = 0, end, x = 0;
+      int x = 0, col;
 
-      while (start < terminal.size.ws_col)
+      for (col = 0; col < terminal.size.ws_col; ++col)
         {
-          int width, height;
           int printable;
-          int attr = attrline[start];
-          int localattr = -1;
+          int attr = attrline[col];
 
           if (focused
               && row == cursory + terminal.history_scroll
-              && start == cursorx)
+              && col == cursorx)
             {
               attr = REVERSE(attr);
 
@@ -400,95 +405,84 @@ paint(int x, int y, int width, int height)
                 attr = BG(ATTR_WHITE);
             }
 
-          printable = (line[start] != 0);
+          printable = (line[col] != 0);
 
-          if (row * terminal.size.ws_col + start == selbegin)
+          if (row * terminal.size.ws_col + col == selbegin)
             in_selection = 1;
 
-          if (row * terminal.size.ws_col + start == selend)
+          if (row * terminal.size.ws_col + col == selend)
             in_selection = 0;
 
           if (in_selection)
-            {
-              if (line[start] != screenline[start] && !button1_pressed)
-                {
-                  in_selection = 0;
-                  select_begin = -1;
-                  select_end = -1;
-                }
-              else
-                attr = REVERSE(attr);
-            }
-
-          end = start + 1;
-
-          while (end < terminal.size.ws_col)
-            {
-              localattr = attrline[end];
-
-              if (row * terminal.size.ws_col + end >= selbegin
-                  && row * terminal.size.ws_col + end < selend)
-                {
-                  if (line[end] != screenline[end] && !button1_pressed)
-                    {
-                      selbegin = select_begin = -1;
-                      selend = select_end = -1;
-                    }
-                  else
-                    localattr = REVERSE(localattr);
-                }
-
-              if (localattr != attr)
-                break;
-
-              if (row == cursory && end == cursorx)
-                break;
-
-              if ((line[end] != 0) != printable)
-                break;
-
-              ++end;
-            }
-
-          width = (end - start) * terminal.xskip;
-          height = terminal.yskip;
-
-          for (i = start; i < end; ++i)
-            {
-              screenline[i] = line[i];
-              screenattrline[i] = attr;
-            }
-
-          if (x < minx) minx =x;
-          if (row * terminal.yskip < miny) miny = row * terminal.yskip;
-          if (x + width > maxx) maxx = x + width;
-          if (row * terminal.yskip + height > maxy) maxy = row * terminal.yskip + height;
+            attr = REVERSE(attr);
 
           /* color: (attr >> 4) & 7 */
 
           unsigned int color;
           color = palette[(attr >> 4) & 7];
-          glColor3ub (color >> 16, color >> 8, color);
-
-          glVertex2f (x,         row * terminal.yskip);
-          glVertex2f (x,         row * terminal.yskip + height);
-          glVertex2f (x + width, row * terminal.yskip + height);
-          glVertex2f (x + width, row * terminal.yskip);
-
-          color = palette[attr & 0x0f];
-          glColor3ub (color >> 16, color >> 8, color);
 
           if (printable)
             {
-              glVertex2f (x,         row * terminal.yskip);
-              glVertex2f (x,         row * terminal.yskip + height);
-              glVertex2f (x + width, row * terminal.yskip + height);
-              glVertex2f (x + width, row * terminal.yskip);
+              static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;
+              struct FONT_Glyph glyph;
+              uint16_t u, v;
+
+              if (color)
+                {
+                  glBindTexture (GL_TEXTURE_2D, 0);
+                  glColor3ub (color >> 16, color >> 8, color);
+
+                  glBegin (GL_QUADS);
+                  glVertex2f (x,              y - ascent);
+                  glVertex2f (x,              y - ascent + lineHeight);
+                  glVertex2f (x + spaceWidth, y - ascent + lineHeight);
+                  glVertex2f (x + spaceWidth, y - ascent);
+                  glEnd ();
+                }
+
+              color = palette[attr & 0x0f];
+              glColor3ub (color >> 16, color >> 8, color);
+
+              GLYPH_Get (line[col], &glyph, &u, &v);
+
+              glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
+
+              glBegin (GL_QUADS);
+
+              glTexCoord2f (u * uvScale, v * uvScale);
+              glVertex2f (x - glyph.x, y - glyph.y);
+
+              glTexCoord2f (u * uvScale, (v + glyph.height) * uvScale);
+              glVertex2f (x - glyph.x, y - glyph.y + glyph.height);
+
+              glTexCoord2f ((u + glyph.width) * uvScale, (v + glyph.height) * uvScale);
+              glVertex2f (x - glyph.x + glyph.width, y - glyph.y + glyph.height);
+
+              glTexCoord2f ((u + glyph.width) * uvScale, v * uvScale);
+              glVertex2f (x - glyph.x + glyph.width, y - glyph.y);
+
+              glEnd ();
+
+              x += glyph.xOffset;
+            }
+          else
+            {
+              if (color)
+                {
+                  glBindTexture (GL_TEXTURE_2D, 0);
+                  glColor3ub (color >> 16, color >> 8, color);
+
+                  glBegin (GL_QUADS);
+                  glVertex2f (x,              y - ascent);
+                  glVertex2f (x,              y - ascent + lineHeight);
+                  glVertex2f (x + spaceWidth, y - ascent + lineHeight);
+                  glVertex2f (x + spaceWidth, y - ascent);
+                  glEnd ();
+                }
+
+              x += spaceWidth;
             }
 #if 0
-          drawtext(root_buffer, &line[start], end - start, x, row * terminal.yskip, attr & 0x0F, SMALL);
-#endif
-
           if (attr & ATTR_UNDERLINE)
             {
               glVertex2f (x,         (row + 1) * terminal.yskip - 1);
@@ -496,14 +490,30 @@ paint(int x, int y, int width, int height)
               glVertex2f (x + width, (row + 1) * terminal.yskip);
               glVertex2f (x + width, (row + 1) * terminal.yskip - 1);
             }
-
-          x += width;
-
-          start = end;
+#endif
         }
+
+      y += lineHeight;
     }
+#else
+  glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
+
+  glBegin (GL_QUADS);
+
+  glTexCoord2f (0, 0);
+  glVertex2f (0, 0);
+
+  glTexCoord2f (0, 1);
+  glVertex2f (0, GLYPH_ATLAS_SIZE);
+
+  glTexCoord2f (1, 1);
+  glVertex2f (GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE);
+
+  glTexCoord2f (1, 0);
+  glVertex2f (GLYPH_ATLAS_SIZE, 0);
 
   glEnd ();
+#endif
 
   glXSwapBuffers (X11_display, X11_window);
 }
@@ -712,12 +722,10 @@ void init_session(char* const* args)
 
   memset(&terminal, 0, sizeof(terminal));
 
-  terminal.xskip = 8;
-  terminal.yskip = 8;
   terminal.size.ws_xpixel = window_width;
   terminal.size.ws_ypixel = window_height;
-  terminal.size.ws_col = window_width / terminal.xskip;
-  terminal.size.ws_row = window_height / terminal.yskip;
+  terminal.size.ws_col = window_width / FONT_SpaceWidth (font);
+  terminal.size.ws_row = window_height / FONT_LineHeight (font);
   terminal.history_size = terminal.size.ws_row + scroll_extra;
 
   if (pty_fd != -1)
@@ -735,9 +743,6 @@ void init_session(char* const* args)
 
       if (!terminal.pid)
         {
-          terminal.xskip = 8;
-          terminal.yskip = 8;
-
           if (-1 == execve(args[0], args, environ))
 	  {
 	    dup2 (stderr_backup, 2);
@@ -1770,8 +1775,8 @@ void x11_handle_configure(XConfigureEvent *config)
   glLoadIdentity ();
   glOrtho (0.0f, window_width, window_height, 0.0f, 0.0f, 1.0f);
 
-  cols = window_width / terminal.xskip;
-  rows = window_height / terminal.yskip;
+  cols = window_width / FONT_SpaceWidth (font);
+  rows = window_height / FONT_LineHeight (font);
 
   if (!cols)
     cols = 1;
@@ -1834,11 +1839,6 @@ void x11_handle_configure(XConfigureEvent *config)
 
       terminal.curchars = terminal.chars[terminal.curscreen];
       terminal.curattrs = terminal.attr[terminal.curscreen];
-
-      free(screenchars);
-      free(screenattrs);
-      screenchars = calloc(sizeof(*screenchars), cols * rows);
-      screenattrs = calloc(sizeof(*screenattrs), cols * rows);
 
       terminal.cursory = terminal.cursory - srcoff;
       terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
@@ -2221,8 +2221,8 @@ int x11_process_events()
 
 	  size = terminal.history_size * terminal.size.ws_col;
 
-	  x = event.xbutton.x / terminal.xskip;
-	  y = event.xbutton.y / terminal.yskip;
+	  x = event.xbutton.x / FONT_SpaceWidth (font);
+	  y = event.xbutton.y / FONT_LineHeight (font);
 
 	  new_select_end = y * terminal.size.ws_col + x;
 
@@ -2262,8 +2262,8 @@ int x11_process_events()
 
             button1_pressed = 1;
 
-            x = event.xbutton.x / terminal.xskip;
-            y = event.xbutton.y / terminal.yskip;
+            x = event.xbutton.x / FONT_SpaceWidth (font);
+            y = event.xbutton.y / FONT_LineHeight (font);
 
             select_begin = y * terminal.size.ws_col + x;
 
@@ -2428,22 +2428,10 @@ int x11_process_events()
 
       case Expose:
 
-        {
-          int minx = event.xexpose.x;
-          int miny = event.xexpose.y;
-          int maxx = minx + event.xexpose.width;
-          int maxy = miny + event.xexpose.height;
+        while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
+          ;
 
-          while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
-          {
-            if (event.xexpose.x < minx) minx = event.xexpose.x;
-            if (event.xexpose.y < miny) miny = event.xexpose.y;
-            if (event.xexpose.x + event.xexpose.width > maxx) maxx = event.xexpose.x + event.xexpose.width;
-            if (event.xexpose.y + event.xexpose.height > maxy) maxy = event.xexpose.y + event.xexpose.height;
-          }
-
-          paint(minx, miny, maxx - minx, maxy - miny);
-        }
+        paint ();
 
         break;
 
@@ -2580,8 +2568,8 @@ int main(int argc, char** argv)
     }
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "/usr/share/fonts/truetype/msttcorefonts/Andale_Mono.ttf");
-  /*font_sizes[0] = tree_get_integer_default(config, "terminal.font-size", 12);*/
+  font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
+  font_size = tree_get_integer_default(config, "terminal.font-size", 12);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -2609,6 +2597,17 @@ int main(int argc, char** argv)
     session_fd = -1;
 
   X11_Setup ();
+
+  glEnable (GL_TEXTURE_2D);
+
+  FONT_Init ();
+  GLYPH_Init ();
+
+  if (!(font = FONT_Load (font_name, font_size)))
+    errx (EXIT_FAILURE, "Failed to load font `%s' of size %u", font_name, font_size);
+
+  for (i = ' '; i <= '~'; ++i)
+    term_LoadGlyph (i);
 
   if (optind < argc)
   {
