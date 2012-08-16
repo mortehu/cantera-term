@@ -28,7 +28,7 @@ GLYPH_Init (void)
   glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-  glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, 0);
+  glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 }
 
 GLuint
@@ -43,7 +43,7 @@ GLYPH_Add (unsigned int code, struct FONT_Glyph *glyph)
   if (code >= sizeof (glyphs) / sizeof (glyphs[0]))
     return;
 
-  loadedGlyphs[code >> 5] |= (1 << (code & 0x31));
+  loadedGlyphs[code >> 5] |= (1 << (code & 31));
 
   if (glyph->width && glyph->height)
     {
@@ -81,7 +81,7 @@ GLYPH_Add (unsigned int code, struct FONT_Glyph *glyph)
 
       glBindTexture (GL_TEXTURE_2D, glyph_texture);
       glTexSubImage2D (GL_TEXTURE_2D, 0, best_u, best_v, glyph->width, glyph->height,
-                       GL_LUMINANCE, GL_UNSIGNED_BYTE, glyph->data);
+                       GL_RGBA, GL_UNSIGNED_BYTE, glyph->data);
 
       for (k = 0; k < glyph->width; ++k)
         top[best_u + k] = best_v + glyph->height;
@@ -101,7 +101,7 @@ GLYPH_IsLoaded (unsigned int code)
   if (code >= sizeof (glyphs) / sizeof (glyphs[0]))
     return 1;
 
-  return (loadedGlyphs[code >> 5] & (1 << (code & 0x31)));
+  return (loadedGlyphs[code >> 5] & (1 << (code & 31)));
 }
 
 void

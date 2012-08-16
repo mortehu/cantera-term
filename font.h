@@ -1,6 +1,9 @@
 #ifndef FONT_H_
 #define FONT_H_ 1
 
+#include <stdint.h>
+#include <wchar.h>
+
 struct FONT_Data;
 
 struct FONT_Glyph
@@ -39,7 +42,7 @@ unsigned int
 FONT_SpaceWidth (struct FONT_Data *font);
 
 struct FONT_Glyph *
-FONT_GlyphForCharacter (struct FONT_Data *font, wchar_t character);
+FONT_GlyphForCharacter (struct FONT_Data *font, wint_t character);
 
 struct FONT_Glyph *
 FONT_GlyphWithSize (unsigned int width, unsigned int height);

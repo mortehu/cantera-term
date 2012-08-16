@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@ struct FONT_Data
 static FT_Library ft_library;
 
 static FT_GlyphSlot
-font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wchar_t character,
+font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wint_t character,
                                 FT_Face *face, unsigned int loadFlags);
 
 void
@@ -194,15 +195,19 @@ FONT_SpaceWidth (struct FONT_Data *font)
 }
 
 struct FONT_Glyph *
-FONT_GlyphForCharacter (struct FONT_Data *font, wchar_t character)
+FONT_GlyphForCharacter (struct FONT_Data *font, wint_t character)
 {
   struct FONT_Glyph *result;
   FT_GlyphSlot glyph;
   FT_Face face;
-  unsigned int y, stride;
+  unsigned int y, x, i;
 
-  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, FT_LOAD_RENDER)))
+  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, FT_LOAD_RENDER | FT_LOAD_TARGET_LCD)))
     return NULL;
+
+  assert (!(glyph->bitmap.width % 3));
+
+  glyph->bitmap.width /= 3;
 
   if (!(result = FONT_GlyphWithSize (glyph->bitmap.width, glyph->bitmap.rows)))
     return NULL;
@@ -212,13 +217,15 @@ FONT_GlyphForCharacter (struct FONT_Data *font, wchar_t character)
   result->xOffset = (glyph->advance.x + 32) >> 6;
   result->yOffset = (glyph->advance.y + 32) >> 6;
 
-  stride = (glyph->bitmap.width + 3) & ~3;
-
-  for (y = 0; y < result->height; ++y)
+  for (y = 0, i = 0; y < result->height; ++y)
     {
-      memcpy (result->data + y * stride,
-              glyph->bitmap.buffer + y * result->width,
-              result->width);
+      for (x = 0; x < result->width; ++x, i += 4)
+        {
+          result->data[i + 0] = glyph->bitmap.buffer[y * glyph->bitmap.pitch + x * 3 + 0];
+          result->data[i + 1] = glyph->bitmap.buffer[y * glyph->bitmap.pitch + x * 3 + 1];
+          result->data[i + 2] = glyph->bitmap.buffer[y * glyph->bitmap.pitch + x * 3 + 2];
+          result->data[i + 3] = (result->data[i] + result->data[i + 1] + result->data[i + 2]) / 3;
+        }
     }
 
   return result;
@@ -229,7 +236,7 @@ FONT_GlyphWithSize (unsigned int width, unsigned int height)
 {
   struct FONT_Glyph *result;
 
-  result = calloc (1, offsetof (struct FONT_Glyph, data) + ((width + 3) & ~3) * height * 4);
+  result = calloc (1, offsetof (struct FONT_Glyph, data) + width * height * 4);
   result->width = width;
   result->height = height;
 
@@ -237,7 +244,7 @@ FONT_GlyphWithSize (unsigned int width, unsigned int height)
 }
 
 static FT_GlyphSlot
-font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wchar_t character,
+font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wint_t character,
                                 FT_Face *face, unsigned int loadFlags)
 
 {

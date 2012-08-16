@@ -37,8 +37,10 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/keysym.h>
 
+#include "draw.h"
 #include "font.h"
 #include "glyph.h"
+#include "terminal.h"
 #include "tree.h"
 #include "x11.h"
 
@@ -73,43 +75,7 @@ struct FONT_Data *font;
 
 extern char** environ;
 
-static unsigned int palette[16];
-
-struct terminal
-{
-  pid_t pid;
-  int fd;
-
-  char* buffer;
-  wchar_t* chars[2];
-  uint16_t* attr[2];
-  wchar_t* curchars;
-  uint16_t* curattrs;
-  int offset[2];
-  int* curoffset;
-  int curscreen;
-  int curattr;
-  int reverse;
-  struct winsize size;
-  unsigned int history_size;
-  int fontsize;
-  int storedcursorx[2];
-  int storedcursory[2];
-  int scrolltop;
-  int scrollbottom;
-  int cursorx;
-  int cursory;
-  int escape;
-  int param[8];
-  int savedx;
-  int savedy;
-  int appcursor;
-  int insertmode;
-  int alt_charset[2];
-  unsigned int ch, nch;
-
-  unsigned int history_scroll;
-};
+unsigned int palette[16];
 
 /* Alternate characters, from 0x41 to 0x7E, inclusive */
 static unsigned short alt_charset[62] =
@@ -126,31 +92,10 @@ static unsigned short alt_charset[62] =
 
 static int done;
 static const char* session_path;
-static int focused;
 
 unsigned int window_width = 800, window_height = 600;
 
 static void normalize_offset();
-
-#define ATTR_BLINK     0x0008
-#define ATTR_HIGHLIGHT 0x0008
-#define ATTR_BOLD      0x0008
-#define ATTR_STANDOUT  0x0008
-#define ATTR_UNDERLINE 0x0800
-#define ATTR_BLACK     0x0000
-#define ATTR_BLUE      0x0001
-#define ATTR_GREEN     0x0002
-#define ATTR_RED       0x0004
-#define ATTR_CYAN      (ATTR_BLUE | ATTR_GREEN)
-#define ATTR_MAGENTA   (ATTR_BLUE | ATTR_RED)
-#define ATTR_YELLOW    (ATTR_GREEN | ATTR_RED)
-#define ATTR_WHITE     (ATTR_BLUE | ATTR_GREEN | ATTR_RED)
-#define FG(color)      color
-#define BG(color)      ((color) << 4)
-#define FG_DEFAULT     FG(ATTR_WHITE)
-#define BG_DEFAULT     BG(ATTR_BLACK)
-#define ATTR_DEFAULT   (FG_DEFAULT | BG_DEFAULT)
-#define REVERSE(color) ((((color) & 0x70) >> 4) | (((color) & 0x07) << 4) | ((color) & 0x88))
 
 const struct
 {
@@ -204,13 +149,9 @@ int super_pressed = 0;
 int shift_pressed = 0;
 int button1_pressed = 0;
 struct timeval lastpaint = { 0, 0 };
-int select_begin = -1;
-int select_end = -1;
 unsigned char* select_text = 0;
 unsigned long select_alloc = 0;
 unsigned long select_length;
-
-int temp_switch_screen = 0;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
@@ -298,224 +239,15 @@ static void addchar(int ch)
     return;
   }
 
-  int width = wcwidth(ch);
-
-  if (!width)
-    return;
-
   if (!GLYPH_IsLoaded (ch))
     term_LoadGlyph (ch);
 
-  if (width > 1)
-  {
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1 + *terminal.curoffset) % size] = 0xffff;
-    terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] =
-    terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1 + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-    terminal.cursorx += width;
+  if (terminal.insertmode)
+    insert_chars(1);
 
-    if (terminal.cursorx > terminal.size.ws_col)
-      terminal.cursorx = terminal.size.ws_col;
-  }
-  else
-  {
-    if (terminal.insertmode)
-      insert_chars(1);
-
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
-    terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-    ++terminal.cursorx;
-  }
-}
-
-static void
-paint (void)
-{
-  glClear (GL_COLOR_BUFFER_BIT);
-
-#if 1
-  unsigned int ascent, spaceWidth, lineHeight;
-  int y, row, selbegin, selend;
-  unsigned int size;
-  int in_selection = 0;
-
-  size = terminal.history_size * terminal.size.ws_col;
-
-  const wchar_t* curchars;
-  const uint16_t* curattrs;
-  int cursorx, cursory;
-  int curoffset;
-
-  if (temp_switch_screen)
-    {
-      curchars = terminal.chars[1 - terminal.curscreen];
-      curattrs = terminal.attr[1 - terminal.curscreen];
-      cursorx = terminal.storedcursorx[1 - terminal.curscreen];
-      cursory = terminal.storedcursory[1 - terminal.curscreen];
-      curoffset = terminal.offset[1 - terminal.curscreen];
-    }
-  else
-    {
-      curchars = terminal.curchars;
-      curattrs = terminal.curattrs;
-      cursorx = terminal.cursorx;
-      cursory = terminal.cursory;
-      curoffset = *terminal.curoffset;
-    }
-
-  if (select_begin < select_end)
-    {
-      selbegin = select_begin;
-      selend = select_end;
-    }
-  else
-    {
-      selbegin = select_end;
-      selend = select_begin;
-    }
-
-  selbegin = (selbegin + terminal.history_scroll * terminal.size.ws_col) % size;
-  selend = (selend + terminal.history_scroll * terminal.size.ws_col) % size;
-
-  ascent = FONT_Ascent (font);
-  lineHeight = FONT_LineHeight (font);
-  spaceWidth = FONT_SpaceWidth (font);
-
-  y = ascent;
-
-  for (row = 0; row < terminal.size.ws_row; ++row)
-    {
-      size_t pos = ((row + terminal.history_size - terminal.history_scroll) * terminal.size.ws_col + curoffset) % size;
-      const wchar_t* line = &curchars[pos];
-      const uint16_t* attrline = &curattrs[pos];
-      int x = 0, col;
-
-      for (col = 0; col < terminal.size.ws_col; ++col)
-        {
-          int printable;
-          int attr = attrline[col];
-
-          if (focused
-              && row == cursory + terminal.history_scroll
-              && col == cursorx)
-            {
-              attr = REVERSE(attr);
-
-              if (!attr)
-                attr = BG(ATTR_WHITE);
-            }
-
-          printable = (line[col] != 0);
-
-          if (row * terminal.size.ws_col + col == selbegin)
-            in_selection = 1;
-
-          if (row * terminal.size.ws_col + col == selend)
-            in_selection = 0;
-
-          if (in_selection)
-            attr = REVERSE(attr);
-
-          /* color: (attr >> 4) & 7 */
-
-          unsigned int color;
-          color = palette[(attr >> 4) & 7];
-
-          if (printable)
-            {
-              static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;
-              struct FONT_Glyph glyph;
-              uint16_t u, v;
-
-              if (color)
-                {
-                  glBindTexture (GL_TEXTURE_2D, 0);
-                  glColor3ub (color >> 16, color >> 8, color);
-
-                  glBegin (GL_QUADS);
-                  glVertex2f (x,              y - ascent);
-                  glVertex2f (x,              y - ascent + lineHeight);
-                  glVertex2f (x + spaceWidth, y - ascent + lineHeight);
-                  glVertex2f (x + spaceWidth, y - ascent);
-                  glEnd ();
-                }
-
-              color = palette[attr & 0x0f];
-              glColor3ub (color >> 16, color >> 8, color);
-
-              GLYPH_Get (line[col], &glyph, &u, &v);
-
-              glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
-
-              glBegin (GL_QUADS);
-
-              glTexCoord2f (u * uvScale, v * uvScale);
-              glVertex2f (x - glyph.x, y - glyph.y);
-
-              glTexCoord2f (u * uvScale, (v + glyph.height) * uvScale);
-              glVertex2f (x - glyph.x, y - glyph.y + glyph.height);
-
-              glTexCoord2f ((u + glyph.width) * uvScale, (v + glyph.height) * uvScale);
-              glVertex2f (x - glyph.x + glyph.width, y - glyph.y + glyph.height);
-
-              glTexCoord2f ((u + glyph.width) * uvScale, v * uvScale);
-              glVertex2f (x - glyph.x + glyph.width, y - glyph.y);
-
-              glEnd ();
-
-              x += glyph.xOffset;
-            }
-          else
-            {
-              if (color)
-                {
-                  glBindTexture (GL_TEXTURE_2D, 0);
-                  glColor3ub (color >> 16, color >> 8, color);
-
-                  glBegin (GL_QUADS);
-                  glVertex2f (x,              y - ascent);
-                  glVertex2f (x,              y - ascent + lineHeight);
-                  glVertex2f (x + spaceWidth, y - ascent + lineHeight);
-                  glVertex2f (x + spaceWidth, y - ascent);
-                  glEnd ();
-                }
-
-              x += spaceWidth;
-            }
-#if 0
-          if (attr & ATTR_UNDERLINE)
-            {
-              glVertex2f (x,         (row + 1) * terminal.yskip - 1);
-              glVertex2f (x,         (row + 1) * terminal.yskip);
-              glVertex2f (x + width, (row + 1) * terminal.yskip);
-              glVertex2f (x + width, (row + 1) * terminal.yskip - 1);
-            }
-#endif
-        }
-
-      y += lineHeight;
-    }
-#else
-  glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
-
-  glBegin (GL_QUADS);
-
-  glTexCoord2f (0, 0);
-  glVertex2f (0, 0);
-
-  glTexCoord2f (0, 1);
-  glVertex2f (0, GLYPH_ATLAS_SIZE);
-
-  glTexCoord2f (1, 1);
-  glVertex2f (GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE);
-
-  glTexCoord2f (1, 0);
-  glVertex2f (GLYPH_ATLAS_SIZE, 0);
-
-  glEnd ();
-#endif
-
-  glXSwapBuffers (X11_display, X11_window);
+  terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = ch;
+  terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+  ++terminal.cursorx;
 }
 
 static void normalize_offset()
@@ -765,11 +497,15 @@ void init_session(char* const* args)
   terminal.offset[0] = 0;
   terminal.offset[1] = 0;
 
+  terminal.select_begin = -1;
+  terminal.select_end = -1;
+
   setscreen(0);
 }
 
 static void save_session()
 {
+#if 0
   int fd;
   size_t size;
 
@@ -792,6 +528,7 @@ static void save_session()
   write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
   close(fd);
+#endif
 }
 
 static void sighandler(int signal)
@@ -814,7 +551,7 @@ static void update_selection(Time time)
   int i;
   unsigned int size, offset;
 
-  if (select_begin == select_end)
+  if (terminal.select_begin == terminal.select_end)
     return;
 
   size = terminal.size.ws_col * terminal.history_size;
@@ -826,22 +563,22 @@ static void update_selection(Time time)
     select_text = 0;
   }
 
-  if (select_begin > select_end)
+  if (terminal.select_begin > terminal.select_end)
   {
-    i = select_begin;
-    select_begin = select_end;
-    select_end = i;
+    i = terminal.select_begin;
+    terminal.select_begin = terminal.select_end;
+    terminal.select_end = i;
   }
 
-  select_alloc = select_end - select_begin + 1;
+  select_alloc = terminal.select_end - terminal.select_begin + 1;
   select_text = calloc(select_alloc, 1);
   select_length = 0;
 
   size_t last_graph = 0;
   size_t last_graph_col = 0;
-  i = select_begin;
+  i = terminal.select_begin;
 
-  while (i != select_end)
+  while (i != terminal.select_end)
   {
     int ch = terminal.curchars[(i + offset) % size];
     int width = terminal.size.ws_col;
@@ -855,7 +592,7 @@ static void update_selection(Time time)
       select_text = realloc(select_text, select_alloc);
     }
 
-    if (i > select_begin && (i % width) == 0)
+    if (i > terminal.select_begin && (i % width) == 0)
     {
       select_length = last_graph;
       if (last_graph_col != (width - 1))
@@ -895,7 +632,7 @@ static void update_selection(Time time)
 
   if (X11_window != XGetSelectionOwner (X11_display, XA_PRIMARY))
   {
-    select_begin = select_end;
+    terminal.select_begin = terminal.select_end;
     free(select_text);
     select_text = 0;
   }
@@ -1962,30 +1699,23 @@ int x11_process_events()
              || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
             history_scroll_reset = 0;
 
-          if (temp_switch_screen)
-            {
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-
-              temp_switch_screen = 0;
-            }
-
           if (event.xkey.keycode == 161 || key_sym == XK_Menu)
           {
             normalize_offset();
 
             if (shift_pressed)
             {
-              select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
+              terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
 
-              if (select_end == 0)
+              if (terminal.select_end == 0)
               {
-                select_begin = 0;
-                select_end = 1;
+                terminal.select_begin = 0;
+                terminal.select_end = 1;
               }
               else
-                select_begin = select_end - 1;
+                terminal.select_begin = terminal.select_end - 1;
 
-              find_range(range_parenthesis, &select_begin, &select_end);
+              find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
 
               update_selection(CurrentTime);
 
@@ -2145,19 +1875,10 @@ int x11_process_events()
 	  }
 	  else if (key_sym == XK_space)
 	  {
-	    /*
-	       if (mod1_pressed)
-	       term_strwrite("\033");
+            if (mod1_pressed)
+              term_strwrite("\033");
 
-	     */
-	    if (mod1_pressed)
-	      {
-		temp_switch_screen = 1;
-
-		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	      }
-	    else
-	      term_strwrite(" ");
+            term_strwrite(" ");
 	  }
           else if (key_sym == XK_Alt_L)
           {
@@ -2231,12 +1952,12 @@ int x11_process_events()
 
 	  if (ctrl_pressed)
 	  {
-	    find_range(range_word_or_url, &select_begin, &new_select_end);
+	    find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
 	  }
 
-	  if (new_select_end != select_end)
+	  if (new_select_end != terminal.select_end)
 	  {
-	    select_end = new_select_end;
+	    terminal.select_end = new_select_end;
 
 	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 	  }
@@ -2265,16 +1986,16 @@ int x11_process_events()
             x = event.xbutton.x / FONT_SpaceWidth (font);
             y = event.xbutton.y / FONT_LineHeight (font);
 
-            select_begin = y * terminal.size.ws_col + x;
+            terminal.select_begin = y * terminal.size.ws_col + x;
 
             if (terminal.history_scroll)
-              select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
+              terminal.select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
 
-            select_end = select_begin;
+            terminal.select_end = terminal.select_begin;
 
             if (ctrl_pressed)
             {
-              find_range(range_word_or_url, &select_begin, &select_end);
+              find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
             }
 
             XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
@@ -2431,20 +2152,20 @@ int x11_process_events()
         while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
           ;
 
-        paint ();
+        draw_gl_12 (&terminal);
 
         break;
 
       case FocusIn:
 
-        focused = 1;
+        terminal.focused = 1;
         XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 
         break;
 
       case FocusOut:
 
-        focused = 0;
+        terminal.focused = 0;
         XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
 
         break;
@@ -2578,6 +2299,7 @@ int main(int argc, char** argv)
 
   setenv("TERM", "xterm", 1);
 
+#if 0
   if (session_path)
     {
       session_fd = open(session_path, O_RDONLY);
@@ -2594,6 +2316,7 @@ int main(int argc, char** argv)
         }
     }
   else
+#endif
     session_fd = -1;
 
   X11_Setup ();
