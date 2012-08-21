@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include <locale.h>
+#include <pthread.h>
 #include <pty.h>
 #include <sched.h>
 #include <setjmp.h>
@@ -70,7 +71,7 @@ struct tree* config = 0;
 unsigned int scroll_extra;
 
 const char* font_name;
-unsigned int font_size;
+unsigned int font_size, font_weight;
 struct FONT_Data *font;
 
 extern char** environ;
@@ -483,6 +484,10 @@ void init_session(char* const* args)
         }
     }
 
+  fcntl (terminal.fd, F_SETFL, O_NDELAY);
+
+  pthread_mutex_init (&terminal.bufferLock, 0);
+
   terminal.buffer = calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
   c = terminal.buffer;
   terminal.chars[0] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
@@ -654,447 +659,227 @@ static void paste(Time time)
 
 static void term_process_data(unsigned char* buf, int count)
 {
-  int j, k, l;
+  unsigned char *end;
+  int k, l;
 
   int size = terminal.size.ws_col * terminal.history_size;
 
   /* XXX: Make sure cursor does not leave screen */
 
-  j = 0;
+  end = buf + count;
+
+  while (terminal.cursory >= terminal.size.ws_row)
+    {
+      scroll(0);
+      --terminal.cursory;
+    }
 
   /* Redundant character processing code for the typical case */
   if (!terminal.escape && !terminal.insertmode && !terminal.nch)
-  {
-    for (; j < count; ++j)
     {
-      if (buf[j] >= ' ' && buf[j] <= '~')
-      {
-        if (terminal.cursorx == terminal.size.ws_col)
-        {
-          ++terminal.cursory;
-          terminal.cursorx = 0;
-        }
+      unsigned int attr, offset;
 
-        while (terminal.cursory >= terminal.size.ws_row)
-        {
-          scroll(0);
-          --terminal.cursory;
-        }
+      attr = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
 
-        terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = buf[j];
-        terminal.curattrs[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-        ++terminal.cursorx;
-      }
-      else if (buf[j] == '\r')
-        terminal.cursorx = 0;
-      else if (buf[j] == '\n')
-      {
-        ++terminal.cursory;
+      offset = (terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size;
 
-        while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+      for (; buf != end; ++buf)
         {
-          scroll(0);
-          --terminal.cursory;
+          if (*buf >= ' ' && *buf <= '~')
+            {
+              if (terminal.cursorx == terminal.size.ws_col)
+                {
+                  if (++terminal.cursory >= terminal.size.ws_row)
+                    {
+                      scroll(0);
+                      --terminal.cursory;
+                    }
+
+                  terminal.cursorx = 0;
+
+                  offset = (terminal.cursory * terminal.size.ws_col + *terminal.curoffset) % size;
+                }
+
+              terminal.curchars[offset] = *buf;
+              terminal.curattrs[offset] = attr;
+              ++terminal.cursorx;
+              ++offset;
+            }
+          else if (*buf == '\r')
+            {
+              terminal.cursorx = 0;
+              offset = (terminal.cursory * terminal.size.ws_col + *terminal.curoffset) % size;
+            }
+          else if (*buf == '\n')
+            {
+              ++terminal.cursory;
+
+              if (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
+
+              offset = (terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size;
+            }
+          else
+            break;
         }
-      }
-      else
-        break;
     }
-  }
 
-  for (; j < count; ++j)
-  {
-    switch(terminal.escape)
+  for (; buf != end; ++buf)
     {
-    case 0:
-
-      switch(buf[j])
-      {
-      case '\033':
-
-        terminal.escape = 1;
-        memset(terminal.param, 0, sizeof(terminal.param));
-
-        break;
-
-      case '\b':
-
-        if (terminal.cursorx > 0)
-          --terminal.cursorx;
-
-        break;
-
-      case '\t':
-
-        if (terminal.cursorx < terminal.size.ws_col - 8)
+      switch(terminal.escape)
         {
-          terminal.cursorx = (terminal.cursorx + 8) & ~7;
-        }
-        else
-        {
-          terminal.cursorx = terminal.size.ws_col - 1;
-        }
+        case 0:
 
-        break;
-
-      case '\n':
-
-        ++terminal.cursory;
-
-        while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-        {
-          scroll(0);
-          --terminal.cursory;
-        }
-
-        break;
-
-      case '\r':
-
-        terminal.cursorx = 0;
-
-        break;
-
-      case '\177':
-
-        if (terminal.cursory < terminal.size.ws_row)
-          terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
-
-        break;
-
-      case ('O' & 0x3F): /* ^O = default character set */
-
-        break;
-
-      case ('N' & 0x3F): /* ^N = alternate character set */
-
-        break;
-
-      default:
-
-        assert(terminal.cursorx >= 0 && terminal.cursorx <= terminal.size.ws_col);
-        assert(terminal.cursory >= 0 && terminal.cursory < terminal.size.ws_row);
-
-        if (terminal.cursorx == terminal.size.ws_col)
-        {
-          ++terminal.cursory;
-          terminal.cursorx = 0;
-        }
-
-        while (terminal.cursory >= terminal.size.ws_row)
-        {
-          scroll(0);
-          --terminal.cursory;
-        }
-
-        if (terminal.nch)
-        {
-          if ((buf[j] & 0xC0) != 0x80)
-          {
-            terminal.nch = 0;
-            addchar(buf[j]);
-          }
-          else
-          {
-            terminal.ch <<= 6;
-            terminal.ch |= buf[j] & 0x3F;
-
-            if (0 == --terminal.nch)
+          switch(*buf)
             {
-              addchar(terminal.ch);
-            }
-          }
-        }
-        else
-        {
-          if ((buf[j] & 0x80) == 0)
-          {
-            addchar(buf[j]);
-          }
-          else if ((buf[j] & 0xE0) == 0xC0)
-          {
-            terminal.ch = buf[j] & 0x1F;
-            terminal.nch = 1;
-          }
-          else if ((buf[j] & 0xF0) == 0xE0)
-          {
-            terminal.ch = buf[j] & 0x0F;
-            terminal.nch = 2;
-          }
-          else if ((buf[j] & 0xF8) == 0xF0)
-          {
-            terminal.ch = buf[j] & 0x03;
-            terminal.nch = 3;
-          }
-          else if ((buf[j] & 0xFC) == 0xF8)
-          {
-            terminal.ch = buf[j] & 0x01;
-            terminal.nch = 4;
-          }
-        }
-      }
+            case '\033':
 
-      break;
-
-    case 1:
-
-      switch(buf[j])
-        {
-        case 'D':
-
-          ++terminal.cursory;
-
-          while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-            {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-          break;
-
-        case 'E':
-
-          terminal.escape = 0;
-          terminal.cursorx = 0;
-          ++terminal.cursory;
-
-          while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
-            {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-          break;
-
-        case '[':
-
-          terminal.escape = 2;
-          memset(terminal.param, 0, sizeof(terminal.param));
-
-          break;
-
-        case '%':
-
-          terminal.escape = 2;
-          terminal.param[0] = -1;
-
-          break;
-
-        case ']':
-
-          terminal.escape = 2;
-          terminal.param[0] = -2;
-
-          break;
-
-        case '(':
-
-          terminal.escape = 2;
-          terminal.param[0] = -4;
-
-          break;
-
-        case '#':
-
-          terminal.escape = 2;
-          terminal.param[0] = -5;
-
-          break;
-
-        case 'M':
-
-          if (terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
-            rscroll(0);
-          else if (terminal.cursory)
-            --terminal.cursory;
-
-          terminal.escape = 0;
-
-          break;
-
-        default:
-
-          terminal.escape = 0;
-        }
-
-      break;
-
-    default:
-
-      if (terminal.param[0] == -1)
-        {
-          terminal.escape = 0;
-        }
-      else if (terminal.param[0] == -2)
-        {
-          /* Handle ESC ] Ps ; Pt BEL */
-          if (terminal.escape == 2)
-            {
-              if (buf[j] >= '0' && buf[j] <= '9')
-                {
-                  terminal.param[1] *= 10;
-                  terminal.param[1] += buf[j] - '0';
-                }
-              else
-                ++terminal.escape;
-            }
-          else
-            {
-              if (buf[j] != '\007')
-                {
-                  /* XXX: Store text */
-                }
-              else
-                terminal.escape = 0;
-            }
-        }
-      else if (terminal.param[0] == -4)
-        {
-          switch(buf[j])
-            {
-            case '0':
-
-              terminal.alt_charset[terminal.curscreen] = 1;
+              terminal.escape = 1;
+              memset(terminal.param, 0, sizeof(terminal.param));
 
               break;
 
-            case 'B':
+            case '\b':
 
-              terminal.alt_charset[terminal.curscreen] = 0;
+              if (terminal.cursorx > 0)
+                --terminal.cursorx;
 
               break;
-            }
 
-          terminal.escape = 0;
-        }
-      else if (terminal.param[0] == -5)
-        {
-          terminal.escape = 0;
-        }
-      else if (terminal.escape == 2 && buf[j] == '?')
-        {
-          terminal.param[0] = -3;
-          ++terminal.escape;
-        }
-      else if (terminal.escape == 2 && buf[j] == '>')
-        {
-          terminal.param[0] = -4;
-          ++terminal.escape;
-        }
-      else if (buf[j] == ';')
-        {
-          if (terminal.escape < sizeof(terminal.param) + 1)
-            terminal.param[++terminal.escape - 2] = 0;
-          else
-            terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
-        }
-      else if (buf[j] >= '0' && buf[j] <= '9')
-        {
-          terminal.param[terminal.escape - 2] *= 10;
-          terminal.param[terminal.escape - 2] += buf[j] - '0';
-        }
-      else if (terminal.param[0] == -3)
-        {
-          if (buf[j] == 'h')
-            {
-              for (k = 1; k < terminal.escape - 1; ++k)
+            case '\t':
+
+              if (terminal.cursorx < terminal.size.ws_col - 8)
                 {
-                  switch(terminal.param[k])
+                  terminal.cursorx = (terminal.cursorx + 8) & ~7;
+                }
+              else
+                {
+                  terminal.cursorx = terminal.size.ws_col - 1;
+                }
+
+              break;
+
+            case '\n':
+
+              ++terminal.cursory;
+
+              while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
+
+              break;
+
+            case '\r':
+
+              terminal.cursorx = 0;
+
+              break;
+
+            case '\177':
+
+              if (terminal.cursory < terminal.size.ws_row)
+                terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
+
+              break;
+
+            case ('O' & 0x3F): /* ^O = default character set */
+
+              break;
+
+            case ('N' & 0x3F): /* ^N = alternate character set */
+
+              break;
+
+            default:
+
+              assert(terminal.cursorx >= 0 && terminal.cursorx <= terminal.size.ws_col);
+              assert(terminal.cursory >= 0 && terminal.cursory < terminal.size.ws_row);
+
+              if (terminal.cursorx == terminal.size.ws_col)
+                {
+                  ++terminal.cursory;
+                  terminal.cursorx = 0;
+                }
+
+              while (terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
+
+              if (terminal.nch)
+                {
+                  if ((*buf & 0xC0) != 0x80)
                     {
-                    case 1:
+                      terminal.nch = 0;
+                      addchar(*buf);
+                    }
+                  else
+                    {
+                      terminal.ch <<= 6;
+                      terminal.ch |= *buf & 0x3F;
 
-                      terminal.appcursor = 1;
-
-                      break;
-
-                    case 1049:
-
-                      if (terminal.curscreen != 1)
+                      if (0 == --terminal.nch)
                         {
-                          memset(terminal.chars[1], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-                          memset(terminal.attr[1], 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
-                          setscreen(1);
+                          addchar(terminal.ch);
                         }
-
-                      break;
                     }
                 }
-            }
-          else if (buf[j] == 'l')
-            {
-              for (k = 1; k < terminal.escape - 1; ++k)
+              else
                 {
-                  switch(terminal.param[k])
+                  if ((*buf & 0x80) == 0)
                     {
-                    case 1:
-
-                      terminal.appcursor = 0;
-
-                      break;
-
-                    case 1049:
-
-                      if (terminal.curscreen != 0)
-                        setscreen(0);
-
-                      break;
+                      addchar(*buf);
+                    }
+                  else if ((*buf & 0xE0) == 0xC0)
+                    {
+                      terminal.ch = *buf & 0x1F;
+                      terminal.nch = 1;
+                    }
+                  else if ((*buf & 0xF0) == 0xE0)
+                    {
+                      terminal.ch = *buf & 0x0F;
+                      terminal.nch = 2;
+                    }
+                  else if ((*buf & 0xF8) == 0xF0)
+                    {
+                      terminal.ch = *buf & 0x03;
+                      terminal.nch = 3;
+                    }
+                  else if ((*buf & 0xFC) == 0xF8)
+                    {
+                      terminal.ch = *buf & 0x01;
+                      terminal.nch = 4;
                     }
                 }
             }
 
-          terminal.escape = 0;
-        }
-      else
-        {
-          switch(buf[j])
+          break;
+
+        case 1:
+
+          switch(*buf)
             {
-            case '@':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              insert_chars(terminal.param[0]);
-
-              break;
-
-            case 'A':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              terminal.cursory -= (terminal.param[0] < terminal.cursory) ? terminal.param[0] : terminal.cursory;
-
-              break;
-
-            case 'B':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              terminal.cursory = (terminal.param[0] + terminal.cursory < terminal.size.ws_row) ? (terminal.param[0] + terminal.cursory) : (terminal.size.ws_row - 1);
-
-              break;
-
-            case 'C':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              terminal.cursorx = (terminal.param[0] + terminal.cursorx < terminal.size.ws_col) ? (terminal.param[0] + terminal.cursorx) : (terminal.size.ws_col - 1);
-
-              break;
-
             case 'D':
 
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
+              ++terminal.cursory;
 
-              terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
+              while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+                {
+                  scroll(0);
+                  --terminal.cursory;
+                }
 
               break;
 
             case 'E':
 
+              terminal.escape = 0;
               terminal.cursorx = 0;
               ++terminal.cursory;
 
@@ -1106,11 +891,44 @@ static void term_process_data(unsigned char* buf, int count)
 
               break;
 
-            case 'F':
+            case '[':
 
-              terminal.cursorx = 0;
+              terminal.escape = 2;
+              memset(terminal.param, 0, sizeof(terminal.param));
 
-              if (terminal.cursory == terminal.scrolltop)
+              break;
+
+            case '%':
+
+              terminal.escape = 2;
+              terminal.param[0] = -1;
+
+              break;
+
+            case ']':
+
+              terminal.escape = 2;
+              terminal.param[0] = -2;
+
+              break;
+
+            case '(':
+
+              terminal.escape = 2;
+              terminal.param[0] = -4;
+
+              break;
+
+            case '#':
+
+              terminal.escape = 2;
+              terminal.param[0] = -5;
+
+              break;
+
+            case 'M':
+
+              if (terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
                 rscroll(0);
               else if (terminal.cursory)
                 --terminal.cursory;
@@ -1119,360 +937,530 @@ static void term_process_data(unsigned char* buf, int count)
 
               break;
 
-            case 'G':
+            default:
 
-              if (terminal.param[0] > 0)
-                --terminal.param[0];
+              terminal.escape = 0;
+            }
 
-              terminal.cursorx = (terminal.param[0] < terminal.size.ws_col) ? terminal.param[0] : (terminal.size.ws_col - 1);
+          break;
 
-              break;
+        default:
 
-            case 'H':
-            case 'f':
-
-              if (terminal.param[0] > 0)
-                --terminal.param[0];
-
-              if (terminal.param[1] > 0)
-                --terminal.param[1];
-
-              terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
-              terminal.cursorx = (terminal.param[1] < terminal.size.ws_col) ? terminal.param[1] : (terminal.size.ws_col - 1);
-
-              break;
-
-            case 'J':
-
-              if (terminal.param[0] == 0)
+          if (terminal.param[0] == -1)
+            {
+              terminal.escape = 0;
+            }
+          else if (terminal.param[0] == -2)
+            {
+              /* Handle ESC ] Ps ; Pt BEL */
+              if (terminal.escape == 2)
                 {
-                  /* Clear from cursor to end */
-
-                  normalize_offset();
-
-                  int count = terminal.size.ws_col * (terminal.size.ws_row - terminal.cursory - 1) + (terminal.size.ws_col - terminal.cursorx);
-                  memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
-                  memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
-                }
-              else if (terminal.param[0] == 1)
-                {
-                  /* Clear from start to cursor */
-
-                  normalize_offset();
-
-                  int count = (terminal.size.ws_col * terminal.cursory + terminal.cursorx);
-                  memset(terminal.curchars, 0, count * sizeof(wchar_t));
-                  memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
-                }
-              else if (terminal.param[0] == 2)
-                {
-                  size_t screen_size, history_size;
-
-                  screen_size = terminal.size.ws_col * terminal.size.ws_row;
-                  history_size = terminal.size.ws_col * terminal.history_size;
-
-                  if (*terminal.curoffset + screen_size > history_size)
+                  if (*buf >= '0' && *buf <= '9')
                     {
-                      memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
-                      memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+                      terminal.param[1] *= 10;
+                      terminal.param[1] += *buf - '0';
+                    }
+                  else
+                    ++terminal.escape;
+                }
+              else
+                {
+                  if (*buf != '\007')
+                    {
+                      /* XXX: Store text */
+                    }
+                  else
+                    terminal.escape = 0;
+                }
+            }
+          else if (terminal.param[0] == -4)
+            {
+              switch(*buf)
+                {
+                case '0':
 
-                      memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
-                      memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                  terminal.alt_charset[terminal.curscreen] = 1;
+
+                  break;
+
+                case 'B':
+
+                  terminal.alt_charset[terminal.curscreen] = 0;
+
+                  break;
+                }
+
+              terminal.escape = 0;
+            }
+          else if (terminal.param[0] == -5)
+            {
+              terminal.escape = 0;
+            }
+          else if (terminal.escape == 2 && *buf == '?')
+            {
+              terminal.param[0] = -3;
+              ++terminal.escape;
+            }
+          else if (terminal.escape == 2 && *buf == '>')
+            {
+              terminal.param[0] = -4;
+              ++terminal.escape;
+            }
+          else if (*buf == ';')
+            {
+              if (terminal.escape < sizeof(terminal.param) + 1)
+                terminal.param[++terminal.escape - 2] = 0;
+              else
+                terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
+            }
+          else if (*buf >= '0' && *buf <= '9')
+            {
+              terminal.param[terminal.escape - 2] *= 10;
+              terminal.param[terminal.escape - 2] += *buf - '0';
+            }
+          else if (terminal.param[0] == -3)
+            {
+              if (*buf == 'h')
+                {
+                  for (k = 1; k < terminal.escape - 1; ++k)
+                    {
+                      switch(terminal.param[k])
+                        {
+                        case 1:
+
+                          terminal.appcursor = 1;
+
+                          break;
+
+                        case 1049:
+
+                          if (terminal.curscreen != 1)
+                            {
+                              memset(terminal.chars[1], 0, terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
+                              memset(terminal.attr[1], 0x07, terminal.size.ws_col * terminal.history_size * sizeof(uint16_t));
+                              setscreen(1);
+                            }
+
+                          break;
+                        }
+                    }
+                }
+              else if (*buf == 'l')
+                {
+                  for (k = 1; k < terminal.escape - 1; ++k)
+                    {
+                      switch(terminal.param[k])
+                        {
+                        case 1:
+
+                          terminal.appcursor = 0;
+
+                          break;
+
+                        case 1049:
+
+                          if (terminal.curscreen != 0)
+                            setscreen(0);
+
+                          break;
+                        }
+                    }
+                }
+
+              terminal.escape = 0;
+            }
+          else
+            {
+              switch(*buf)
+                {
+                case '@':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  insert_chars(terminal.param[0]);
+
+                  break;
+
+                case 'A':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  terminal.cursory -= (terminal.param[0] < terminal.cursory) ? terminal.param[0] : terminal.cursory;
+
+                  break;
+
+                case 'B':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  terminal.cursory = (terminal.param[0] + terminal.cursory < terminal.size.ws_row) ? (terminal.param[0] + terminal.cursory) : (terminal.size.ws_row - 1);
+
+                  break;
+
+                case 'C':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  terminal.cursorx = (terminal.param[0] + terminal.cursorx < terminal.size.ws_col) ? (terminal.param[0] + terminal.cursorx) : (terminal.size.ws_col - 1);
+
+                  break;
+
+                case 'D':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  terminal.cursorx -= (terminal.param[0] < terminal.cursorx) ? terminal.param[0] : terminal.cursorx;
+
+                  break;
+
+                case 'E':
+
+                  terminal.cursorx = 0;
+                  ++terminal.cursory;
+
+                  while (terminal.cursory == terminal.scrollbottom || terminal.cursory >= terminal.size.ws_row)
+                    {
+                      scroll(0);
+                      --terminal.cursory;
+                    }
+
+                  break;
+
+                case 'F':
+
+                  terminal.cursorx = 0;
+
+                  if (terminal.cursory == terminal.scrolltop)
+                    rscroll(0);
+                  else if (terminal.cursory)
+                    --terminal.cursory;
+
+                  terminal.escape = 0;
+
+                  break;
+
+                case 'G':
+
+                  if (terminal.param[0] > 0)
+                    --terminal.param[0];
+
+                  terminal.cursorx = (terminal.param[0] < terminal.size.ws_col) ? terminal.param[0] : (terminal.size.ws_col - 1);
+
+                  break;
+
+                case 'H':
+                case 'f':
+
+                  if (terminal.param[0] > 0)
+                    --terminal.param[0];
+
+                  if (terminal.param[1] > 0)
+                    --terminal.param[1];
+
+                  terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
+                  terminal.cursorx = (terminal.param[1] < terminal.size.ws_col) ? terminal.param[1] : (terminal.size.ws_col - 1);
+
+                  break;
+
+                case 'J':
+
+                  if (terminal.param[0] == 0)
+                    {
+                      /* Clear from cursor to end */
+
+                      normalize_offset();
+
+                      int count = terminal.size.ws_col * (terminal.size.ws_row - terminal.cursory - 1) + (terminal.size.ws_col - terminal.cursorx);
+                      memset(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx], 0, count * sizeof(wchar_t));
+                      memset16(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx], terminal.curattr, count * sizeof(uint16_t));
+                    }
+                  else if (terminal.param[0] == 1)
+                    {
+                      /* Clear from start to cursor */
+
+                      normalize_offset();
+
+                      int count = (terminal.size.ws_col * terminal.cursory + terminal.cursorx);
+                      memset(terminal.curchars, 0, count * sizeof(wchar_t));
+                      memset16(terminal.curattrs, terminal.curattr, count * sizeof(uint16_t));
+                    }
+                  else if (terminal.param[0] == 2)
+                    {
+                      size_t screen_size, history_size;
+
+                      screen_size = terminal.size.ws_col * terminal.size.ws_row;
+                      history_size = terminal.size.ws_col * terminal.history_size;
+
+                      if (*terminal.curoffset + screen_size > history_size)
+                        {
+                          memset(terminal.curchars + *terminal.curoffset, 0, (history_size - *terminal.curoffset) * sizeof(wchar_t));
+                          memset(terminal.curchars, 0, (screen_size + *terminal.curoffset - history_size) * sizeof(wchar_t));
+
+                          memset16(terminal.curattrs + *terminal.curoffset, 0x07, (history_size - *terminal.curoffset) * sizeof(uint16_t));
+                          memset16(terminal.curattrs, 0x07, (screen_size + *terminal.curoffset - history_size) * sizeof(uint16_t));
+                        }
+                      else
+                        {
+                          memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
+                          memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                        }
+
+                      terminal.cursory = 0;
+                      terminal.cursorx = 0;
+                    }
+
+                  break;
+
+                case 'K':
+
+                  if (!terminal.param[0])
+                    {
+                      /* Clear from cursor to end */
+
+                      for (k = terminal.cursorx; k < terminal.size.ws_col; ++k)
+                        {
+                          terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                        }
+                    }
+                  else if (terminal.param[0] == 1)
+                    {
+                      /* Clear from start to cursor */
+
+                      for (k = 0; k <= terminal.cursorx; ++k)
+                        {
+                          terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                        }
+                    }
+                  else if (terminal.param[0] == 2)
+                    {
+                      /* Clear entire line */
+
+                      for (k = 0; k < terminal.size.ws_col; ++k)
+                        {
+                          terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                          terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                        }
+                    }
+
+                  break;
+
+                case 'L':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+                  else if (terminal.param[0] > terminal.size.ws_row)
+                    terminal.param[0] = terminal.size.ws_row;
+
+                  while (terminal.param[0]--)
+                    rscroll(1);
+
+                  break;
+
+                case 'M':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+                  else if (terminal.param[0] > terminal.size.ws_row)
+                    terminal.param[0] = terminal.size.ws_row;
+
+                  while (terminal.param[0]--)
+                    scroll(1);
+
+                  break;
+
+                case 'P':
+
+                  /* Delete character at cursor */
+
+                  normalize_offset();
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+                  else if (terminal.param[0] > terminal.size.ws_col)
+                    terminal.param[0] = terminal.size.ws_col;
+
+                  while (terminal.param[0]--)
+                    {
+                      memmove(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
+                              &terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(wchar_t));
+                      memmove(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
+                              &terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(uint16_t));
+                      terminal.curchars[(terminal.cursory + 1) * terminal.size.ws_col - 1] = 0;
+                      terminal.curattrs[(terminal.cursory + 1) * terminal.size.ws_col - 1] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                    }
+
+                  break;
+
+                case 'S':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  while (terminal.param[0]--)
+                    scroll(0);
+
+                  break;
+
+                case 'T':
+
+                  if (!terminal.param[0])
+                    terminal.param[0] = 1;
+
+                  while (terminal.param[0]--)
+                    rscroll(0);
+
+                  break;
+
+                case 'X':
+
+                  if (terminal.param[0] <= 0)
+                    terminal.param[0] = 1;
+
+                  for (k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
+                    {
+                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
+                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
+                    }
+
+                  break;
+
+                case 'd':
+
+                  if (terminal.param[0] > 0)
+                    --terminal.param[0];
+                  else
+                    terminal.param[0] = 0;
+
+                  terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
+
+                  break;
+
+                case 'h':
+
+                  for (k = 0; k < terminal.escape - 1; ++k)
+                    {
+                      switch(terminal.param[k])
+                        {
+                        case 4:
+
+                          terminal.insertmode = 1;
+
+                          break;
+                        }
+                    }
+
+                  break;
+
+                case 'l':
+
+                  for (k = 0; k < terminal.escape - 1; ++k)
+                    {
+                      switch(terminal.param[k])
+                        {
+                        case 4:
+
+                          terminal.insertmode = 0;
+
+                          break;
+                        }
+                    }
+
+                  break;
+
+                case 'm':
+
+                  for (k = 0; k < terminal.escape - 1; ++k)
+                    {
+                      switch(terminal.param[k])
+                        {
+                        case 7:
+
+                          terminal.reverse = 1;
+
+                          break;
+
+                        case 27:
+
+                          terminal.reverse = 0;
+
+                          break;
+
+                        case 0:
+
+                          terminal.reverse = 0;
+
+                        default:
+
+                          for (l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
+                            {
+                              if (ansi_helper[l].index == terminal.param[k])
+                                {
+                                  terminal.curattr &= ansi_helper[l].and_mask;
+                                  terminal.curattr |= ansi_helper[l].or_mask;
+
+                                  break;
+                                }
+                            }
+
+                          break;
+                        }
+                    }
+
+                  break;
+
+                case 'r':
+
+                  if (terminal.param[0] < terminal.param[1])
+                    {
+                      --terminal.param[0];
+
+                      if (terminal.param[1] > terminal.size.ws_row)
+                        terminal.param[1] = terminal.size.ws_row;
+
+                      if (terminal.param[0] < 0)
+                        terminal.param[0] = 0;
+
+                      terminal.scrolltop = terminal.param[0];
+                      terminal.scrollbottom = terminal.param[1];
                     }
                   else
                     {
-                      memset(terminal.curchars + *terminal.curoffset, 0, screen_size * sizeof(wchar_t));
-                      memset16(terminal.curattrs + *terminal.curoffset, 0x07, screen_size * sizeof(uint16_t));
+                      terminal.scrolltop = 0;
+                      terminal.scrollbottom = terminal.size.ws_row;
                     }
 
-                  terminal.cursory = 0;
-                  terminal.cursorx = 0;
+                  break;
+
+                case 's':
+
+                  terminal.savedx = terminal.cursorx;
+                  terminal.savedy = terminal.cursory;
+
+                  break;
+
+                case 'u':
+
+                  terminal.cursorx = terminal.savedx;
+                  terminal.cursory = terminal.savedy;
+
+                  break;
                 }
 
-              break;
-
-            case 'K':
-
-              if (!terminal.param[0])
-                {
-                  /* Clear from cursor to end */
-
-                  for (k = terminal.cursorx; k < terminal.size.ws_col; ++k)
-                    {
-                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-                    }
-                }
-              else if (terminal.param[0] == 1)
-                {
-                  /* Clear from start to cursor */
-
-                  for (k = 0; k <= terminal.cursorx; ++k)
-                    {
-                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-                    }
-                }
-              else if (terminal.param[0] == 2)
-                {
-                  /* Clear entire line */
-
-                  for (k = 0; k < terminal.size.ws_col; ++k)
-                    {
-                      terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                      terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-                    }
-                }
-
-              break;
-
-            case 'L':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_row)
-                terminal.param[0] = terminal.size.ws_row;
-
-              while (terminal.param[0]--)
-                rscroll(1);
-
-              break;
-
-            case 'M':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_row)
-                terminal.param[0] = terminal.size.ws_row;
-
-              while (terminal.param[0]--)
-                scroll(1);
-
-              break;
-
-            case 'P':
-
-              /* Delete character at cursor */
-
-              normalize_offset();
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_col)
-                terminal.param[0] = terminal.size.ws_col;
-
-              while (terminal.param[0]--)
-                {
-                  memmove(&terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
-                          &terminal.curchars[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(wchar_t));
-                  memmove(&terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx],
-                          &terminal.curattrs[terminal.cursory * terminal.size.ws_col + terminal.cursorx + 1], (terminal.size.ws_col - terminal.cursorx - 1) * sizeof(uint16_t));
-                  terminal.curchars[(terminal.cursory + 1) * terminal.size.ws_col - 1] = 0;
-                  terminal.curattrs[(terminal.cursory + 1) * terminal.size.ws_col - 1] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-                }
-
-              break;
-
-            case 'S':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              while (terminal.param[0]--)
-                scroll(0);
-
-              break;
-
-            case 'T':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-
-              while (terminal.param[0]--)
-                rscroll(0);
-
-              break;
-
-            case 'X':
-
-              if (terminal.param[0] <= 0)
-                terminal.param[0] = 1;
-
-              for (k = terminal.cursorx; k < terminal.cursorx + terminal.param[0] && k < terminal.size.ws_col; ++k)
-                {
-                  terminal.curchars[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = 0;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.curattr;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k + *terminal.curoffset) % size] = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-                }
-
-              break;
-
-            case 'd':
-
-              if (terminal.param[0] > 0)
-                --terminal.param[0];
-              else
-                terminal.param[0] = 0;
-
-              terminal.cursory = (terminal.param[0] < terminal.size.ws_row) ? terminal.param[0] : (terminal.size.ws_row - 1);
-
-              break;
-
-            case 'h':
-
-              for (k = 0; k < terminal.escape - 1; ++k)
-                {
-                  switch(terminal.param[k])
-                    {
-                    case 4:
-
-                      terminal.insertmode = 1;
-
-                      break;
-                    }
-                }
-
-              break;
-
-            case 'l':
-
-              for (k = 0; k < terminal.escape - 1; ++k)
-                {
-                  switch(terminal.param[k])
-                    {
-                    case 4:
-
-                      terminal.insertmode = 0;
-
-                      break;
-                    }
-                }
-
-              break;
-
-            case 'm':
-
-              for (k = 0; k < terminal.escape - 1; ++k)
-                {
-                  switch(terminal.param[k])
-                    {
-                    case 7:
-
-                      terminal.reverse = 1;
-
-                      break;
-
-                    case 27:
-
-                      terminal.reverse = 0;
-
-                      break;
-
-                    case 0:
-
-                      terminal.reverse = 0;
-
-                    default:
-
-                      for (l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
-                        {
-                          if (ansi_helper[l].index == terminal.param[k])
-                            {
-                              terminal.curattr &= ansi_helper[l].and_mask;
-                              terminal.curattr |= ansi_helper[l].or_mask;
-
-                              break;
-                            }
-                        }
-
-                      break;
-                    }
-                }
-
-              break;
-
-            case 'r':
-
-              if (terminal.param[0] < terminal.param[1])
-                {
-                  --terminal.param[0];
-
-                  if (terminal.param[1] > terminal.size.ws_row)
-                    terminal.param[1] = terminal.size.ws_row;
-
-                  if (terminal.param[0] < 0)
-                    terminal.param[0] = 0;
-
-                  terminal.scrolltop = terminal.param[0];
-                  terminal.scrollbottom = terminal.param[1];
-                }
-              else
-                {
-                  terminal.scrolltop = 0;
-                  terminal.scrollbottom = terminal.size.ws_row;
-                }
-
-              break;
-
-            case 's':
-
-              terminal.savedx = terminal.cursorx;
-              terminal.savedy = terminal.cursory;
-
-              break;
-
-            case 'u':
-
-              terminal.cursorx = terminal.savedx;
-              terminal.cursory = terminal.savedy;
-
-              break;
+              terminal.escape = 0;
             }
-
-          terminal.escape = 0;
         }
     }
-  }
-
-  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
-  XFlush(X11_display);
-}
-
-void term_read()
-{
-  unsigned char buf[4096];
-  int result, more, fill = 0;
-
-  /* This loop is designed for single-core computers, in case the data source is
-   * doing a series of small writes */
-  do
-  {
-    result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
-
-    if (result == -1)
-      {
-        save_session();
-
-        exit(EXIT_SUCCESS);
-      }
-
-    fill += result;
-
-    if (fill < sizeof(buf))
-    {
-      sched_yield();
-
-      ioctl(terminal.fd, FIONREAD, &more);
-    }
-    else
-      more = 0;
-  }
-  while (more);
-
-  term_process_data(buf, fill);
 }
 
 void term_write(const char* data, size_t len)
@@ -1618,566 +1606,575 @@ void run_command(int fd, const char* command, const char* arg)
   }
 }
 
-int x11_process_events()
+static void *
+tty_read_thread_entry (void *arg)
 {
-  int result;
-  int xfd;
+  unsigned char buf[4096];
+  int result, fill = 0;
+  struct pollfd pfd;
 
-  xfd = ConnectionNumber(X11_display);
+  pfd.fd = terminal.fd;
+  pfd.events = POLLIN | POLLRDHUP;
 
-  while (!done)
-  {
-    XEvent event;
-    pid_t pid;
-    int status;
-    fd_set readset;
-    int maxfd;
-
-    FD_ZERO(&readset);
-    FD_SET(xfd, &readset);
-    maxfd = xfd;
-    FD_SET(terminal.fd, &readset);
-    if (terminal.fd > maxfd)
-      maxfd = terminal.fd;
-
-    if (-1 == select(maxfd + 1, &readset, 0, 0, 0))
+  while (-1 != poll (&pfd, 1, -1))
     {
-      if (errno == EINTR)
-        continue;
+      while (0 < (result = read(terminal.fd, buf + fill, sizeof (buf) - fill)))
+        {
+          fill += result;
 
-      fprintf(stderr, "select failed: %s\n", strerror(errno));
+          if (fill == sizeof (buf))
+            break;
+        }
 
-      return -1;
+      if (result == -1 && errno != EAGAIN)
+        break;
+
+      if (0 != pthread_mutex_trylock (&terminal.bufferLock))
+        {
+          if (fill < sizeof (buf))
+            {
+              if (0 < poll (&pfd, 1, 1))
+                continue;
+            }
+
+          pthread_mutex_lock (&terminal.bufferLock);
+        }
+
+      term_process_data(buf, fill);
+      fill = 0;
+      pthread_mutex_unlock (&terminal.bufferLock);
+
+      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
+      XFlush(X11_display);
     }
 
-    if (FD_ISSET(terminal.fd, &readset))
-      term_read();
+  save_session();
 
-    while (0 < (pid = waitpid(-1, &status, WNOHANG)))
+  exit(EXIT_SUCCESS);
+
+  return NULL;
+}
+
+static void
+wait_for_dead_children (void)
+{
+  pid_t pid;
+  int status;
+
+  while (0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
       if (pid == terminal.pid)
         {
           save_session();
 
-          return 0;
+          return exit (EXIT_SUCCESS);
         }
     }
+}
 
-    while (XPending(X11_display))
+int x11_process_events()
+{
+  XEvent event;
+  int result;
+
+  while(!done && 0 == XNextEvent(X11_display, &event))
     {
-      XNextEvent(X11_display, &event);
+      wait_for_dead_children ();
 
       switch(event.type)
-      {
-      case KeyPress:
-
-        /* if (!XFilterEvent(&event, window)) */
         {
-          char text[32];
-          Status status;
-          KeySym key_sym;
-          int len;
-          int history_scroll_reset = 1;
+        case KeyPress:
+
+          /* if (!XFilterEvent(&event, window)) */
+            {
+              char text[32];
+              Status status;
+              KeySym key_sym;
+              int len;
+              int history_scroll_reset = 1;
+
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
+
+              len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
+
+              if (!text[0])
+                len = 0;
+
+              if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+                ctrl_pressed = 1, history_scroll_reset = 0;
+
+              if (key_sym == XK_Super_L || key_sym == XK_Super_R)
+                super_pressed = 1, history_scroll_reset = 0;
+
+              if (key_sym == XK_Alt_L || key_sym == XK_Alt_R
+                  || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
+                history_scroll_reset = 0;
+
+              if (event.xkey.keycode == 161 || key_sym == XK_Menu)
+                {
+                  normalize_offset();
+
+                  if (shift_pressed)
+                    {
+                      terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
+
+                      if (terminal.select_end == 0)
+                        {
+                          terminal.select_begin = 0;
+                          terminal.select_end = 1;
+                        }
+                      else
+                        terminal.select_begin = terminal.select_end - 1;
+
+                      find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
+
+                      update_selection(CurrentTime);
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    {
+                      if (select_text)
+                        run_command(terminal.fd, "calculate", (const char*) select_text);
+                    }
+                }
+
+              if (key_sym == XK_Insert && shift_pressed)
+                {
+                  paste(event.xkey.time);
+                }
+              else if (key_sym >= XK_F1 && key_sym <= XK_F4)
+                {
+                  char buf[4];
+                  buf[0] = '\033';
+                  buf[1] = 'O';
+                  buf[2] = 'P' + key_sym - XK_F1;
+                  buf[3] = 0;
+
+                  term_strwrite(buf);
+                }
+              else if (key_sym >= XK_F5 && key_sym <= XK_F12)
+                {
+                  static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
+
+                  char buf[6];
+                  buf[0] = '\033';
+                  buf[1] = '[';
+                  buf[2] = '0' + off[key_sym - XK_F5] / 10;
+                  buf[3] = '0' + off[key_sym - XK_F5] % 10;
+                  buf[4] = '~';
+                  buf[5] = 0;
+
+                  term_strwrite(buf);
+                }
+              else if (key_sym == XK_Up)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll < scroll_extra)
+                        {
+                          ++terminal.history_scroll;
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OA");
+                  else
+                    term_strwrite("\033[A");
+                }
+              else if (key_sym == XK_Down)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll)
+                        {
+                          --terminal.history_scroll;
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OB");
+                  else
+                    term_strwrite("\033[B");
+                }
+              else if (key_sym == XK_Right)
+                {
+                  if (ctrl_pressed)
+                    term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OC");
+                  else
+                    term_strwrite("\033[C");
+                }
+              else if (key_sym == XK_Left)
+                {
+                  if (ctrl_pressed)
+                    term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OD");
+                  else
+                    term_strwrite("\033[D");
+                }
+              else if (key_sym == XK_Insert)
+                {
+                  term_strwrite("\033[2~");
+                }
+              else if (key_sym == XK_Delete)
+                {
+                  term_strwrite("\033[3~");
+                }
+              else if (key_sym == XK_Page_Up)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      terminal.history_scroll += terminal.size.ws_row;
+
+                      if (terminal.history_scroll > scroll_extra)
+                        terminal.history_scroll = scroll_extra;
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    term_strwrite("\033[5~");
+                }
+              else if (key_sym == XK_Page_Down)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll > terminal.size.ws_row)
+                        terminal.history_scroll -= terminal.size.ws_row;
+                      else
+                        terminal.history_scroll = 0;
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    term_strwrite("\033[6~");
+                }
+              else if (key_sym == XK_Home)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll != scroll_extra)
+                        {
+                          terminal.history_scroll = scroll_extra;
+
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OH");
+                  else
+                    term_strwrite("\033[H");
+                }
+              else if (key_sym == XK_End)
+                {
+                  if (terminal.appcursor)
+                    term_strwrite("\033OF");
+                  else
+                    term_strwrite("\033[F");
+                }
+              else if (key_sym == XK_space)
+                {
+                  if (mod1_pressed)
+                    term_strwrite("\033");
+
+                  term_strwrite(" ");
+                }
+              else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
+                       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
+                {
+                  /* Do not generate characters on shift key, or gus'
+                   * special shift keys */
+                }
+              else if (len)
+                {
+                  if (mod1_pressed)
+                    term_strwrite("\033");
+
+                  term_write((const char*) text, len);
+                }
+
+              if (history_scroll_reset && terminal.history_scroll)
+                {
+                  terminal.history_scroll = 0;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+            }
+
+          break;
+
+        case KeyRelease:
+
+            {
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
+            }
+
+          break;
+
+        case MotionNotify:
+
+          ctrl_pressed = (event.xkey.state & ControlMask);
+
+          if (event.xbutton.state & Button1Mask)
+            {
+              int x, y, new_select_end;
+              unsigned int size;
+
+              size = terminal.history_size * terminal.size.ws_col;
+
+              x = event.xbutton.x / FONT_SpaceWidth (font);
+              y = event.xbutton.y / FONT_LineHeight (font);
+
+              new_select_end = y * terminal.size.ws_col + x;
+
+              if (terminal.history_scroll)
+                new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
+
+              if (ctrl_pressed)
+                {
+                  find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
+                }
+
+              if (new_select_end != terminal.select_end)
+                {
+                  terminal.select_end = new_select_end;
+
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+            }
+
+          break;
+
+        case ButtonPress:
 
           ctrl_pressed = (event.xkey.state & ControlMask);
           mod1_pressed = (event.xkey.state & Mod1Mask);
-          super_pressed = (event.xkey.state & Mod4Mask);
           shift_pressed = (event.xkey.state & ShiftMask);
 
-          len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
-
-          if (!text[0])
-            len = 0;
-
-          if (key_sym == XK_Control_L || key_sym == XK_Control_R)
-            ctrl_pressed = 1, history_scroll_reset = 0;
-
-          if (key_sym == XK_Super_L || key_sym == XK_Super_R)
-            super_pressed = 1, history_scroll_reset = 0;
-
-          if (key_sym == XK_Alt_L || key_sym == XK_Alt_R
-             || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
-            history_scroll_reset = 0;
-
-          if (event.xkey.keycode == 161 || key_sym == XK_Menu)
-          {
-            normalize_offset();
-
-            if (shift_pressed)
+          switch(event.xbutton.button)
             {
-              terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
+            case 1: /* Left button */
 
-              if (terminal.select_end == 0)
-              {
-                terminal.select_begin = 0;
-                terminal.select_end = 1;
-              }
-              else
-                terminal.select_begin = terminal.select_end - 1;
+                {
+                  int x, y;
+                  unsigned int size;
 
-              find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
+                  size = terminal.history_size * terminal.size.ws_col;
 
-              update_selection(CurrentTime);
+                  button1_pressed = 1;
 
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  x = event.xbutton.x / FONT_SpaceWidth (font);
+                  y = event.xbutton.y / FONT_LineHeight (font);
+
+                  terminal.select_begin = y * terminal.size.ws_col + x;
+
+                  if (terminal.history_scroll)
+                    terminal.select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
+
+                  terminal.select_end = terminal.select_begin;
+
+                  if (ctrl_pressed)
+                    {
+                      find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
+                    }
+
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
+
+            case 2: /* Middle button */
+
+              paste(event.xbutton.time);
+
+              break;
+
+            case 4: /* Up */
+
+              if (terminal.history_scroll < scroll_extra)
+                {
+                  ++terminal.history_scroll;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
+
+            case 5: /* Down */
+
+              if (terminal.history_scroll)
+                {
+                  --terminal.history_scroll;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
             }
-            else
+
+          break;
+
+        case ButtonRelease:
+
+          switch(event.xbutton.button)
             {
+            case 1: /* Left button */
+
+                {
+                  button1_pressed = 0;
+
+                  update_selection(event.xbutton.time);
+
+                  if (select_text && (event.xkey.state & Mod1Mask))
+                    run_command(terminal.fd, "open-url", (const char*) select_text);
+
+                  break;
+                }
+            }
+
+          break;
+
+        case SelectionRequest:
+
+            {
+              XSelectionRequestEvent* request = &event.xselectionrequest;
+              XSelectionEvent response;
+
+              /* XXX: Check time */
+
+              if (request->property == None)
+                request->property = request->target;
+
+              response.type = SelectionNotify;
+              response.send_event = True;
+              response.display = X11_display;
+              response.requestor = request->requestor;
+              response.selection = request->selection;
+              response.target = request->target;
+              response.property = None;
+              response.time = request->time;
+
+              /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
+
               if (select_text)
-                run_command(terminal.fd, "calculate", (const char*) select_text);
-            }
-          }
+                {
+                  if (request->target == XA_STRING
+                      || request->target == xa_utf8_string)
+                    {
+                      result = XChangeProperty(X11_display, request->requestor, request->property,
+                                               request->target, 8, PropModeReplace, select_text, select_length);
 
-	  if (key_sym == XK_Insert && shift_pressed)
-	  {
-	    paste(event.xkey.time);
-	  }
-	  else if (key_sym >= XK_F1 && key_sym <= XK_F4)
-	  {
-	    char buf[4];
-	    buf[0] = '\033';
-	    buf[1] = 'O';
-	    buf[2] = 'P' + key_sym - XK_F1;
-	    buf[3] = 0;
+                      if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
+                        response.property = request->property;
+                    }
+                }
 
-	    term_strwrite(buf);
-	  }
-	  else if (key_sym >= XK_F5 && key_sym <= XK_F12)
-	  {
-	    static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
-
-	    char buf[6];
-	    buf[0] = '\033';
-	    buf[1] = '[';
-	    buf[2] = '0' + off[key_sym - XK_F5] / 10;
-	    buf[3] = '0' + off[key_sym - XK_F5] % 10;
-	    buf[4] = '~';
-	    buf[5] = 0;
-
-	    term_strwrite(buf);
-	  }
-	  else if (key_sym == XK_Up)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll < scroll_extra)
-		  {
-		    ++terminal.history_scroll;
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OA");
-	    else
-	      term_strwrite("\033[A");
-	  }
-	  else if (key_sym == XK_Down)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll)
-		  {
-		    --terminal.history_scroll;
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OB");
-	    else
-	      term_strwrite("\033[B");
-	  }
-	  else if (key_sym == XK_Right)
-	  {
-	    if (ctrl_pressed)
-	      term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OC");
-	    else
-	      term_strwrite("\033[C");
-	  }
-	  else if (key_sym == XK_Left)
-	  {
-	    if (ctrl_pressed)
-	      term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OD");
-	    else
-	      term_strwrite("\033[D");
-	  }
-	  else if (key_sym == XK_Insert)
-	  {
-	    term_strwrite("\033[2~");
-	  }
-	  else if (key_sym == XK_Delete)
-	  {
-	    term_strwrite("\033[3~");
-	  }
-	  else if (key_sym == XK_Page_Up)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		terminal.history_scroll += terminal.size.ws_row;
-
-		if (terminal.history_scroll > scroll_extra)
-		  terminal.history_scroll = scroll_extra;
-
-		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	      }
-	    else
-	      term_strwrite("\033[5~");
-	  }
-	  else if (key_sym == XK_Page_Down)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll > terminal.size.ws_row)
-		  terminal.history_scroll -= terminal.size.ws_row;
-		else
-		  terminal.history_scroll = 0;
-
-		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	      }
-	    else
-	      term_strwrite("\033[6~");
-	  }
-	  else if (key_sym == XK_Home)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll != scroll_extra)
-		  {
-		    terminal.history_scroll = scroll_extra;
-
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OH");
-	    else
-	      term_strwrite("\033[H");
-	  }
-	  else if (key_sym == XK_End)
-	  {
-	    if (terminal.appcursor)
-	      term_strwrite("\033OF");
-	    else
-	      term_strwrite("\033[F");
-	  }
-	  else if (key_sym == XK_space)
-	  {
-            if (mod1_pressed)
-              term_strwrite("\033");
-
-            term_strwrite(" ");
-	  }
-          else if (key_sym == XK_Alt_L)
-          {
-            /* Hack for leaping in vim */
-            normalize_offset();
-
-            if (terminal.curchars[0] == 32 && (terminal.curattrs[0] == 31 || terminal.curattrs[0] == 2063))
-              term_write("\033?", 2);
-          }
-          else if (key_sym == XK_Alt_R)
-          {
-            /* Hack for leaping in vim */
-
-            normalize_offset();
-
-            if (terminal.curchars[0] == 32 && (terminal.curattrs[0] == 31 || terminal.curattrs[0] == 2063))
-              term_write("\033/", 2);
-          }
-	  else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
-	       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
-	  {
-	    /* Do not generate characters on shift key, or gus'
-	     * special shift keys */
-	  }
-	  else if (len)
-	  {
-	    if (mod1_pressed)
-	      term_strwrite("\033");
-
-	    term_write((const char*) text, len);
-	  }
-
-	  if (history_scroll_reset && terminal.history_scroll)
-	  {
-	    terminal.history_scroll = 0;
-	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	  }
-        }
-
-        break;
-
-      case KeyRelease:
-
-        {
-          ctrl_pressed = (event.xkey.state & ControlMask);
-          mod1_pressed = (event.xkey.state & Mod1Mask);
-          super_pressed = (event.xkey.state & Mod4Mask);
-          shift_pressed = (event.xkey.state & ShiftMask);
-        }
-
-        break;
-
-      case MotionNotify:
-
-        ctrl_pressed = (event.xkey.state & ControlMask);
-
-	if (event.xbutton.state & Button1Mask)
-	{
-	  int x, y, new_select_end;
-	  unsigned int size;
-
-	  size = terminal.history_size * terminal.size.ws_col;
-
-	  x = event.xbutton.x / FONT_SpaceWidth (font);
-	  y = event.xbutton.y / FONT_LineHeight (font);
-
-	  new_select_end = y * terminal.size.ws_col + x;
-
-	  if (terminal.history_scroll)
-	    new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
-
-	  if (ctrl_pressed)
-	  {
-	    find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
-	  }
-
-	  if (new_select_end != terminal.select_end)
-	  {
-	    terminal.select_end = new_select_end;
-
-	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	  }
-	}
-
-        break;
-
-      case ButtonPress:
-
-        ctrl_pressed = (event.xkey.state & ControlMask);
-        mod1_pressed = (event.xkey.state & Mod1Mask);
-        shift_pressed = (event.xkey.state & ShiftMask);
-
-        switch(event.xbutton.button)
-        {
-        case 1: /* Left button */
-
-          {
-            int x, y;
-            unsigned int size;
-
-            size = terminal.history_size * terminal.size.ws_col;
-
-            button1_pressed = 1;
-
-            x = event.xbutton.x / FONT_SpaceWidth (font);
-            y = event.xbutton.y / FONT_LineHeight (font);
-
-            terminal.select_begin = y * terminal.size.ws_col + x;
-
-            if (terminal.history_scroll)
-              terminal.select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
-
-            terminal.select_end = terminal.select_begin;
-
-            if (ctrl_pressed)
-            {
-              find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
-            }
-
-            XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-          }
-
-          break;
-
-        case 2: /* Middle button */
-
-          paste(event.xbutton.time);
-
-          break;
-
-        case 4: /* Up */
-
-          if (terminal.history_scroll < scroll_extra)
-            {
-              ++terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+              XSendEvent(request->display, request->requestor, False, NoEventMask,
+                         (XEvent*) &response);
             }
 
           break;
 
-        case 5: /* Down */
+        case SelectionNotify:
 
-          if (terminal.history_scroll)
             {
-              --terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+              Atom type;
+              int format;
+              unsigned long nitems;
+              unsigned long bytes_after;
+              unsigned char* prop;
+
+              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
+                                          &type, &format, &nitems, &bytes_after, &prop);
+
+              if (result != Success)
+                break;
+
+              XFree(prop);
+
+              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
+                                          &type, &format, &nitems, &bytes_after, &prop);
+
+              if (result != Success)
+                break;
+
+              if (type != xa_utf8_string || format != 8)
+                break;
+
+              term_write((char*) prop, nitems);
+
+              XFree(prop);
             }
 
           break;
-        }
 
-        break;
+        case ConfigureNotify:
 
-      case ButtonRelease:
-
-        switch(event.xbutton.button)
-        {
-        case 1: /* Left button */
-
-          {
-            button1_pressed = 0;
-
-            update_selection(event.xbutton.time);
-
-            if (select_text && (event.xkey.state & Mod1Mask))
-              run_command(terminal.fd, "open-url", (const char*) select_text);
-
-            break;
-          }
-        }
-
-        break;
-
-      case SelectionRequest:
-
-        {
-          XSelectionRequestEvent* request = &event.xselectionrequest;
-          XSelectionEvent response;
-
-          /* XXX: Check time */
-
-          if (request->property == None)
-            request->property = request->target;
-
-          response.type = SelectionNotify;
-          response.send_event = True;
-          response.display = X11_display;
-          response.requestor = request->requestor;
-          response.selection = request->selection;
-          response.target = request->target;
-          response.property = None;
-          response.time = request->time;
-
-          /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
-
-          if (select_text)
-          {
-            if (request->target == XA_STRING
-            || request->target == xa_utf8_string)
             {
-              result = XChangeProperty(X11_display, request->requestor, request->property,
-                                       request->target, 8, PropModeReplace, select_text, select_length);
+              /* Skip to last ConfigureNotify event */
+              while (XCheckTypedWindowEvent(X11_display, X11_window, ConfigureNotify, &event))
+                {
+                  /* Do nothing */
+                }
 
-              if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
-                response.property = request->property;
+              if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
+                break;
+
+              x11_handle_configure(&event.xconfigure);
             }
-          }
 
-          XSendEvent(request->display, request->requestor, False, NoEventMask,
-                     (XEvent*) &response);
+          break;
+
+        case NoExpose:
+
+          break;
+
+        case Expose:
+
+          while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
+            ;
+
+          draw_gl_12 (&terminal);
+
+          break;
+
+        case FocusIn:
+
+          terminal.focused = 1;
+          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+
+          break;
+
+        case FocusOut:
+
+          terminal.focused = 0;
+          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+
+          break;
         }
-
-        break;
-
-      case SelectionNotify:
-
-        {
-          Atom type;
-          int format;
-          unsigned long nitems;
-          unsigned long bytes_after;
-          unsigned char* prop;
-
-          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
-                                      &type, &format, &nitems, &bytes_after, &prop);
-
-          if (result != Success)
-            break;
-
-          XFree(prop);
-
-          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
-                                      &type, &format, &nitems, &bytes_after, &prop);
-
-          if (result != Success)
-            break;
-
-          if (type != xa_utf8_string || format != 8)
-            break;
-
-          term_write((char*) prop, nitems);
-
-          XFree(prop);
-        }
-
-        break;
-
-      case ConfigureNotify:
-
-        {
-          /* Skip to last ConfigureNotify event */
-          while (XCheckTypedWindowEvent(X11_display, X11_window, ConfigureNotify, &event))
-          {
-            /* Do nothing */
-          }
-
-          if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
-            break;
-
-          x11_handle_configure(&event.xconfigure);
-        }
-
-        break;
-
-      case NoExpose:
-
-        break;
-
-      case Expose:
-
-        while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
-          ;
-
-        draw_gl_12 (&terminal);
-
-        break;
-
-      case FocusIn:
-
-        terminal.focused = 1;
-        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-
-        break;
-
-      case FocusOut:
-
-        terminal.focused = 0;
-        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-
-        break;
-      }
     }
-  }
 
   return 0;
 }
 
 int main(int argc, char** argv)
 {
+  pthread_t tty_read_thread;
   char* args[16];
   int i;
   int session_fd;
@@ -2291,6 +2288,7 @@ int main(int argc, char** argv)
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
   font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
   font_size = tree_get_integer_default(config, "terminal.font-size", 12);
+  font_weight = tree_get_integer_default(config, "terminal.font-weight", 200);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -2326,10 +2324,15 @@ int main(int argc, char** argv)
   FONT_Init ();
   GLYPH_Init ();
 
-  if (!(font = FONT_Load (font_name, font_size)))
-    errx (EXIT_FAILURE, "Failed to load font `%s' of size %u", font_name, font_size);
+  if (!(font = FONT_Load (font_name, font_size, font_weight)))
+    errx (EXIT_FAILURE, "Failed to load font `%s' of size %u, weight %u", font_name, font_size, font_weight);
 
+  /* ASCII */
   for (i = ' '; i <= '~'; ++i)
+    term_LoadGlyph (i);
+
+  /* ISO-8859-1 */
+  for (i = 0xa1; i <= 0xff; ++i)
     term_LoadGlyph (i);
 
   if (optind < argc)
@@ -2377,6 +2380,9 @@ int main(int argc, char** argv)
       close(session_fd);
       unlink(session_path);
     }
+
+  pthread_create (&tty_read_thread, 0, tty_read_thread_entry, 0);
+  pthread_detach (tty_read_thread);
 
   if (-1 == x11_process_events())
     return EXIT_FAILURE;

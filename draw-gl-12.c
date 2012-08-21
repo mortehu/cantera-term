@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -50,8 +51,25 @@ draw_AddSolidQuad (unsigned int x, unsigned int y,
                    unsigned int width, unsigned int height,
                    uint32_t color)
 {
+  unsigned int x2, y2;
+
   if (color == 0xff000000)
     return;
+
+  x2 = x + width;
+  y2 = y + height;
+
+  if (solidVertexCount >= 4
+      && solidVertices[solidVertexCount - 1].color == color
+      && solidVertices[solidVertexCount - 1].x == x
+      && solidVertices[solidVertexCount - 1].y == y
+      && solidVertices[solidVertexCount - 2].y == y2)
+    {
+      solidVertices[solidVertexCount - 1].x = x2;
+      solidVertices[solidVertexCount - 2].x = x2;
+
+      return;
+    }
 
   ARRAY_GROW_IF (solidVertices, solidVertexCount, solidVertexAlloc, 4);
 
@@ -65,10 +83,10 @@ draw_AddSolidQuad (unsigned int x, unsigned int y,
     }                                                                    \
   while (0)
 
-  ADD_VERTEX (x,         y,          color);
-  ADD_VERTEX (x,         y + height, color);
-  ADD_VERTEX (x + width, y + height, color);
-  ADD_VERTEX (x + width, y,          color);
+  ADD_VERTEX (x,  y,  color);
+  ADD_VERTEX (x,  y2, color);
+  ADD_VERTEX (x2, y2, color);
+  ADD_VERTEX (x2, y,  color);
 
 #undef ADD_VERTEX
 
@@ -116,22 +134,25 @@ draw_FlushQuads (void)
   static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;
   size_t i;
 
-  glBindTexture (GL_TEXTURE_2D, 0);
-  glDisable (GL_BLEND);
-
-  glBegin (GL_QUADS);
-
-  for (i = 0; i < solidVertexCount; ++i)
+  if (solidVertexCount)
     {
-      const struct draw_SolidVertex *v;
+      glBindTexture (GL_TEXTURE_2D, 0);
+      glDisable (GL_BLEND);
 
-      v = &solidVertices[i];
+      glBegin (GL_QUADS);
 
-      glColor3ub (v->color >> 16, v->color >> 8, v->color);
-      glVertex2f (v->x, v->y);
+      for (i = 0; i < solidVertexCount; ++i)
+        {
+          const struct draw_SolidVertex *v;
+
+          v = &solidVertices[i];
+
+          glColor3ub (v->color >> 16, v->color >> 8, v->color);
+          glVertex2f (v->x, v->y);
+        }
+
+      glEnd ();
     }
-
-  glEnd ();
 
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
   glEnable (GL_BLEND);
@@ -159,8 +180,6 @@ draw_FlushQuads (void)
 void
 draw_gl_12 (struct terminal *t)
 {
-  glClear (GL_COLOR_BUFFER_BIT);
-
 #if 1
   unsigned int ascent, descent, spaceWidth, lineHeight;
   int y, row, selbegin, selend;
@@ -173,6 +192,15 @@ draw_gl_12 (struct terminal *t)
   const uint16_t* curattrs;
   int cursorx, cursory;
   int curoffset;
+
+  ascent = FONT_Ascent (font);
+  descent = FONT_Descent (font);
+  lineHeight = FONT_LineHeight (font);
+  spaceWidth = FONT_SpaceWidth (font);
+
+  y = ascent;
+
+  pthread_mutex_lock (&t->bufferLock);
 
   curchars = t->curchars;
   curattrs = t->curattrs;
@@ -193,13 +221,6 @@ draw_gl_12 (struct terminal *t)
 
   selbegin = (selbegin + t->history_scroll * t->size.ws_col) % size;
   selend = (selend + t->history_scroll * t->size.ws_col) % size;
-
-  ascent = FONT_Ascent (font);
-  descent = FONT_Descent (font);
-  lineHeight = FONT_LineHeight (font);
-  spaceWidth = FONT_SpaceWidth (font);
-
-  y = ascent;
 
   for (row = 0; row < t->size.ws_row; ++row)
     {
@@ -255,7 +276,6 @@ draw_gl_12 (struct terminal *t)
 
           draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, palette[(attr >> 4) & 7]);
 
-
           if (attr & ATTR_UNDERLINE)
             draw_AddSolidQuad (x, y + descent, xOffset, 1, palette[attr & 0x0f]);
 
@@ -264,7 +284,15 @@ draw_gl_12 (struct terminal *t)
 
       y += lineHeight;
     }
+
+  pthread_mutex_unlock (&t->bufferLock);
+
+  GLYPH_UpdateTexture ();
+
+  draw_FlushQuads ();
 #else
+  GLYPH_UpdateTexture ();
+
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
 
   glBegin (GL_QUADS);
@@ -283,8 +311,7 @@ draw_gl_12 (struct terminal *t)
 
   glEnd ();
 #endif
-
-  draw_FlushQuads ();
   glXSwapBuffers (X11_display, X11_window);
-}
 
+  glClear (GL_COLOR_BUFFER_BIT);
+}

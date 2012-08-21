@@ -31,6 +31,8 @@ struct terminal
   pid_t pid;
   int fd;
 
+  pthread_mutex_t bufferLock;
+
   char* buffer;
   wchar_t* chars[2];
   uint16_t* attr[2];

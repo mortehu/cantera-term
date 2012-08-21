@@ -36,7 +36,7 @@ FONT_Init (void)
 }
 
 int
-FONT_PathsForFont (char ***paths, const char *name, unsigned int size)
+FONT_PathsForFont (char ***paths, const char *name, unsigned int size, unsigned int weight)
 {
   FcPattern *pattern;
   FcCharSet *charSet;
@@ -50,6 +50,7 @@ FONT_PathsForFont (char ***paths, const char *name, unsigned int size)
   pattern = FcNameParse ((FcChar8 *) name);
 
   FcPatternAddDouble (pattern, FC_PIXEL_SIZE, (double) size);
+  FcPatternAddInteger (pattern, FC_WEIGHT, weight);
 
   FcConfigSubstitute (0, pattern, FcMatchPattern);
   FcDefaultSubstitute (pattern);
@@ -79,7 +80,7 @@ FONT_PathsForFont (char ***paths, const char *name, unsigned int size)
 }
 
 struct FONT_Data *
-FONT_Load (const char *name, unsigned int size)
+FONT_Load (const char *name, unsigned int size, unsigned int weight)
 {
   struct FONT_Data *result;
   FT_GlyphSlot tmpGlyph;
@@ -87,7 +88,7 @@ FONT_Load (const char *name, unsigned int size)
   int i, pathCount;
   int ok = 0;
 
-  pathCount = FONT_PathsForFont (&paths, name, size);
+  pathCount = FONT_PathsForFont (&paths, name, size, weight);
 
   if (pathCount <= 0)
     return NULL;
@@ -131,7 +132,7 @@ FONT_Load (const char *name, unsigned int size)
     }
 
   tmpGlyph = font_FreeTypeGlyphForCharacter (result, ' ', NULL, 0);
-  result->spaceWidth = (tmpGlyph->advance.x + 32) >> 6;
+  result->spaceWidth = tmpGlyph->advance.x >> 6;
 
   ok = 1;
 
@@ -202,7 +203,7 @@ FONT_GlyphForCharacter (struct FONT_Data *font, wint_t character)
   FT_Face face;
   unsigned int y, x, i;
 
-  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, FT_LOAD_RENDER | FT_LOAD_TARGET_LCD)))
+  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, 0)))
     return NULL;
 
   assert (!(glyph->bitmap.width % 3));
@@ -258,6 +259,8 @@ font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wint_t character,
 
       if (!FT_Load_Char (currentFace, character, loadFlags))
         {
+          FT_Render_Glyph (currentFace->glyph, FT_RENDER_MODE_LCD);
+
           if (face)
             *face = currentFace;
 
