@@ -132,7 +132,7 @@ FONT_Load (const char *name, unsigned int size, unsigned int weight)
     }
 
   tmpGlyph = font_FreeTypeGlyphForCharacter (result, ' ', NULL, 0);
-  result->spaceWidth = (tmpGlyph->advance.x + 32) >> 6;
+  result->spaceWidth = tmpGlyph->advance.x >> 6;
 
   ok = 1;
 
