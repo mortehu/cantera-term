@@ -1674,514 +1674,507 @@ wait_for_dead_children (void)
 
 int x11_process_events()
 {
-  pthread_t tty_read_thread;
+  XEvent event;
   int result;
 
-  pthread_create (&tty_read_thread, 0, tty_read_thread_entry, 0);
-  pthread_detach (tty_read_thread);
-
-  while (!done)
-  {
-    XEvent event;
-
-    while(0 == XNextEvent(X11_display, &event))
+  while(!done && 0 == XNextEvent(X11_display, &event))
     {
       wait_for_dead_children ();
 
       switch(event.type)
-      {
-      case KeyPress:
-
-        /* if (!XFilterEvent(&event, window)) */
         {
-          char text[32];
-          Status status;
-          KeySym key_sym;
-          int len;
-          int history_scroll_reset = 1;
+        case KeyPress:
+
+          /* if (!XFilterEvent(&event, window)) */
+            {
+              char text[32];
+              Status status;
+              KeySym key_sym;
+              int len;
+              int history_scroll_reset = 1;
+
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
+
+              len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
+
+              if (!text[0])
+                len = 0;
+
+              if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+                ctrl_pressed = 1, history_scroll_reset = 0;
+
+              if (key_sym == XK_Super_L || key_sym == XK_Super_R)
+                super_pressed = 1, history_scroll_reset = 0;
+
+              if (key_sym == XK_Alt_L || key_sym == XK_Alt_R
+                  || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
+                history_scroll_reset = 0;
+
+              if (event.xkey.keycode == 161 || key_sym == XK_Menu)
+                {
+                  normalize_offset();
+
+                  if (shift_pressed)
+                    {
+                      terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
+
+                      if (terminal.select_end == 0)
+                        {
+                          terminal.select_begin = 0;
+                          terminal.select_end = 1;
+                        }
+                      else
+                        terminal.select_begin = terminal.select_end - 1;
+
+                      find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
+
+                      update_selection(CurrentTime);
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    {
+                      if (select_text)
+                        run_command(terminal.fd, "calculate", (const char*) select_text);
+                    }
+                }
+
+              if (key_sym == XK_Insert && shift_pressed)
+                {
+                  paste(event.xkey.time);
+                }
+              else if (key_sym >= XK_F1 && key_sym <= XK_F4)
+                {
+                  char buf[4];
+                  buf[0] = '\033';
+                  buf[1] = 'O';
+                  buf[2] = 'P' + key_sym - XK_F1;
+                  buf[3] = 0;
+
+                  term_strwrite(buf);
+                }
+              else if (key_sym >= XK_F5 && key_sym <= XK_F12)
+                {
+                  static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
+
+                  char buf[6];
+                  buf[0] = '\033';
+                  buf[1] = '[';
+                  buf[2] = '0' + off[key_sym - XK_F5] / 10;
+                  buf[3] = '0' + off[key_sym - XK_F5] % 10;
+                  buf[4] = '~';
+                  buf[5] = 0;
+
+                  term_strwrite(buf);
+                }
+              else if (key_sym == XK_Up)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll < scroll_extra)
+                        {
+                          ++terminal.history_scroll;
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OA");
+                  else
+                    term_strwrite("\033[A");
+                }
+              else if (key_sym == XK_Down)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll)
+                        {
+                          --terminal.history_scroll;
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OB");
+                  else
+                    term_strwrite("\033[B");
+                }
+              else if (key_sym == XK_Right)
+                {
+                  if (ctrl_pressed)
+                    term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OC");
+                  else
+                    term_strwrite("\033[C");
+                }
+              else if (key_sym == XK_Left)
+                {
+                  if (ctrl_pressed)
+                    term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OD");
+                  else
+                    term_strwrite("\033[D");
+                }
+              else if (key_sym == XK_Insert)
+                {
+                  term_strwrite("\033[2~");
+                }
+              else if (key_sym == XK_Delete)
+                {
+                  term_strwrite("\033[3~");
+                }
+              else if (key_sym == XK_Page_Up)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      terminal.history_scroll += terminal.size.ws_row;
+
+                      if (terminal.history_scroll > scroll_extra)
+                        terminal.history_scroll = scroll_extra;
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    term_strwrite("\033[5~");
+                }
+              else if (key_sym == XK_Page_Down)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll > terminal.size.ws_row)
+                        terminal.history_scroll -= terminal.size.ws_row;
+                      else
+                        terminal.history_scroll = 0;
+
+                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                    }
+                  else
+                    term_strwrite("\033[6~");
+                }
+              else if (key_sym == XK_Home)
+                {
+                  if (shift_pressed)
+                    {
+                      history_scroll_reset = 0;
+
+                      if (terminal.history_scroll != scroll_extra)
+                        {
+                          terminal.history_scroll = scroll_extra;
+
+                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                        }
+                    }
+                  else if (terminal.appcursor)
+                    term_strwrite("\033OH");
+                  else
+                    term_strwrite("\033[H");
+                }
+              else if (key_sym == XK_End)
+                {
+                  if (terminal.appcursor)
+                    term_strwrite("\033OF");
+                  else
+                    term_strwrite("\033[F");
+                }
+              else if (key_sym == XK_space)
+                {
+                  if (mod1_pressed)
+                    term_strwrite("\033");
+
+                  term_strwrite(" ");
+                }
+              else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
+                       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
+                {
+                  /* Do not generate characters on shift key, or gus'
+                   * special shift keys */
+                }
+              else if (len)
+                {
+                  if (mod1_pressed)
+                    term_strwrite("\033");
+
+                  term_write((const char*) text, len);
+                }
+
+              if (history_scroll_reset && terminal.history_scroll)
+                {
+                  terminal.history_scroll = 0;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+            }
+
+          break;
+
+        case KeyRelease:
+
+            {
+              ctrl_pressed = (event.xkey.state & ControlMask);
+              mod1_pressed = (event.xkey.state & Mod1Mask);
+              super_pressed = (event.xkey.state & Mod4Mask);
+              shift_pressed = (event.xkey.state & ShiftMask);
+            }
+
+          break;
+
+        case MotionNotify:
+
+          ctrl_pressed = (event.xkey.state & ControlMask);
+
+          if (event.xbutton.state & Button1Mask)
+            {
+              int x, y, new_select_end;
+              unsigned int size;
+
+              size = terminal.history_size * terminal.size.ws_col;
+
+              x = event.xbutton.x / FONT_SpaceWidth (font);
+              y = event.xbutton.y / FONT_LineHeight (font);
+
+              new_select_end = y * terminal.size.ws_col + x;
+
+              if (terminal.history_scroll)
+                new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
+
+              if (ctrl_pressed)
+                {
+                  find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
+                }
+
+              if (new_select_end != terminal.select_end)
+                {
+                  terminal.select_end = new_select_end;
+
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+            }
+
+          break;
+
+        case ButtonPress:
 
           ctrl_pressed = (event.xkey.state & ControlMask);
           mod1_pressed = (event.xkey.state & Mod1Mask);
-          super_pressed = (event.xkey.state & Mod4Mask);
           shift_pressed = (event.xkey.state & ShiftMask);
 
-          len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
-
-          if (!text[0])
-            len = 0;
-
-          if (key_sym == XK_Control_L || key_sym == XK_Control_R)
-            ctrl_pressed = 1, history_scroll_reset = 0;
-
-          if (key_sym == XK_Super_L || key_sym == XK_Super_R)
-            super_pressed = 1, history_scroll_reset = 0;
-
-          if (key_sym == XK_Alt_L || key_sym == XK_Alt_R
-             || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
-            history_scroll_reset = 0;
-
-          if (event.xkey.keycode == 161 || key_sym == XK_Menu)
-          {
-            normalize_offset();
-
-            if (shift_pressed)
+          switch(event.xbutton.button)
             {
-              terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
+            case 1: /* Left button */
 
-              if (terminal.select_end == 0)
-              {
-                terminal.select_begin = 0;
-                terminal.select_end = 1;
-              }
-              else
-                terminal.select_begin = terminal.select_end - 1;
+                {
+                  int x, y;
+                  unsigned int size;
 
-              find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
+                  size = terminal.history_size * terminal.size.ws_col;
 
-              update_selection(CurrentTime);
+                  button1_pressed = 1;
 
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  x = event.xbutton.x / FONT_SpaceWidth (font);
+                  y = event.xbutton.y / FONT_LineHeight (font);
+
+                  terminal.select_begin = y * terminal.size.ws_col + x;
+
+                  if (terminal.history_scroll)
+                    terminal.select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
+
+                  terminal.select_end = terminal.select_begin;
+
+                  if (ctrl_pressed)
+                    {
+                      find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
+                    }
+
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
+
+            case 2: /* Middle button */
+
+              paste(event.xbutton.time);
+
+              break;
+
+            case 4: /* Up */
+
+              if (terminal.history_scroll < scroll_extra)
+                {
+                  ++terminal.history_scroll;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
+
+            case 5: /* Down */
+
+              if (terminal.history_scroll)
+                {
+                  --terminal.history_scroll;
+                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                }
+
+              break;
             }
-            else
+
+          break;
+
+        case ButtonRelease:
+
+          switch(event.xbutton.button)
             {
+            case 1: /* Left button */
+
+                {
+                  button1_pressed = 0;
+
+                  update_selection(event.xbutton.time);
+
+                  if (select_text && (event.xkey.state & Mod1Mask))
+                    run_command(terminal.fd, "open-url", (const char*) select_text);
+
+                  break;
+                }
+            }
+
+          break;
+
+        case SelectionRequest:
+
+            {
+              XSelectionRequestEvent* request = &event.xselectionrequest;
+              XSelectionEvent response;
+
+              /* XXX: Check time */
+
+              if (request->property == None)
+                request->property = request->target;
+
+              response.type = SelectionNotify;
+              response.send_event = True;
+              response.display = X11_display;
+              response.requestor = request->requestor;
+              response.selection = request->selection;
+              response.target = request->target;
+              response.property = None;
+              response.time = request->time;
+
+              /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
+
               if (select_text)
-                run_command(terminal.fd, "calculate", (const char*) select_text);
-            }
-          }
+                {
+                  if (request->target == XA_STRING
+                      || request->target == xa_utf8_string)
+                    {
+                      result = XChangeProperty(X11_display, request->requestor, request->property,
+                                               request->target, 8, PropModeReplace, select_text, select_length);
 
-	  if (key_sym == XK_Insert && shift_pressed)
-	  {
-	    paste(event.xkey.time);
-	  }
-	  else if (key_sym >= XK_F1 && key_sym <= XK_F4)
-	  {
-	    char buf[4];
-	    buf[0] = '\033';
-	    buf[1] = 'O';
-	    buf[2] = 'P' + key_sym - XK_F1;
-	    buf[3] = 0;
+                      if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
+                        response.property = request->property;
+                    }
+                }
 
-	    term_strwrite(buf);
-	  }
-	  else if (key_sym >= XK_F5 && key_sym <= XK_F12)
-	  {
-	    static int off[] = { 15, 17, 18, 19, 20, 21, 23, 24 };
-
-	    char buf[6];
-	    buf[0] = '\033';
-	    buf[1] = '[';
-	    buf[2] = '0' + off[key_sym - XK_F5] / 10;
-	    buf[3] = '0' + off[key_sym - XK_F5] % 10;
-	    buf[4] = '~';
-	    buf[5] = 0;
-
-	    term_strwrite(buf);
-	  }
-	  else if (key_sym == XK_Up)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll < scroll_extra)
-		  {
-		    ++terminal.history_scroll;
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OA");
-	    else
-	      term_strwrite("\033[A");
-	  }
-	  else if (key_sym == XK_Down)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll)
-		  {
-		    --terminal.history_scroll;
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OB");
-	    else
-	      term_strwrite("\033[B");
-	  }
-	  else if (key_sym == XK_Right)
-	  {
-	    if (ctrl_pressed)
-	      term_strwrite(terminal.appcursor ? "\033OF" : "\033[F");
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OC");
-	    else
-	      term_strwrite("\033[C");
-	  }
-	  else if (key_sym == XK_Left)
-	  {
-	    if (ctrl_pressed)
-	      term_strwrite(terminal.appcursor ? "\033OH" : "\033[H");
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OD");
-	    else
-	      term_strwrite("\033[D");
-	  }
-	  else if (key_sym == XK_Insert)
-	  {
-	    term_strwrite("\033[2~");
-	  }
-	  else if (key_sym == XK_Delete)
-	  {
-	    term_strwrite("\033[3~");
-	  }
-	  else if (key_sym == XK_Page_Up)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		terminal.history_scroll += terminal.size.ws_row;
-
-		if (terminal.history_scroll > scroll_extra)
-		  terminal.history_scroll = scroll_extra;
-
-		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	      }
-	    else
-	      term_strwrite("\033[5~");
-	  }
-	  else if (key_sym == XK_Page_Down)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll > terminal.size.ws_row)
-		  terminal.history_scroll -= terminal.size.ws_row;
-		else
-		  terminal.history_scroll = 0;
-
-		XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	      }
-	    else
-	      term_strwrite("\033[6~");
-	  }
-	  else if (key_sym == XK_Home)
-	  {
-	    if (shift_pressed)
-	      {
-		history_scroll_reset = 0;
-
-		if (terminal.history_scroll != scroll_extra)
-		  {
-		    terminal.history_scroll = scroll_extra;
-
-		    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-		  }
-	      }
-	    else if (terminal.appcursor)
-	      term_strwrite("\033OH");
-	    else
-	      term_strwrite("\033[H");
-	  }
-	  else if (key_sym == XK_End)
-	  {
-	    if (terminal.appcursor)
-	      term_strwrite("\033OF");
-	    else
-	      term_strwrite("\033[F");
-	  }
-	  else if (key_sym == XK_space)
-	  {
-            if (mod1_pressed)
-              term_strwrite("\033");
-
-            term_strwrite(" ");
-	  }
-	  else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
-	       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
-	  {
-	    /* Do not generate characters on shift key, or gus'
-	     * special shift keys */
-	  }
-	  else if (len)
-	  {
-	    if (mod1_pressed)
-	      term_strwrite("\033");
-
-	    term_write((const char*) text, len);
-	  }
-
-	  if (history_scroll_reset && terminal.history_scroll)
-	  {
-	    terminal.history_scroll = 0;
-	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	  }
-        }
-
-        break;
-
-      case KeyRelease:
-
-        {
-          ctrl_pressed = (event.xkey.state & ControlMask);
-          mod1_pressed = (event.xkey.state & Mod1Mask);
-          super_pressed = (event.xkey.state & Mod4Mask);
-          shift_pressed = (event.xkey.state & ShiftMask);
-        }
-
-        break;
-
-      case MotionNotify:
-
-        ctrl_pressed = (event.xkey.state & ControlMask);
-
-	if (event.xbutton.state & Button1Mask)
-	{
-	  int x, y, new_select_end;
-	  unsigned int size;
-
-	  size = terminal.history_size * terminal.size.ws_col;
-
-	  x = event.xbutton.x / FONT_SpaceWidth (font);
-	  y = event.xbutton.y / FONT_LineHeight (font);
-
-	  new_select_end = y * terminal.size.ws_col + x;
-
-	  if (terminal.history_scroll)
-	    new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
-
-	  if (ctrl_pressed)
-	  {
-	    find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
-	  }
-
-	  if (new_select_end != terminal.select_end)
-	  {
-	    terminal.select_end = new_select_end;
-
-	    XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-	  }
-	}
-
-        break;
-
-      case ButtonPress:
-
-        ctrl_pressed = (event.xkey.state & ControlMask);
-        mod1_pressed = (event.xkey.state & Mod1Mask);
-        shift_pressed = (event.xkey.state & ShiftMask);
-
-        switch(event.xbutton.button)
-        {
-        case 1: /* Left button */
-
-          {
-            int x, y;
-            unsigned int size;
-
-            size = terminal.history_size * terminal.size.ws_col;
-
-            button1_pressed = 1;
-
-            x = event.xbutton.x / FONT_SpaceWidth (font);
-            y = event.xbutton.y / FONT_LineHeight (font);
-
-            terminal.select_begin = y * terminal.size.ws_col + x;
-
-            if (terminal.history_scroll)
-              terminal.select_begin += size - (terminal.history_scroll * terminal.size.ws_col);
-
-            terminal.select_end = terminal.select_begin;
-
-            if (ctrl_pressed)
-            {
-              find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
-            }
-
-            XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-          }
-
-          break;
-
-        case 2: /* Middle button */
-
-          paste(event.xbutton.time);
-
-          break;
-
-        case 4: /* Up */
-
-          if (terminal.history_scroll < scroll_extra)
-            {
-              ++terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+              XSendEvent(request->display, request->requestor, False, NoEventMask,
+                         (XEvent*) &response);
             }
 
           break;
 
-        case 5: /* Down */
+        case SelectionNotify:
 
-          if (terminal.history_scroll)
             {
-              --terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+              Atom type;
+              int format;
+              unsigned long nitems;
+              unsigned long bytes_after;
+              unsigned char* prop;
+
+              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
+                                          &type, &format, &nitems, &bytes_after, &prop);
+
+              if (result != Success)
+                break;
+
+              XFree(prop);
+
+              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
+                                          &type, &format, &nitems, &bytes_after, &prop);
+
+              if (result != Success)
+                break;
+
+              if (type != xa_utf8_string || format != 8)
+                break;
+
+              term_write((char*) prop, nitems);
+
+              XFree(prop);
             }
 
           break;
-        }
 
-        break;
+        case ConfigureNotify:
 
-      case ButtonRelease:
-
-        switch(event.xbutton.button)
-        {
-        case 1: /* Left button */
-
-          {
-            button1_pressed = 0;
-
-            update_selection(event.xbutton.time);
-
-            if (select_text && (event.xkey.state & Mod1Mask))
-              run_command(terminal.fd, "open-url", (const char*) select_text);
-
-            break;
-          }
-        }
-
-        break;
-
-      case SelectionRequest:
-
-        {
-          XSelectionRequestEvent* request = &event.xselectionrequest;
-          XSelectionEvent response;
-
-          /* XXX: Check time */
-
-          if (request->property == None)
-            request->property = request->target;
-
-          response.type = SelectionNotify;
-          response.send_event = True;
-          response.display = X11_display;
-          response.requestor = request->requestor;
-          response.selection = request->selection;
-          response.target = request->target;
-          response.property = None;
-          response.time = request->time;
-
-          /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
-
-          if (select_text)
-          {
-            if (request->target == XA_STRING
-            || request->target == xa_utf8_string)
             {
-              result = XChangeProperty(X11_display, request->requestor, request->property,
-                                       request->target, 8, PropModeReplace, select_text, select_length);
+              /* Skip to last ConfigureNotify event */
+              while (XCheckTypedWindowEvent(X11_display, X11_window, ConfigureNotify, &event))
+                {
+                  /* Do nothing */
+                }
 
-              if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
-                response.property = request->property;
+              if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
+                break;
+
+              x11_handle_configure(&event.xconfigure);
             }
-          }
 
-          XSendEvent(request->display, request->requestor, False, NoEventMask,
-                     (XEvent*) &response);
+          break;
+
+        case NoExpose:
+
+          break;
+
+        case Expose:
+
+          while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
+            ;
+
+          draw_gl_12 (&terminal);
+
+          break;
+
+        case FocusIn:
+
+          terminal.focused = 1;
+          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+
+          break;
+
+        case FocusOut:
+
+          terminal.focused = 0;
+          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+
+          break;
         }
-
-        break;
-
-      case SelectionNotify:
-
-        {
-          Atom type;
-          int format;
-          unsigned long nitems;
-          unsigned long bytes_after;
-          unsigned char* prop;
-
-          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
-                                      &type, &format, &nitems, &bytes_after, &prop);
-
-          if (result != Success)
-            break;
-
-          XFree(prop);
-
-          result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
-                                      &type, &format, &nitems, &bytes_after, &prop);
-
-          if (result != Success)
-            break;
-
-          if (type != xa_utf8_string || format != 8)
-            break;
-
-          term_write((char*) prop, nitems);
-
-          XFree(prop);
-        }
-
-        break;
-
-      case ConfigureNotify:
-
-        {
-          /* Skip to last ConfigureNotify event */
-          while (XCheckTypedWindowEvent(X11_display, X11_window, ConfigureNotify, &event))
-          {
-            /* Do nothing */
-          }
-
-          if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
-            break;
-
-          x11_handle_configure(&event.xconfigure);
-        }
-
-        break;
-
-      case NoExpose:
-
-        break;
-
-      case Expose:
-
-        while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
-          ;
-
-        draw_gl_12 (&terminal);
-
-        break;
-
-      case FocusIn:
-
-        terminal.focused = 1;
-        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-
-        break;
-
-      case FocusOut:
-
-        terminal.focused = 0;
-        XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
-
-        break;
-      }
     }
-  }
 
   return 0;
 }
 
 int main(int argc, char** argv)
 {
+  pthread_t tty_read_thread;
   char* args[16];
   int i;
   int session_fd;
@@ -2382,6 +2375,9 @@ int main(int argc, char** argv)
       close(session_fd);
       unlink(session_path);
     }
+
+  pthread_create (&tty_read_thread, 0, tty_read_thread_entry, 0);
+  pthread_detach (tty_read_thread);
 
   if (-1 == x11_process_events())
     return EXIT_FAILURE;

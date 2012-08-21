@@ -160,8 +160,6 @@ draw_FlushQuads (void)
 void
 draw_gl_12 (struct terminal *t)
 {
-  glClear (GL_COLOR_BUFFER_BIT);
-
 #if 1
   unsigned int ascent, descent, spaceWidth, lineHeight;
   int y, row, selbegin, selend;
@@ -258,7 +256,6 @@ draw_gl_12 (struct terminal *t)
 
           draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, palette[(attr >> 4) & 7]);
 
-
           if (attr & ATTR_UNDERLINE)
             draw_AddSolidQuad (x, y + descent, xOffset, 1, palette[attr & 0x0f]);
 
@@ -269,7 +266,13 @@ draw_gl_12 (struct terminal *t)
     }
 
   pthread_mutex_unlock (&t->bufferLock);
+
+  GLYPH_UpdateTexture ();
+
+  draw_FlushQuads ();
 #else
+  GLYPH_UpdateTexture ();
+
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
 
   glBegin (GL_QUADS);
@@ -288,8 +291,7 @@ draw_gl_12 (struct terminal *t)
 
   glEnd ();
 #endif
-
-  draw_FlushQuads ();
   glXSwapBuffers (X11_display, X11_window);
-}
 
+  glClear (GL_COLOR_BUFFER_BIT);
+}

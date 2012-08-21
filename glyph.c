@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "glyph.h"
@@ -14,9 +15,11 @@ struct glyph_Data
   int16_t  u, v;
 };
 
+static uint32_t *bitmap;
 static struct glyph_Data glyphs[65536]; /* 1 MB */
 static uint32_t loadedGlyphs[65536 / 32];
 static unsigned int top[GLYPH_ATLAS_SIZE];
+static int glyph_dirty;
 
 void
 GLYPH_Init (void)
@@ -30,6 +33,8 @@ GLYPH_Init (void)
   glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
   glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+  bitmap = calloc (sizeof (*bitmap), GLYPH_ATLAS_SIZE * GLYPH_ATLAS_SIZE);
 }
 
 GLuint
@@ -80,13 +85,12 @@ GLYPH_Add (unsigned int code, struct FONT_Glyph *glyph)
       glyphs[code].u = best_u;
       glyphs[code].v = best_v;
 
-      XLockDisplay (X11_display);
-
-      glBindTexture (GL_TEXTURE_2D, glyph_texture);
-      glTexSubImage2D (GL_TEXTURE_2D, 0, best_u, best_v, glyph->width, glyph->height,
-                       GL_RGBA, GL_UNSIGNED_BYTE, glyph->data);
-
-      XUnlockDisplay (X11_display);
+      for (k = 0; k < glyph->height; ++k)
+        {
+         memcpy (bitmap + (best_v + k)* GLYPH_ATLAS_SIZE + best_u,
+                 glyph->data + (k * glyph->width) * 4,
+                 glyph->width * 4);
+        }
 
       for (k = 0; k < glyph->width; ++k)
         top[best_u + k] = best_v + glyph->height;
@@ -98,6 +102,8 @@ GLYPH_Add (unsigned int code, struct FONT_Glyph *glyph)
   glyphs[code].y = glyph->y;
   glyphs[code].xOffset = glyph->xOffset;
   glyphs[code].yOffset = glyph->yOffset;
+
+  glyph_dirty = 1;
 }
 
 int
@@ -131,4 +137,16 @@ GLYPH_Get (unsigned int code, struct FONT_Glyph *glyph,
 
   *u = glyphs[code].u;
   *v = glyphs[code].v;
+}
+
+void
+GLYPH_UpdateTexture (void)
+{
+  if (!glyph_dirty)
+    return;
+
+  glBindTexture (GL_TEXTURE_2D, glyph_texture);
+  glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap);
+
+  glyph_dirty = 0;
 }
