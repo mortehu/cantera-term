@@ -203,7 +203,7 @@ FONT_GlyphForCharacter (struct FONT_Data *font, wint_t character)
   FT_Face face;
   unsigned int y, x, i;
 
-  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, FT_LOAD_RENDER | FT_LOAD_TARGET_LCD)))
+  if (!(glyph = font_FreeTypeGlyphForCharacter (font, character, &face, 0)))
     return NULL;
 
   assert (!(glyph->bitmap.width % 3));
@@ -259,6 +259,8 @@ font_FreeTypeGlyphForCharacter (struct FONT_Data *font, wint_t character,
 
       if (!FT_Load_Char (currentFace, character, loadFlags))
         {
+          FT_Render_Glyph (currentFace->glyph, FT_RENDER_MODE_LCD);
+
           if (face)
             *face = currentFace;
 
