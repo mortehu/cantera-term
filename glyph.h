@@ -4,7 +4,7 @@
 #include "opengl.h"
 #include "font.h"
 
-#define GLYPH_ATLAS_SIZE 4096
+#define GLYPH_ATLAS_SIZE 512
 
 void
 GLYPH_Init (void);
