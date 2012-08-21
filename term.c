@@ -1880,23 +1880,6 @@ int x11_process_events()
 
             term_strwrite(" ");
 	  }
-          else if (key_sym == XK_Alt_L)
-          {
-            /* Hack for leaping in vim */
-            normalize_offset();
-
-            if (terminal.curchars[0] == 32 && (terminal.curattrs[0] == 31 || terminal.curattrs[0] == 2063))
-              term_write("\033?", 2);
-          }
-          else if (key_sym == XK_Alt_R)
-          {
-            /* Hack for leaping in vim */
-
-            normalize_offset();
-
-            if (terminal.curchars[0] == 32 && (terminal.curattrs[0] == 31 || terminal.curattrs[0] == 2063))
-              term_write("\033/", 2);
-          }
 	  else if (key_sym == XK_Shift_L || key_sym == XK_Shift_R
 	       || key_sym == XK_ISO_Prev_Group || key_sym == XK_ISO_Next_Group)
 	  {
