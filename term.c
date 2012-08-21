@@ -70,7 +70,7 @@ struct tree* config = 0;
 unsigned int scroll_extra;
 
 const char* font_name;
-unsigned int font_size;
+unsigned int font_size, font_weight;
 struct FONT_Data *font;
 
 extern char** environ;
@@ -2291,6 +2291,7 @@ int main(int argc, char** argv)
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
   font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
   font_size = tree_get_integer_default(config, "terminal.font-size", 12);
+  font_weight = tree_get_integer_default(config, "terminal.font-weight", 200);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -2326,8 +2327,8 @@ int main(int argc, char** argv)
   FONT_Init ();
   GLYPH_Init ();
 
-  if (!(font = FONT_Load (font_name, font_size)))
-    errx (EXIT_FAILURE, "Failed to load font `%s' of size %u", font_name, font_size);
+  if (!(font = FONT_Load (font_name, font_size, font_weight)))
+    errx (EXIT_FAILURE, "Failed to load font `%s' of size %u, weight %u", font_name, font_size, font_weight);
 
   for (i = ' '; i <= '~'; ++i)
     term_LoadGlyph (i);

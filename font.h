@@ -21,10 +21,10 @@ void
 FONT_Init (void);
 
 int
-FONT_PathsForFont (char ***paths, const char *name, unsigned int size);
+FONT_PathsForFont (char ***paths, const char *name, unsigned int size, unsigned int weight);
 
 struct FONT_Data *
-FONT_Load (const char *name, unsigned int size);
+FONT_Load (const char *name, unsigned int size, unsigned int weight);
 
 void
 FONT_Free (struct FONT_Data *font);
