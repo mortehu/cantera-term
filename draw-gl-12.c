@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -174,6 +175,15 @@ draw_gl_12 (struct terminal *t)
   int cursorx, cursory;
   int curoffset;
 
+  ascent = FONT_Ascent (font);
+  descent = FONT_Descent (font);
+  lineHeight = FONT_LineHeight (font);
+  spaceWidth = FONT_SpaceWidth (font);
+
+  y = ascent;
+
+  pthread_mutex_lock (&t->bufferLock);
+
   curchars = t->curchars;
   curattrs = t->curattrs;
   cursorx = t->cursorx;
@@ -193,13 +203,6 @@ draw_gl_12 (struct terminal *t)
 
   selbegin = (selbegin + t->history_scroll * t->size.ws_col) % size;
   selend = (selend + t->history_scroll * t->size.ws_col) % size;
-
-  ascent = FONT_Ascent (font);
-  descent = FONT_Descent (font);
-  lineHeight = FONT_LineHeight (font);
-  spaceWidth = FONT_SpaceWidth (font);
-
-  y = ascent;
 
   for (row = 0; row < t->size.ws_row; ++row)
     {
@@ -264,6 +267,8 @@ draw_gl_12 (struct terminal *t)
 
       y += lineHeight;
     }
+
+  pthread_mutex_unlock (&t->bufferLock);
 #else
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
 

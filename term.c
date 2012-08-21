@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include <locale.h>
+#include <pthread.h>
 #include <pty.h>
 #include <sched.h>
 #include <setjmp.h>
@@ -482,6 +483,8 @@ void init_session(char* const* args)
 	  }
         }
     }
+
+  pthread_mutex_init (&terminal.bufferLock, 0);
 
   terminal.buffer = calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
   c = terminal.buffer;
@@ -1441,40 +1444,6 @@ static void term_process_data(unsigned char* buf, int count)
   XFlush(X11_display);
 }
 
-void term_read()
-{
-  unsigned char buf[4096];
-  int result, more, fill = 0;
-
-  /* This loop is designed for single-core computers, in case the data source is
-   * doing a series of small writes */
-  do
-  {
-    result = read(terminal.fd, buf + fill, sizeof(buf) - fill);
-
-    if (result == -1)
-      {
-        save_session();
-
-        exit(EXIT_SUCCESS);
-      }
-
-    fill += result;
-
-    if (fill < sizeof(buf))
-    {
-      sched_yield();
-
-      ioctl(terminal.fd, FIONREAD, &more);
-    }
-    else
-      more = 0;
-  }
-  while (more);
-
-  term_process_data(buf, fill);
-}
-
 void term_write(const char* data, size_t len)
 {
   size_t off = 0;
@@ -1618,54 +1587,60 @@ void run_command(int fd, const char* command, const char* arg)
   }
 }
 
-int x11_process_events()
+static void *
+tty_read_thread_entry (void *arg)
 {
+  unsigned char buf[4096];
   int result;
-  int xfd;
 
-  xfd = ConnectionNumber(X11_display);
-
-  while (!done)
-  {
-    XEvent event;
-    pid_t pid;
-    int status;
-    fd_set readset;
-    int maxfd;
-
-    FD_ZERO(&readset);
-    FD_SET(xfd, &readset);
-    maxfd = xfd;
-    FD_SET(terminal.fd, &readset);
-    if (terminal.fd > maxfd)
-      maxfd = terminal.fd;
-
-    if (-1 == select(maxfd + 1, &readset, 0, 0, 0))
+  while (-1 != (result = read(terminal.fd, buf, sizeof (buf))))
     {
-      if (errno == EINTR)
-        continue;
+      pthread_mutex_lock (&terminal.bufferLock);
 
-      fprintf(stderr, "select failed: %s\n", strerror(errno));
+      term_process_data(buf, result);
 
-      return -1;
+      pthread_mutex_unlock (&terminal.bufferLock);
     }
 
-    if (FD_ISSET(terminal.fd, &readset))
-      term_read();
+  save_session();
 
-    while (0 < (pid = waitpid(-1, &status, WNOHANG)))
+  exit(EXIT_SUCCESS);
+
+  return NULL;
+}
+
+static void
+wait_for_dead_children (void)
+{
+  pid_t pid;
+  int status;
+
+  while (0 < (pid = waitpid(-1, &status, WNOHANG)))
     {
       if (pid == terminal.pid)
         {
           save_session();
 
-          return 0;
+          return exit (EXIT_SUCCESS);
         }
     }
+}
 
-    while (XPending(X11_display))
+int x11_process_events()
+{
+  pthread_t tty_read_thread;
+  int result;
+
+  pthread_create (&tty_read_thread, 0, tty_read_thread_entry, 0);
+  pthread_detach (tty_read_thread);
+
+  while (!done)
+  {
+    XEvent event;
+
+    while(0 == XNextEvent(X11_display, &event))
     {
-      XNextEvent(X11_display, &event);
+      wait_for_dead_children ();
 
       switch(event.type)
       {

@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "glyph.h"
+#include "x11.h"
 
 static GLuint glyph_texture;
 
@@ -79,9 +80,13 @@ GLYPH_Add (unsigned int code, struct FONT_Glyph *glyph)
       glyphs[code].u = best_u;
       glyphs[code].v = best_v;
 
+      XLockDisplay (X11_display);
+
       glBindTexture (GL_TEXTURE_2D, glyph_texture);
       glTexSubImage2D (GL_TEXTURE_2D, 0, best_u, best_v, glyph->width, glyph->height,
                        GL_RGBA, GL_UNSIGNED_BYTE, glyph->data);
+
+      XUnlockDisplay (X11_display);
 
       for (k = 0; k < glyph->width; ++k)
         top[best_u + k] = best_v + glyph->height;
