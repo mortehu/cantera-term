@@ -51,8 +51,25 @@ draw_AddSolidQuad (unsigned int x, unsigned int y,
                    unsigned int width, unsigned int height,
                    uint32_t color)
 {
+  unsigned int x2, y2;
+
   if (color == 0xff000000)
     return;
+
+  x2 = x + width;
+  y2 = y + height;
+
+  if (solidVertexCount >= 4
+      && solidVertices[solidVertexCount - 1].color == color
+      && solidVertices[solidVertexCount - 1].x == x
+      && solidVertices[solidVertexCount - 1].y == y
+      && solidVertices[solidVertexCount - 2].y == y2)
+    {
+      solidVertices[solidVertexCount - 1].x = x2;
+      solidVertices[solidVertexCount - 2].x = x2;
+
+      return;
+    }
 
   ARRAY_GROW_IF (solidVertices, solidVertexCount, solidVertexAlloc, 4);
 
@@ -66,10 +83,10 @@ draw_AddSolidQuad (unsigned int x, unsigned int y,
     }                                                                    \
   while (0)
 
-  ADD_VERTEX (x,         y,          color);
-  ADD_VERTEX (x,         y + height, color);
-  ADD_VERTEX (x + width, y + height, color);
-  ADD_VERTEX (x + width, y,          color);
+  ADD_VERTEX (x,  y,  color);
+  ADD_VERTEX (x,  y2, color);
+  ADD_VERTEX (x2, y2, color);
+  ADD_VERTEX (x2, y,  color);
 
 #undef ADD_VERTEX
 
@@ -117,22 +134,25 @@ draw_FlushQuads (void)
   static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;
   size_t i;
 
-  glBindTexture (GL_TEXTURE_2D, 0);
-  glDisable (GL_BLEND);
-
-  glBegin (GL_QUADS);
-
-  for (i = 0; i < solidVertexCount; ++i)
+  if (solidVertexCount)
     {
-      const struct draw_SolidVertex *v;
+      glBindTexture (GL_TEXTURE_2D, 0);
+      glDisable (GL_BLEND);
 
-      v = &solidVertices[i];
+      glBegin (GL_QUADS);
 
-      glColor3ub (v->color >> 16, v->color >> 8, v->color);
-      glVertex2f (v->x, v->y);
+      for (i = 0; i < solidVertexCount; ++i)
+        {
+          const struct draw_SolidVertex *v;
+
+          v = &solidVertices[i];
+
+          glColor3ub (v->color >> 16, v->color >> 8, v->color);
+          glVertex2f (v->x, v->y);
+        }
+
+      glEnd ();
     }
-
-  glEnd ();
 
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
   glEnable (GL_BLEND);
