@@ -2327,7 +2327,12 @@ int main(int argc, char** argv)
   if (!(font = FONT_Load (font_name, font_size, font_weight)))
     errx (EXIT_FAILURE, "Failed to load font `%s' of size %u, weight %u", font_name, font_size, font_weight);
 
+  /* ASCII */
   for (i = ' '; i <= '~'; ++i)
+    term_LoadGlyph (i);
+
+  /* ISO-8859-1 */
+  for (i = 0xa1; i <= 0xff; ++i)
     term_LoadGlyph (i);
 
   if (optind < argc)
