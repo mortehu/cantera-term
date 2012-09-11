@@ -19,6 +19,9 @@ XIM          X11_xim;
 XIC          X11_xic;
 GLXContext   X11_glx_context;
 
+unsigned int X11_window_width = 800;
+unsigned int X11_window_height = 600;
+
 Atom prop_paste;
 Atom xa_utf8_string;
 Atom xa_compound_text;
@@ -86,7 +89,7 @@ X11_Setup (void)
   attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask | FocusChangeMask;
 
   X11_window = XCreateWindow (X11_display, RootWindow (X11_display, X11_visual->screen),
-                         0, 0, 640, 480,
+                         0, 0, X11_window_width, X11_window_height,
                          0, X11_visual->depth, InputOutput, X11_visual->visual,
                          CWBorderPixel | CWColormap | CWEventMask,
                          &attr);
