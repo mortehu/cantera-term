@@ -1,0 +1,39 @@
+terminal
+{
+  history-size 1000
+  font "DejaVu Sans Mono"
+  font-size 13
+  palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 82a0ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+}
+
+hotkey
+{
+  d "dmenu_run -nb black -nf white -sb black -sf yellow -m $CURRENT_SCREEN"
+
+  b "cantera-term"
+  f "chromium-browser"
+  l "cantera-lock"
+  n "setxkbmap no"
+  u "setxkbmap us"
+  x "xterm"
+  k "xterm -e 'ssh knuth.ping.uio.no'"
+
+  p "cp .asoundrc-pulse .asoundrc"
+  h "cp .asoundrc-hw .asoundrc"
+  t "/usr/bin/mplayer -ao alsa .cantera/sine.wav"
+
+  m "cantera-term --width=1920 --height=1080 -c /usr/bin/alsamixer"
+}
+
+menu
+{
+  init "setxkbmap us altgr-intl"
+  init "setxkbmap -option terminate:ctrl_alt_bksp"
+}
+
+auto-launch
+{
+  ctrl-f1 "cantera-term"
+#  ctrl-f5 "firefox"
+#  ctrl-f12 "cantera-term"
+}
