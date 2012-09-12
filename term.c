@@ -508,7 +508,6 @@ void init_session(char* const* args)
 
 static void save_session()
 {
-#if 0
   int fd;
   size_t size;
 
@@ -531,7 +530,6 @@ static void save_session()
   write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
   close(fd);
-#endif
 }
 
 static void sighandler(int signal)
@@ -2133,10 +2131,6 @@ int x11_process_events()
                   /* Do nothing */
                 }
 
-              if (X11_window_width == event.xconfigure.width && X11_window_height == event.xconfigure.height)
-                break;
-
-
               X11_window_width = event.xconfigure.width;
               X11_window_height = event.xconfigure.height;
 
@@ -2302,7 +2296,6 @@ int main(int argc, char** argv)
 
   setenv("TERM", "xterm", 1);
 
-#if 0
   if (session_path)
     {
       session_fd = open(session_path, O_RDONLY);
@@ -2313,13 +2306,12 @@ int main(int argc, char** argv)
 
           if (sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
             {
-              window_width = ws.ws_xpixel;
-              window_height = ws.ws_ypixel;
+              X11_window_width = ws.ws_xpixel;
+              X11_window_height = ws.ws_ypixel;
             }
         }
     }
   else
-#endif
     session_fd = -1;
 
   X11_Setup ();
