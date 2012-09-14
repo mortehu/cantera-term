@@ -289,6 +289,8 @@ static void scroll(int fromcursor)
 {
   int first, length;
 
+  term_clear_selection ();
+
   if (!fromcursor && terminal.scrolltop == 0 && terminal.scrollbottom == terminal.size.ws_row)
   {
     size_t clear_offset;
@@ -328,6 +330,8 @@ static void scroll(int fromcursor)
 static void rscroll(int fromcursor)
 {
   int first, length;
+
+  term_clear_selection ();
 
   normalize_offset();
 
@@ -446,6 +450,12 @@ static int find_range(int range, int* begin, int* end)
     return 0;
 }
 
+void term_clear_selection (void)
+{
+  terminal.select_begin = -1;
+  terminal.select_end = -1;
+}
+
 void init_session(char* const* args)
 {
   char* c;
@@ -500,8 +510,7 @@ void init_session(char* const* args)
   terminal.offset[0] = 0;
   terminal.offset[1] = 0;
 
-  terminal.select_begin = -1;
-  terminal.select_end = -1;
+  term_clear_selection ();
 
   setscreen(0);
 }
@@ -1477,6 +1486,8 @@ void term_write(const char* data, size_t len)
 
 void term_strwrite(const char* data)
 {
+  term_clear_selection ();
+
   term_write(data, strlen(data));
 }
 

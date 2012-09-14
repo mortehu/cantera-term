@@ -72,4 +72,6 @@ struct terminal
 extern struct FONT_Data *font;
 extern unsigned int palette[16];
 
+void term_clear_selection (void);
+
 #endif /* !TERMINAL_H_ */
