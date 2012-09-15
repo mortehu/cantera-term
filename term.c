@@ -1473,21 +1473,21 @@ void term_write(const char* data, size_t len)
   size_t off = 0;
   ssize_t result;
 
+  term_clear_selection ();
+
   while (off < len)
-  {
-    result = write(terminal.fd, data + off, len - off);
+    {
+      result = write(terminal.fd, data + off, len - off);
 
-    if (result < 0)
-      exit(EXIT_FAILURE);
+      if (result < 0)
+        exit(EXIT_FAILURE);
 
-    off += result;
-  }
+      off += result;
+    }
 }
 
 void term_strwrite(const char* data)
 {
-  term_clear_selection ();
-
   term_write(data, strlen(data));
 }
 
