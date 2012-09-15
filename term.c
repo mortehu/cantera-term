@@ -523,6 +523,9 @@ static void save_session()
   if (!session_path)
     return;
 
+  if (terminal.cursorx)
+    term_process_data((const unsigned char *) "\r\n", 2);
+
   fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 
   if (fd == -1)
@@ -662,9 +665,9 @@ static void paste(Time time)
   XConvertSelection(X11_display, XA_PRIMARY, xa_utf8_string, prop_paste, X11_window, time);
 }
 
-static void term_process_data(unsigned char* buf, int count)
+void term_process_data(const unsigned char* buf, size_t count)
 {
-  unsigned char *end;
+  const unsigned char *end;
   int k, l;
 
   int size = terminal.size.ws_col * terminal.history_size;
