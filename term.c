@@ -94,8 +94,6 @@ static unsigned short alt_charset[62] =
 static int done;
 static const char* session_path;
 
-unsigned int window_width = 800, window_height = 600;
-
 static void normalize_offset();
 
 const struct
@@ -455,10 +453,10 @@ void init_session(char* const* args)
 
   memset(&terminal, 0, sizeof(terminal));
 
-  terminal.size.ws_xpixel = window_width;
-  terminal.size.ws_ypixel = window_height;
-  terminal.size.ws_col = window_width / FONT_SpaceWidth (font);
-  terminal.size.ws_row = window_height / FONT_LineHeight (font);
+  terminal.size.ws_xpixel = X11_window_width;
+  terminal.size.ws_ypixel = X11_window_height;
+  terminal.size.ws_col = X11_window_width / FONT_SpaceWidth (font);
+  terminal.size.ws_row = X11_window_height / FONT_LineHeight (font);
   terminal.history_size = terminal.size.ws_row + scroll_extra;
 
   if (pty_fd != -1)
@@ -1484,7 +1482,7 @@ void term_strwrite(const char* data)
   term_write(data, strlen(data));
 }
 
-void x11_handle_configure(XConfigureEvent *config)
+void x11_handle_configure (void)
 {
   int i;
 
@@ -1492,16 +1490,13 @@ void x11_handle_configure(XConfigureEvent *config)
 
   normalize_offset();
 
-  window_width = config->width;
-  window_height = config->height;
-
-  glViewport (0, 0, window_width, window_height);
+  glViewport (0, 0, X11_window_width, X11_window_height);
   glMatrixMode (GL_PROJECTION);
   glLoadIdentity ();
-  glOrtho (0.0f, window_width, window_height, 0.0f, 0.0f, 1.0f);
+  glOrtho (0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
-  cols = window_width / FONT_SpaceWidth (font);
-  rows = window_height / FONT_LineHeight (font);
+  cols = X11_window_width / FONT_SpaceWidth (font);
+  rows = X11_window_height / FONT_LineHeight (font);
 
   if (!cols)
     cols = 1;
@@ -1512,8 +1507,8 @@ void x11_handle_configure(XConfigureEvent *config)
   int oldcols = terminal.size.ws_col;
   int oldrows = terminal.size.ws_row;
 
-  terminal.size.ws_xpixel = window_width;
-  terminal.size.ws_ypixel = window_height;
+  terminal.size.ws_xpixel = X11_window_width;
+  terminal.size.ws_ypixel = X11_window_height;
   terminal.size.ws_col = cols;
   terminal.size.ws_row = rows;
   terminal.history_size = rows + scroll_extra;
@@ -1733,7 +1728,7 @@ int x11_process_events()
 
                       update_selection(CurrentTime);
 
-                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                     }
                   else
                     {
@@ -1779,7 +1774,7 @@ int x11_process_events()
                       if (terminal.history_scroll < scroll_extra)
                         {
                           ++terminal.history_scroll;
-                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -1796,7 +1791,7 @@ int x11_process_events()
                       if (terminal.history_scroll)
                         {
                           --terminal.history_scroll;
-                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -1841,7 +1836,7 @@ int x11_process_events()
                       if (terminal.history_scroll > scroll_extra)
                         terminal.history_scroll = scroll_extra;
 
-                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                     }
                   else
                     term_strwrite("\033[5~");
@@ -1857,7 +1852,7 @@ int x11_process_events()
                       else
                         terminal.history_scroll = 0;
 
-                      XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                     }
                   else
                     term_strwrite("\033[6~");
@@ -1872,7 +1867,7 @@ int x11_process_events()
                         {
                           terminal.history_scroll = scroll_extra;
 
-                          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -1911,7 +1906,7 @@ int x11_process_events()
               if (history_scroll_reset && terminal.history_scroll)
                 {
                   terminal.history_scroll = 0;
-                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
             }
 
@@ -1956,7 +1951,7 @@ int x11_process_events()
                 {
                   terminal.select_end = new_select_end;
 
-                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
             }
 
@@ -1995,7 +1990,7 @@ int x11_process_events()
                       find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
                     }
 
-                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
 
               break;
@@ -2011,7 +2006,7 @@ int x11_process_events()
               if (terminal.history_scroll < scroll_extra)
                 {
                   ++terminal.history_scroll;
-                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
 
               break;
@@ -2021,7 +2016,7 @@ int x11_process_events()
               if (terminal.history_scroll)
                 {
                   --terminal.history_scroll;
-                  XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
 
               break;
@@ -2123,6 +2118,12 @@ int x11_process_events()
 
           break;
 
+        case MapNotify:
+
+          x11_handle_configure ();
+
+          break;
+
         case ConfigureNotify:
 
             {
@@ -2132,10 +2133,14 @@ int x11_process_events()
                   /* Do nothing */
                 }
 
-              if (window_width == event.xconfigure.width && window_height == event.xconfigure.height)
+              if (X11_window_width == event.xconfigure.width && X11_window_height == event.xconfigure.height)
                 break;
 
-              x11_handle_configure(&event.xconfigure);
+
+              X11_window_width = event.xconfigure.width;
+              X11_window_height = event.xconfigure.height;
+
+              x11_handle_configure ();
             }
 
           break;
@@ -2156,14 +2161,14 @@ int x11_process_events()
         case FocusIn:
 
           terminal.focused = 1;
-          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
 
           break;
 
         case FocusOut:
 
           terminal.focused = 0;
-          XClearArea(X11_display, X11_window, 0, 0, window_width, window_height, True);
+          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
 
           break;
         }
@@ -2188,51 +2193,51 @@ int main(int argc, char** argv)
   setlocale(LC_ALL, "en_US.UTF-8");
 
   while ((i = getopt_long (argc, argv, "T:", long_options, 0)) != -1)
-  {
-    switch (i)
     {
-    case 0:
+      switch (i)
+        {
+        case 0:
 
-      break;
+          break;
 
-    case 'T':
+        case 'T':
 
-      title = optarg;
+          title = optarg;
 
-      break;
+          break;
 
-    case 'i':
+        case 'i':
 
-      parent_window = strtol (optarg, 0, 0);
+          parent_window = strtol (optarg, 0, 0);
 
-      break;
+          break;
 
-    case 'p':
+        case 'p':
 
-      pty_fd = strtol (optarg, 0, 0);
+          pty_fd = strtol (optarg, 0, 0);
 
-      break;
+          break;
 
 
-    case 'w':
+        case 'w':
 
-      window_width = strtol (optarg, 0, 0);
+          X11_window_width = strtol (optarg, 0, 0);
 
-      break;
+          break;
 
-    case 'h':
+        case 'h':
 
-      window_height = strtol (optarg, 0, 0);
+          X11_window_height = strtol (optarg, 0, 0);
 
-      break;
+          break;
 
-    case '?':
+        case '?':
 
-      fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
+          fprintf (stderr, "Try `%s --help' for more information.\n", argv[0]);
 
-      return EXIT_FAILURE;
+          return EXIT_FAILURE;
+        }
     }
-  }
 
   if (print_help)
     {

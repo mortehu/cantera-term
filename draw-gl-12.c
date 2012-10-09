@@ -10,7 +10,7 @@
 
 struct draw_SolidVertex
 {
-  uint16_t x, y;
+  int16_t x, y;
   uint32_t color;
 };
 
@@ -19,7 +19,7 @@ static size_t solidVertexCount, solidVertexAlloc;
 
 struct draw_TexturedVertex
 {
-  uint16_t x, y;
+  int16_t x, y;
   uint16_t u, v;
   uint32_t color;
 };
