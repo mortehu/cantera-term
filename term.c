@@ -287,6 +287,8 @@ static void scroll(int fromcursor)
 {
   int first, length;
 
+  term_clear_selection ();
+
   if (!fromcursor && terminal.scrolltop == 0 && terminal.scrollbottom == terminal.size.ws_row)
   {
     size_t clear_offset;
@@ -326,6 +328,8 @@ static void scroll(int fromcursor)
 static void rscroll(int fromcursor)
 {
   int first, length;
+
+  term_clear_selection ();
 
   normalize_offset();
 
@@ -444,6 +448,12 @@ static int find_range(int range, int* begin, int* end)
     return 0;
 }
 
+void term_clear_selection (void)
+{
+  terminal.select_begin = -1;
+  terminal.select_end = -1;
+}
+
 void init_session(char* const* args)
 {
   char* c;
@@ -498,20 +508,21 @@ void init_session(char* const* args)
   terminal.offset[0] = 0;
   terminal.offset[1] = 0;
 
-  terminal.select_begin = -1;
-  terminal.select_end = -1;
+  term_clear_selection ();
 
   setscreen(0);
 }
 
 static void save_session()
 {
-#if 0
   int fd;
   size_t size;
 
   if (!session_path)
     return;
+
+  if (terminal.cursorx)
+    term_process_data((const unsigned char *) "\r\n", 2);
 
   fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 
@@ -529,7 +540,6 @@ static void save_session()
   write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
 
   close(fd);
-#endif
 }
 
 static void sighandler(int signal)
@@ -653,9 +663,9 @@ static void paste(Time time)
   XConvertSelection(X11_display, XA_PRIMARY, xa_utf8_string, prop_paste, X11_window, time);
 }
 
-static void term_process_data(unsigned char* buf, int count)
+void term_process_data(const unsigned char* buf, size_t count)
 {
-  unsigned char *end;
+  const unsigned char *end;
   int k, l;
 
   int size = terminal.size.ws_col * terminal.history_size;
@@ -1464,15 +1474,17 @@ void term_write(const char* data, size_t len)
   size_t off = 0;
   ssize_t result;
 
+  term_clear_selection ();
+
   while (off < len)
-  {
-    result = write(terminal.fd, data + off, len - off);
+    {
+      result = write(terminal.fd, data + off, len - off);
 
-    if (result < 0)
-      exit(EXIT_FAILURE);
+      if (result < 0)
+        exit(EXIT_FAILURE);
 
-    off += result;
-  }
+      off += result;
+    }
 }
 
 void term_strwrite(const char* data)
@@ -2131,10 +2143,6 @@ int x11_process_events()
                   /* Do nothing */
                 }
 
-              if (X11_window_width == event.xconfigure.width && X11_window_height == event.xconfigure.height)
-                break;
-
-
               X11_window_width = event.xconfigure.width;
               X11_window_height = event.xconfigure.height;
 
@@ -2300,7 +2308,6 @@ int main(int argc, char** argv)
 
   setenv("TERM", "xterm", 1);
 
-#if 0
   if (session_path)
     {
       session_fd = open(session_path, O_RDONLY);
@@ -2311,13 +2318,12 @@ int main(int argc, char** argv)
 
           if (sizeof(ws) == read(session_fd, &ws, sizeof(ws)))
             {
-              window_width = ws.ws_xpixel;
-              window_height = ws.ws_ypixel;
+              X11_window_width = ws.ws_xpixel;
+              X11_window_height = ws.ws_ypixel;
             }
         }
     }
   else
-#endif
     session_fd = -1;
 
   X11_Setup ();
