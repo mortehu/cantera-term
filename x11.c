@@ -77,8 +77,9 @@ X11_Setup (void)
                                RootWindow (X11_display, X11_visual->screen),
                                X11_visual->visual, AllocNone);
 
-  attr.colormap = color_map;
+  attr.backing_store = NotUseful;
   attr.border_pixel = 0;
+  attr.colormap = color_map;
   attr.event_mask = ExposureMask |
                     ButtonPressMask |
                     ButtonReleaseMask |
@@ -88,11 +89,20 @@ X11_Setup (void)
                     FocusChangeMask |
                     StructureNotifyMask;
 
-  X11_window = XCreateWindow (X11_display, RootWindow (X11_display, X11_visual->screen),
-                         0, 0, X11_window_width, X11_window_height,
-                         0, X11_visual->depth, InputOutput, X11_visual->visual,
-                         CWBorderPixel | CWColormap | CWEventMask,
-                         &attr);
+  X11_window = XCreateWindow (X11_display,
+                              RootWindow (X11_display, X11_visual->screen),
+                              0,
+                              0,
+                              X11_window_width, X11_window_height,
+                              0,
+                              X11_visual->depth,
+                              InputOutput,
+                              X11_visual->visual,
+                              CWBackingStore |
+                              CWBorderPixel |
+                              CWColormap |
+                              CWEventMask,
+                              &attr);
 
   if (!(wmhints = XAllocWMHints ()))
     errx (EXIT_FAILURE, "XAllocWMHints failed");
