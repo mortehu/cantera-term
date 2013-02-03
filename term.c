@@ -135,8 +135,6 @@ const struct
 };
 
 struct terminal terminal;
-int damage_eventbase;
-int damage_errorbase;
 int screenidx;
 int cols;
 int rows;
