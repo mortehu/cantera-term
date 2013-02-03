@@ -24,14 +24,6 @@ unsigned int X11_window_height = 600;
 
 Atom prop_paste;
 Atom xa_utf8_string;
-Atom xa_compound_text;
-Atom xa_targets;
-Atom xa_net_wm_icon;
-Atom xa_net_wm_pid;
-Atom xa_wm_state;
-Atom xa_wm_transient_for;
-Atom xa_wm_protocols;
-Atom xa_wm_delete_window;
 
 static Bool
 x11_WaitForMapNotify (Display* X11_display, XEvent* event, char* arg)
@@ -118,14 +110,6 @@ X11_Setup (void)
 
   prop_paste = XInternAtom (X11_display, "CANTERA_PASTE", False);
   xa_utf8_string = XInternAtom (X11_display, "UTF8_STRING", False);
-  xa_compound_text = XInternAtom (X11_display, "COMPOUND_TEXT", False);
-  xa_targets = XInternAtom (X11_display, "TARGETS", False);
-  xa_wm_state = XInternAtom (X11_display, "WM_STATE", False);
-  xa_net_wm_icon = XInternAtom (X11_display, "_NET_WM_ICON", False);
-  xa_net_wm_pid = XInternAtom (X11_display, "_NET_WM_PID", False);
-  xa_wm_transient_for = XInternAtom (X11_display, "WM_TRANSIENT_FOR", False);
-  xa_wm_protocols = XInternAtom (X11_display, "WM_PROTOCOLS", False);
-  xa_wm_delete_window = XInternAtom (X11_display, "WM_DELETE_WINDOW", False);
 
   XSynchronize (X11_display, False);
 }
