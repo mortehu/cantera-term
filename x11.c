@@ -45,6 +45,7 @@ X11_Setup (void)
       None
     };
 
+  XWMHints *wmhints;
   Colormap color_map;
   XSetWindowAttributes attr;
   XEvent event;
@@ -85,6 +86,16 @@ X11_Setup (void)
                          0, X11_visual->depth, InputOutput, X11_visual->visual,
                          CWBorderPixel | CWColormap | CWEventMask,
                          &attr);
+
+  if (!(wmhints = XAllocWMHints ()))
+    errx (EXIT_FAILURE, "XAllocWMHints failed");
+
+  wmhints->input = True;
+  wmhints->flags = InputHint;
+
+  XSetWMHints (X11_display, X11_window, wmhints);
+
+  XFree (wmhints);
 
   XMapRaised (X11_display, X11_window);
 
