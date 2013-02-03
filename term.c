@@ -2164,12 +2164,40 @@ int x11_process_events()
 
           break;
 
+        case EnterNotify:
+
+            {
+              const XEnterWindowEvent *ewe;
+
+              ewe = (XEnterWindowEvent *) &event;
+
+              if (!ewe->focus
+                  || ewe->detail == NotifyInferior)
+                break;
+
+              /* Fall through to FocusIn */
+            }
+
         case FocusIn:
 
           terminal.focused = 1;
           XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
 
           break;
+
+        case LeaveNotify:
+
+            {
+              const XLeaveWindowEvent *lwe;
+
+              lwe = (XEnterWindowEvent *) &event;
+
+              if (!lwe->focus
+                  || lwe->detail == NotifyInferior)
+                break;
+
+              /* Fall through to FocusOut */
+            }
 
         case FocusOut:
 

@@ -87,6 +87,8 @@ X11_Setup (void)
                     KeyPressMask |
                     KeyReleaseMask |
                     FocusChangeMask |
+                    EnterWindowMask |
+                    LeaveWindowMask |
                     StructureNotifyMask;
 
   X11_window = XCreateWindow (X11_display,
