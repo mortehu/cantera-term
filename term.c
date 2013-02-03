@@ -1479,7 +1479,7 @@ void term_write(const char* data, size_t len)
       result = write(terminal.fd, data + off, len - off);
 
       if (result < 0)
-        exit(EXIT_FAILURE);
+        done = 1;
 
       off += result;
     }
@@ -1653,7 +1653,9 @@ tty_read_thread_entry (void *arg)
 
   save_session();
 
-  exit(EXIT_SUCCESS);
+  done = 1;
+
+  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
 
   return NULL;
 }
@@ -1680,7 +1682,7 @@ int x11_process_events()
   XEvent event;
   int result;
 
-  while(!done && 0 == XNextEvent(X11_display, &event))
+  while (!done && 0 == XNextEvent(X11_display, &event))
     {
       wait_for_dead_children ();
 
