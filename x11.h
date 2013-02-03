@@ -28,4 +28,7 @@ extern Atom xa_wm_delete_window;
 void
 X11_Setup (void);
 
+void
+X11_handle_configure (void);
+
 #endif /* !X11_H_ */

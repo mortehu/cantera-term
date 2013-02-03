@@ -1490,7 +1490,7 @@ void term_strwrite(const char* data)
   term_write(data, strlen(data));
 }
 
-void x11_handle_configure (void)
+void X11_handle_configure (void)
 {
   int i;
 
@@ -2128,7 +2128,7 @@ int x11_process_events()
 
         case MapNotify:
 
-          x11_handle_configure ();
+          X11_handle_configure ();
 
           break;
 
@@ -2144,7 +2144,7 @@ int x11_process_events()
               X11_window_width = event.xconfigure.width;
               X11_window_height = event.xconfigure.height;
 
-              x11_handle_configure ();
+              X11_handle_configure ();
             }
 
           break;
@@ -2356,6 +2356,8 @@ int main(int argc, char** argv)
   }
 
   init_session(args);
+
+  X11_handle_configure ();
 
   if (session_fd != -1)
     {
