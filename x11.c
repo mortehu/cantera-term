@@ -79,7 +79,14 @@ X11_Setup (void)
 
   attr.colormap = color_map;
   attr.border_pixel = 0;
-  attr.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | ExposureMask | FocusChangeMask;
+  attr.event_mask = ExposureMask |
+                    ButtonPressMask |
+                    ButtonReleaseMask |
+                    PointerMotionMask |
+                    KeyPressMask |
+                    KeyReleaseMask |
+                    FocusChangeMask |
+                    StructureNotifyMask;
 
   X11_window = XCreateWindow (X11_display, RootWindow (X11_display, X11_visual->screen),
                          0, 0, X11_window_width, X11_window_height,
