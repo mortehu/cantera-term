@@ -1690,6 +1690,9 @@ int x11_process_events()
         {
         case KeyPress:
 
+          if (event.xkey.send_event)
+            break;
+
           /* if (!XFilterEvent(&event, window)) */
             {
               char text[32];
