@@ -65,6 +65,7 @@ static struct option long_options[] =
 };
 
 struct tree* config = 0;
+static int hidden;
 
 unsigned int scroll_extra;
 
@@ -1647,8 +1648,11 @@ tty_read_thread_entry (void *arg)
       fill = 0;
       pthread_mutex_unlock (&terminal.bufferLock);
 
-      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
-      XFlush(X11_display);
+      if (!hidden)
+        {
+          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
+          XFlush(X11_display);
+        }
     }
 
   save_session();
@@ -2133,7 +2137,15 @@ int x11_process_events()
 
         case MapNotify:
 
+          hidden = 0;
+
           X11_handle_configure ();
+
+          break;
+
+        case UnmapNotify:
+
+          hidden = 1;
 
           break;
 
