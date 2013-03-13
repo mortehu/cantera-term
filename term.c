@@ -2325,8 +2325,6 @@ int main(int argc, char** argv)
 
   mkdir(".cantera", 0777);
   mkdir(".cantera/commands", 0777);
-  mkdir(".cantera/file-commands", 0777);
-  mkdir(".cantera/filemanager", 0777);
 
   config = tree_load_cfg(".cantera/config");
 
