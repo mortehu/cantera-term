@@ -1975,6 +1975,9 @@ int x11_process_events()
 
         case ButtonPress:
 
+          /* XXX: Check ICCCM for proper args */
+          XSetInputFocus (X11_display, X11_window, RevertToNone, event.xkey.time);
+
           ctrl_pressed = (event.xkey.state & ControlMask);
           mod1_pressed = (event.xkey.state & Mod1Mask);
           shift_pressed = (event.xkey.state & ShiftMask);
