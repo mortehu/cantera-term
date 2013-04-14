@@ -1682,6 +1682,7 @@ wait_for_dead_children (void)
 
 int x11_process_events()
 {
+  KeySym prev_key_sym = 0;
   XEvent event;
   int result;
 
@@ -1724,12 +1725,14 @@ int x11_process_events()
                   || key_sym == XK_Shift_L || key_sym == XK_Shift_R)
                 history_scroll_reset = 0;
 
-              if (event.xkey.keycode == 161 || key_sym == XK_Menu)
+              if (event.xkey.keycode == 161
+                  || key_sym == XK_Menu
+                  || (key_sym == XK_Control_R && prev_key_sym == XK_Control_R))
                 {
-                  normalize_offset();
-
                   if (shift_pressed)
                     {
+                      normalize_offset();
+
                       terminal.select_end = terminal.cursory * terminal.size.ws_col + terminal.cursorx;
 
                       if (terminal.select_end == 0)
@@ -1924,6 +1927,8 @@ int x11_process_events()
                   terminal.history_scroll = 0;
                   XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
                 }
+
+              prev_key_sym = key_sym;
             }
 
           break;
