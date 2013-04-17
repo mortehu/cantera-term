@@ -1619,8 +1619,16 @@ tty_read_thread_entry (void *arg)
   pfd.fd = terminal.fd;
   pfd.events = POLLIN | POLLRDHUP;
 
-  while (-1 != poll (&pfd, 1, -1))
+  for (;;)
     {
+      if (-1 == poll (&pfd, 1, -1))
+        {
+          if (errno == EINTR)
+            continue;
+
+          break;
+        }
+
       while (0 < (result = read(terminal.fd, buf + fill, sizeof (buf) - fill)))
         {
           fill += result;
