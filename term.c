@@ -1694,8 +1694,10 @@ int x11_process_events()
   XEvent event;
   int result;
 
-  while (!done && 0 == XNextEvent(X11_display, &event))
+  while (!done)
     {
+      XNextEvent(X11_display, &event);
+
       wait_for_dead_children ();
 
       switch(event.type)
