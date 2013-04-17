@@ -2342,7 +2342,8 @@ int main(int argc, char** argv)
   if (session_path)
     unsetenv("SESSION_PATH");
 
-  chdir(getenv("HOME"));
+  if (-1 == chdir(getenv("HOME")))
+    errx (EXIT_FAILURE, "Failed to chdir to HOME directory");
 
   mkdir(".cantera", 0777);
   mkdir(".cantera/commands", 0777);
