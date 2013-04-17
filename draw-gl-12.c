@@ -8,10 +8,15 @@
 #include "terminal.h"
 #include "x11.h"
 
+struct draw_Color
+{
+  uint8_t r, g, b;
+};
+
 struct draw_SolidVertex
 {
   int16_t x, y;
-  uint32_t color;
+  struct draw_Color color;
 };
 
 static struct draw_SolidVertex *solidVertices;
@@ -21,7 +26,7 @@ struct draw_TexturedVertex
 {
   int16_t x, y;
   uint16_t u, v;
-  uint32_t color;
+  struct draw_Color color;
 };
 
 static struct draw_TexturedVertex *texturedVertices;
@@ -49,18 +54,25 @@ static size_t texturedVertexCount, texturedVertexAlloc;
 static void
 draw_AddSolidQuad (unsigned int x, unsigned int y,
                    unsigned int width, unsigned int height,
-                   uint32_t color)
+                   uint32_t uint_color)
 {
   unsigned int x2, y2;
+  struct draw_Color color;
 
-  if (color == 0xff000000)
+  if (uint_color == 0xff000000)
     return;
+
+  color.r = uint_color >> 16;
+  color.g = uint_color >> 8;
+  color.b = uint_color;
 
   x2 = x + width;
   y2 = y + height;
 
   if (solidVertexCount >= 4
-      && solidVertices[solidVertexCount - 1].color == color
+      && solidVertices[solidVertexCount - 1].color.r == color.r
+      && solidVertices[solidVertexCount - 1].color.g == color.g
+      && solidVertices[solidVertexCount - 1].color.b == color.b
       && solidVertices[solidVertexCount - 1].x == x
       && solidVertices[solidVertexCount - 1].y == y
       && solidVertices[solidVertexCount - 2].y == y2)
@@ -99,8 +111,14 @@ static void
 draw_AddTexturedQuad (unsigned int x, unsigned int y,
                       unsigned int width, unsigned int height,
                       unsigned int u, unsigned int v,
-                      uint32_t color)
+                      uint32_t uint_color)
 {
+  struct draw_Color color;
+
+  color.r = uint_color >> 16;
+  color.g = uint_color >> 8;
+  color.b = uint_color;
+
   ARRAY_GROW_IF (texturedVertices, texturedVertexCount,
                  texturedVertexAlloc, 4);
 
@@ -132,46 +150,49 @@ void
 draw_FlushQuads (void)
 {
   static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;
-  size_t i;
-
-  if (solidVertexCount)
-    {
-      glBindTexture (GL_TEXTURE_2D, 0);
-      glDisable (GL_BLEND);
-
-      glBegin (GL_QUADS);
-
-      for (i = 0; i < solidVertexCount; ++i)
-        {
-          const struct draw_SolidVertex *v;
-
-          v = &solidVertices[i];
-
-          glColor3ub (v->color >> 16, v->color >> 8, v->color);
-          glVertex2f (v->x, v->y);
-        }
-
-      glEnd ();
-    }
 
   glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
   glEnable (GL_BLEND);
   glBlendFunc (GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-  glBegin (GL_QUADS);
-
-  for (i = 0; i < texturedVertexCount; ++i)
+  if (solidVertexCount)
     {
-      const struct draw_TexturedVertex *v;
+      glColor3f (1.0f, 1.0f, 1.0f);
+      glTexCoord2f (0.0f, 0.0f);
 
-      v = &texturedVertices[i];
+      glPushClientAttrib (GL_CLIENT_VERTEX_ARRAY_BIT);
 
-      glColor3ub (v->color >> 16, v->color >> 8, v->color);
-      glTexCoord2f (v->u * uvScale, v->v * uvScale);
-      glVertex2f (v->x, v->y);
+      glColorPointer (3, GL_UNSIGNED_BYTE, sizeof (*solidVertices), &solidVertices[0].color.r);
+      glVertexPointer (2, GL_SHORT, sizeof (*solidVertices), &solidVertices[0].x);
+
+      glEnableClientState (GL_COLOR_ARRAY);
+      glEnableClientState (GL_VERTEX_ARRAY);
+
+      glDrawArrays (GL_QUADS, 0, solidVertexCount);
+
+      glPopClientAttrib ();
     }
 
-  glEnd ();
+  glMatrixMode (GL_TEXTURE);
+  glPushMatrix ();
+  glLoadIdentity ();
+  glScalef (uvScale, uvScale, 1.0f);
+
+  glPushClientAttrib (GL_CLIENT_VERTEX_ARRAY_BIT);
+
+  glColorPointer (3, GL_UNSIGNED_BYTE, sizeof (*texturedVertices), &texturedVertices[0].color.r);
+  glTexCoordPointer (2, GL_SHORT, sizeof (*texturedVertices), &texturedVertices[0].u);
+  glVertexPointer (2, GL_SHORT, sizeof (*texturedVertices), &texturedVertices[0].x);
+
+  glEnableClientState (GL_COLOR_ARRAY);
+  glEnableClientState (GL_TEXTURE_COORD_ARRAY);
+  glEnableClientState (GL_VERTEX_ARRAY);
+
+  glDrawArrays (GL_QUADS, 0, texturedVertexCount);
+
+  glPopClientAttrib ();
+
+  glPopMatrix ();
 
   solidVertexCount = 0;
   texturedVertexCount = 0;

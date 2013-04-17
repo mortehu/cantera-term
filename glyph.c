@@ -35,6 +35,10 @@ GLYPH_Init (void)
   glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, GLYPH_ATLAS_SIZE, GLYPH_ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
   bitmap = calloc (sizeof (*bitmap), GLYPH_ATLAS_SIZE * GLYPH_ATLAS_SIZE);
+
+  /* Add white pixel for easy solid color drawing */
+  bitmap[0] = 0xffffffff;
+  top[0] = 1;
 }
 
 GLuint
