@@ -1479,7 +1479,11 @@ void term_write(const char* data, size_t len)
       result = write(terminal.fd, data + off, len - off);
 
       if (result < 0)
-        done = 1;
+        {
+          done = 1;
+
+          break;
+        }
 
       off += result;
     }
