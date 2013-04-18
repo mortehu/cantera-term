@@ -15,14 +15,7 @@ extern unsigned int X11_window_width;
 extern unsigned int X11_window_height;
 
 extern Atom xa_utf8_string;
-extern Atom xa_compound_text;
-extern Atom xa_targets;
-extern Atom xa_net_wm_icon;
-extern Atom xa_net_wm_pid;
-extern Atom xa_wm_state;
-extern Atom xa_wm_transient_for;
-extern Atom xa_wm_protocols;
-extern Atom xa_wm_delete_window;
+extern Atom xa_clipboard;
 
 void
 X11_Setup (void);

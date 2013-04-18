@@ -144,9 +144,12 @@ int super_pressed = 0;
 int shift_pressed = 0;
 int button1_pressed = 0;
 struct timeval lastpaint = { 0, 0 };
-unsigned char* select_text = 0;
-unsigned long select_alloc = 0;
-unsigned long select_length;
+
+static unsigned char* select_text = NULL;
+static size_t select_alloc, select_length;
+
+static unsigned char* clipboard_text = NULL;
+static size_t clipboard_length;
 
 #define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
@@ -555,7 +558,7 @@ static void sighandler(int signal)
   exit(EXIT_SUCCESS);
 }
 
-static void update_selection(Time time)
+static void update_selection (Time time)
 {
   int i;
   unsigned int size, offset;
@@ -649,9 +652,43 @@ static void update_selection(Time time)
     }
 }
 
-static void paste(Time time)
+static void
+send_selection (XSelectionRequestEvent* request, const void *text, size_t length)
 {
-  XConvertSelection (X11_display, XA_PRIMARY, xa_utf8_string, XA_PRIMARY, X11_window, time);
+  XSelectionEvent response;
+  int ret;
+
+  response.type = SelectionNotify;
+  response.send_event = True;
+  response.display = X11_display;
+  response.requestor = request->requestor;
+  response.selection = request->selection;
+  response.target = request->target;
+  response.property = None;
+  response.time = request->time;
+
+  if (request->target == XA_STRING
+      || request->target == xa_utf8_string)
+    {
+      ret = XChangeProperty (X11_display, request->requestor, request->property,
+                             request->target, 8, PropModeReplace, text, length);
+
+      if (ret != BadAlloc && ret != BadAtom && ret != BadValue && ret != BadWindow)
+        response.property = request->property;
+    }
+  else
+    {
+      fprintf (stderr, "Unknown selection request target: %s\n",
+               XGetAtomName (X11_display, request->target));
+    }
+
+  XSendEvent (request->display, request->requestor, False, NoEventMask,
+              (XEvent *) &response);
+}
+
+static void paste (Atom selection, Time time)
+{
+  XConvertSelection (X11_display, selection, xa_utf8_string, selection, X11_window, time);
 }
 
 void term_process_data(const unsigned char* buf, size_t count)
@@ -1767,7 +1804,11 @@ int x11_process_events()
 
               if (key_sym == XK_Insert && shift_pressed)
                 {
-                  paste(event.xkey.time);
+                  Atom selection;
+
+                  selection = ctrl_pressed ? xa_clipboard : XA_PRIMARY;
+
+                  paste (selection, event.xkey.time);
                 }
               else if (key_sym >= XK_F1 && key_sym <= XK_F4)
                 {
@@ -1923,6 +1964,34 @@ int x11_process_events()
                   /* Do not generate characters on shift key, or gus'
                    * special shift keys */
                 }
+              else if (ctrl_pressed && shift_pressed)
+                {
+                  switch (key_sym)
+                    {
+                    case XK_C:
+
+                      if (select_text)
+                        {
+                          free (clipboard_text);
+                          clipboard_length = select_length;
+
+                          if (!(clipboard_text = malloc (select_length)))
+                            break;
+
+                          memcpy (clipboard_text, select_text, clipboard_length);
+
+                          XSetSelectionOwner (X11_display, xa_clipboard, X11_window, event.xkey.time);
+                        }
+
+                      break;
+
+                    case XK_V:
+
+                      paste (xa_clipboard, event.xkey.time);
+
+                      break;
+                    }
+                }
               else if (len)
                 {
                   if (mod1_pressed)
@@ -2030,7 +2099,7 @@ int x11_process_events()
 
             case 2: /* Middle button */
 
-              paste(event.xbutton.time);
+              paste (XA_PRIMARY, event.xbutton.time);
 
               break;
 
@@ -2081,42 +2150,20 @@ int x11_process_events()
 
             {
               XSelectionRequestEvent* request = &event.xselectionrequest;
-              XSelectionEvent response;
-
-              /* XXX: Check time */
 
               if (request->property == None)
                 request->property = request->target;
 
-              response.type = SelectionNotify;
-              response.send_event = True;
-              response.display = X11_display;
-              response.requestor = request->requestor;
-              response.selection = request->selection;
-              response.target = request->target;
-              response.property = None;
-              response.time = request->time;
-
-              if (select_text)
+              if (request->selection == XA_PRIMARY)
                 {
-                  if (request->target == XA_STRING
-                      || request->target == xa_utf8_string)
-                    {
-                      result = XChangeProperty(X11_display, request->requestor, request->property,
-                                               request->target, 8, PropModeReplace, select_text, select_length);
-
-                      if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
-                        response.property = request->property;
-                    }
-                  else
-                    {
-                      fprintf (stderr, "Unknown selection request target: %s\n",
-                               XGetAtomName (X11_display, request->target));
-                    }
+                  if (select_text)
+                    send_selection (request, select_text, select_length);
                 }
-
-              XSendEvent(request->display, request->requestor, False, NoEventMask,
-                         (XEvent*) &response);
+              else if (request->selection == xa_clipboard)
+                {
+                  if (clipboard_text)
+                    send_selection (request, clipboard_text, clipboard_length);
+                }
             }
 
           break;
@@ -2124,13 +2171,16 @@ int x11_process_events()
         case SelectionNotify:
 
             {
+              Atom selection;
               Atom type;
               int format;
               unsigned long nitems;
               unsigned long bytes_after;
               unsigned char* prop;
 
-              result = XGetWindowProperty(X11_display, X11_window, XA_PRIMARY, 0, 0, False, AnyPropertyType,
+              selection = event.xselection.selection;
+
+              result = XGetWindowProperty(X11_display, X11_window, selection, 0, 0, False, AnyPropertyType,
                                           &type, &format, &nitems, &bytes_after, &prop);
 
               if (result != Success)
@@ -2138,7 +2188,7 @@ int x11_process_events()
 
               XFree(prop);
 
-              result = XGetWindowProperty(X11_display, X11_window, XA_PRIMARY, 0, bytes_after, False, AnyPropertyType,
+              result = XGetWindowProperty(X11_display, X11_window, selection, 0, bytes_after, False, AnyPropertyType,
                                           &type, &format, &nitems, &bytes_after, &prop);
 
               if (result != Success)
