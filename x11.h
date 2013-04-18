@@ -14,7 +14,6 @@ extern GLXContext   X11_glx_context;
 extern unsigned int X11_window_width;
 extern unsigned int X11_window_height;
 
-extern Atom prop_paste;
 extern Atom xa_utf8_string;
 extern Atom xa_compound_text;
 extern Atom xa_targets;

@@ -640,25 +640,18 @@ static void update_selection(Time time)
   XSetSelectionOwner (X11_display, XA_PRIMARY, X11_window, time);
 
   if (X11_window != XGetSelectionOwner (X11_display, XA_PRIMARY))
-  {
-    terminal.select_begin = terminal.select_end;
-    free(select_text);
-    select_text = 0;
-  }
+    {
+      /* We did not get the selection */
+
+      terminal.select_begin = terminal.select_end;
+      free(select_text);
+      select_text = 0;
+    }
 }
 
 static void paste(Time time)
 {
-  Window selowner;
-
-  selowner = XGetSelectionOwner(X11_display, XA_PRIMARY);
-
-  if (selowner == None)
-    return;
-
-  XDeleteProperty(X11_display, X11_window, prop_paste);
-
-  XConvertSelection(X11_display, XA_PRIMARY, xa_utf8_string, prop_paste, X11_window, time);
+  XConvertSelection (X11_display, XA_PRIMARY, xa_utf8_string, XA_PRIMARY, X11_window, time);
 }
 
 void term_process_data(const unsigned char* buf, size_t count)
@@ -2104,8 +2097,6 @@ int x11_process_events()
               response.property = None;
               response.time = request->time;
 
-              /* fprintf(stderr, "Wanting select_text %s\n", XGetAtomName(display, response.target)); */
-
               if (select_text)
                 {
                   if (request->target == XA_STRING
@@ -2116,6 +2107,11 @@ int x11_process_events()
 
                       if (result != BadAlloc && result != BadAtom && result != BadValue && result != BadWindow)
                         response.property = request->property;
+                    }
+                  else
+                    {
+                      fprintf (stderr, "Unknown selection request target: %s\n",
+                               XGetAtomName (X11_display, request->target));
                     }
                 }
 
@@ -2134,7 +2130,7 @@ int x11_process_events()
               unsigned long bytes_after;
               unsigned char* prop;
 
-              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, 0, False, AnyPropertyType,
+              result = XGetWindowProperty(X11_display, X11_window, XA_PRIMARY, 0, 0, False, AnyPropertyType,
                                           &type, &format, &nitems, &bytes_after, &prop);
 
               if (result != Success)
@@ -2142,7 +2138,7 @@ int x11_process_events()
 
               XFree(prop);
 
-              result = XGetWindowProperty(X11_display, X11_window, prop_paste, 0, bytes_after, False, AnyPropertyType,
+              result = XGetWindowProperty(X11_display, X11_window, XA_PRIMARY, 0, bytes_after, False, AnyPropertyType,
                                           &type, &format, &nitems, &bytes_after, &prop);
 
               if (result != Success)

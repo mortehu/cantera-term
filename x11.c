@@ -22,7 +22,6 @@ GLXContext   X11_glx_context;
 unsigned int X11_window_width = 800;
 unsigned int X11_window_height = 600;
 
-Atom prop_paste;
 Atom xa_utf8_string;
 
 static Bool
@@ -138,7 +137,6 @@ X11_Setup (void)
   if (!glXMakeCurrent (X11_display, X11_window, X11_glx_context))
     errx (EXIT_FAILURE, "glXMakeCurrent returned false");
 
-  prop_paste = XInternAtom (X11_display, "CANTERA_PASTE", False);
   xa_utf8_string = XInternAtom (X11_display, "UTF8_STRING", False);
 
   XSynchronize (X11_display, False);
