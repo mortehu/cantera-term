@@ -24,6 +24,7 @@ unsigned int X11_window_height = 600;
 
 Atom xa_utf8_string;
 Atom xa_clipboard;
+Atom xa_targets;
 
 static Bool
 x11_WaitForMapNotify (Display* X11_display, XEvent* event, char* arg)
@@ -140,6 +141,7 @@ X11_Setup (void)
 
   xa_utf8_string = XInternAtom (X11_display, "UTF8_STRING", False);
   xa_clipboard = XInternAtom (X11_display, "CLIPBOARD", False);
+  xa_targets = XInternAtom (X11_display, "TARGETS", False);
 
   XSynchronize (X11_display, False);
 }

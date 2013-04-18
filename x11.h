@@ -16,6 +16,7 @@ extern unsigned int X11_window_height;
 
 extern Atom xa_utf8_string;
 extern Atom xa_clipboard;
+extern Atom xa_targets;
 
 void
 X11_Setup (void);

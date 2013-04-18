@@ -7,10 +7,9 @@
 #include <unistd.h>
 
 #include "arena.h"
+#include "array.h"
 #include "io.h"
 #include "tree.h"
-
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 struct tree_node
 {
