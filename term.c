@@ -2158,6 +2158,13 @@ int x11_process_events()
 
           break;
 
+        case SelectionClear:
+
+          if (event.xselectionclear.selection == XA_PRIMARY)
+            term_clear_selection ();
+
+          break;
+
         case MapNotify:
 
           hidden = 0;
