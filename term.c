@@ -1702,6 +1702,9 @@ int x11_process_events()
     {
       XNextEvent(X11_display, &event);
 
+      if (XFilterEvent (&event, X11_window))
+        continue;
+
       wait_for_dead_children ();
 
       switch(event.type)
@@ -1711,7 +1714,6 @@ int x11_process_events()
           if (event.xkey.send_event)
             break;
 
-          /* if (!XFilterEvent(&event, window)) */
             {
               char text[32];
               Status status;
