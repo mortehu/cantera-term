@@ -12,4 +12,5 @@ cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL
 EXTRA_DIST = doc/cantera-term.1
 
 install-data-local:
-	install -m 0755 -d $(DESTDIR)$(datadir)/applications
+	$(INSTALL) -m 0755 -d $(DESTDIR)$(datadir)/applications
+	$(INSTALL_DATA) $(srcdir)/cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop
