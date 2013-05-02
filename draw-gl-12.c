@@ -146,7 +146,7 @@ failed:
   ;
 }
 
-void
+static void
 draw_FlushQuads (void)
 {
   static const float uvScale = 1.0 / GLYPH_ATLAS_SIZE;

@@ -11,4 +11,10 @@
 void
 draw_gl_12 (struct terminal *t);
 
+void
+init_gl_30 (void);
+
+void
+draw_gl_30 (struct terminal *t);
+
 #endif /* !DRAW_H_ */

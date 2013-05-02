@@ -2268,7 +2268,7 @@ int x11_process_events()
           while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
             ;
 
-          draw_gl_12 (&terminal);
+          draw_gl_30 (&terminal);
 
           break;
 
@@ -2495,6 +2495,8 @@ int main(int argc, char** argv)
   init_session(args);
 
   X11_handle_configure ();
+
+  init_gl_30 ();
 
   if (session_fd != -1)
     {
