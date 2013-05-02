@@ -11,6 +11,8 @@
 #include "io.h"
 #include "tree.h"
 
+extern int home_fd;
+
 struct tree_node
 {
   char* path;
@@ -259,7 +261,7 @@ tree_load_cfg(const char* path)
 
   result = tree_create(path);
 
-  if(-1 == (fd = open(path, O_RDONLY)))
+  if(-1 == (fd = openat(home_fd, path, O_RDONLY)))
     return result;
 
   if(-1 == (size = lseek(fd, 0, SEEK_END)))

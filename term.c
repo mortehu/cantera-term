@@ -72,6 +72,7 @@ unsigned int scroll_extra;
 const char* font_name;
 unsigned int font_size, font_weight;
 struct FONT_Data *font;
+int home_fd;
 
 extern char** environ;
 
@@ -1624,32 +1625,39 @@ void X11_handle_configure (void)
     }
 }
 
-void run_command(int fd, const char* command, const char* arg)
+void
+run_command (int fd, const char* command, const char* arg)
 {
   char path[4096];
-  sprintf(path, ".cantera/commands/%s", command);
+  int command_fd;
 
-  if (-1 == access(path, X_OK))
-    sprintf(path, PKGDATADIR "/commands/%s", command);
+  sprintf (path, ".cantera/commands/%s", command);
 
-  if (-1 == access(path, X_OK))
-    return;
+  if (-1 == (command_fd = openat (home_fd, path, O_RDONLY)))
+    {
+      sprintf (path, PKGDATADIR "/commands/%s", command);
 
-  if (!fork())
-  {
-    char* args[3];
+      if (-1 == (command_fd = openat (home_fd, path, O_RDONLY)))
+        return;
+    }
 
-    if (fd != -1)
-      dup2(fd, 1);
+  if (!fork ())
+    {
+      char* args[3];
 
-    args[0] = path;
-    args[1] = (char*) arg;
-    args[2] = 0;
+      if (fd != -1)
+        dup2 (fd, 1);
 
-    execve(args[0], args, environ);
+      args[0] = path;
+      args[1] = (char*) arg;
+      args[2] = 0;
 
-    exit(EXIT_FAILURE);
-  }
+      fexecve (command_fd, args, environ);
+
+      exit (EXIT_FAILURE);
+    }
+
+  close (command_fd);
 }
 
 static void *
@@ -2406,11 +2414,11 @@ int main(int argc, char** argv)
   if (session_path)
     unsetenv("SESSION_PATH");
 
-  if (-1 == chdir(getenv("HOME")))
-    errx (EXIT_FAILURE, "Failed to chdir to HOME directory");
+  if (-1 == (home_fd = open(getenv("HOME"), O_RDONLY)))
+    errx (EXIT_FAILURE, "Failed to open HOME directory");
 
-  mkdir(".cantera", 0777);
-  mkdir(".cantera/commands", 0777);
+  mkdirat(home_fd, ".cantera", 0777);
+  mkdirat(home_fd, ".cantera/commands", 0777);
 
   config = tree_load_cfg(".cantera/config");
 
