@@ -209,13 +209,13 @@ init_gl_30 (void)
     "attribute vec2 attr_VertexPosition;\n"
     "attribute vec2 attr_TextureCoord;\n"
     "attribute vec3 attr_Color;\n"
-    "uniform vec2 uniform_WindowSize;\n"
+    "uniform vec2 uniform_RcpWindowSize;\n"
     "varying vec2 var_TextureCoord;\n"
     "varying vec3 var_Color;\n"
     "void main (void)\n"
     "{\n"
-    "  gl_Position = vec4(-1.0 + (attr_VertexPosition.x * uniform_WindowSize.x) * 2.0,\n"
-    "                      1.0 - (attr_VertexPosition.y * uniform_WindowSize.y) * 2.0, 0.0, 1.0);\n"
+    "  gl_Position = vec4(-1.0 + (attr_VertexPosition.x * uniform_RcpWindowSize.x) * 2.0,\n"
+    "                      1.0 - (attr_VertexPosition.y * uniform_RcpWindowSize.y) * 2.0, 0.0, 1.0);\n"
     "  var_TextureCoord = attr_TextureCoord;\n"
     "  var_Color = attr_Color;\n"
     "}";
@@ -258,7 +258,7 @@ draw_gl_30 (struct terminal *t)
   int cursorx, cursory;
   int curoffset;
 
-  glUniform2f (glGetUniformLocation (shader.handle, "uniform_WindowSize"),
+  glUniform2f (glGetUniformLocation (shader.handle, "uniform_RcpWindowSize"),
                1.0f / X11_window_width,
                1.0f / X11_window_height);
 
