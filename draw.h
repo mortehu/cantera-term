@@ -3,14 +3,6 @@
 
 #include "terminal.h"
 
-/**
- * OpenGL 1.2 hardware
- *
- * Will work with any OpenGL implementation for X11.
- */
-void
-draw_gl_12 (struct terminal *t);
-
 void
 init_gl_30 (void);
 
