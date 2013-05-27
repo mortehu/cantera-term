@@ -95,36 +95,36 @@ const struct
 } ansi_helper[] =
 {
   {  0, 0,               ATTR_DEFAULT },
-  {  1, ~ATTR_BOLD,      ATTR_BOLD },
-  {  2, ~ATTR_BOLD,      0 },
-  {  3, ~ATTR_STANDOUT,  ATTR_STANDOUT },
-  {  4, ~ATTR_UNDERLINE, ATTR_UNDERLINE },
-  {  5, (uint16_t) ~ATTR_BLINK,     ATTR_BLINK },
+  {  1, 0xffff ^ ATTR_BOLD,      ATTR_BOLD },
+  {  2, 0xffff ^ ATTR_BOLD,      0 },
+  {  3, 0xffff ^ ATTR_STANDOUT,  ATTR_STANDOUT },
+  {  4, 0xffff ^ ATTR_UNDERLINE, ATTR_UNDERLINE },
+  {  5, 0xffff ^ ATTR_BLINK,     ATTR_BLINK },
   /* 7 = reverse video */
   {  8, 0,               0 },
-  { 22, ~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE, 0 },
-  { 23, ~ATTR_STANDOUT,  0 },
-  { 24, ~ATTR_UNDERLINE, 0 },
-  { 25, (uint16_t) ~ATTR_BLINK,     0 },
+  { 22, (uint16_t) (~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE), 0 },
+  { 23, 0xffff ^ ATTR_STANDOUT,  0 },
+  { 24, 0xffff ^ ATTR_UNDERLINE, 0 },
+  { 25, 0xffff ^ ATTR_BLINK,     0 },
   /* 27 = no reverse */
-  { 30, ~FG(ATTR_WHITE), FG(ATTR_BLACK) },
-  { 31, ~FG(ATTR_WHITE), FG(ATTR_RED) },
-  { 32, ~FG(ATTR_WHITE), FG(ATTR_GREEN) },
-  { 33, ~FG(ATTR_WHITE), FG(ATTR_YELLOW) },
-  { 34, ~FG(ATTR_WHITE), FG(ATTR_BLUE) },
-  { 35, ~FG(ATTR_WHITE), FG(ATTR_MAGENTA) },
-  { 36, ~FG(ATTR_WHITE), FG(ATTR_CYAN) },
-  { 37, ~FG(ATTR_WHITE), FG(ATTR_WHITE) },
-  { 39, ~FG(ATTR_WHITE), FG_DEFAULT },
-  { 40, ~BG(ATTR_WHITE), BG(ATTR_BLACK) },
-  { 41, ~BG(ATTR_WHITE), BG(ATTR_RED) },
-  { 42, ~BG(ATTR_WHITE), BG(ATTR_GREEN) },
-  { 43, ~BG(ATTR_WHITE), BG(ATTR_YELLOW) },
-  { 44, ~BG(ATTR_WHITE), BG(ATTR_BLUE) },
-  { 45, ~BG(ATTR_WHITE), BG(ATTR_MAGENTA) },
-  { 46, ~BG(ATTR_WHITE), BG(ATTR_CYAN) },
-  { 47, ~BG(ATTR_WHITE), BG(ATTR_WHITE) },
-  { 49, ~BG(ATTR_WHITE), BG_DEFAULT }
+  { 30, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLACK) },
+  { 31, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_RED) },
+  { 32, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_GREEN) },
+  { 33, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_YELLOW) },
+  { 34, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLUE) },
+  { 35, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_MAGENTA) },
+  { 36, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_CYAN) },
+  { 37, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_WHITE) },
+  { 39, 0xffff ^ FG(ATTR_WHITE), FG_DEFAULT },
+  { 40, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLACK) },
+  { 41, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_RED) },
+  { 42, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_GREEN) },
+  { 43, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_YELLOW) },
+  { 44, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLUE) },
+  { 45, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_MAGENTA) },
+  { 46, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_CYAN) },
+  { 47, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_WHITE) },
+  { 49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT }
 };
 
 struct terminal terminal;
@@ -146,7 +146,7 @@ static size_t clipboard_length;
 
 void *memset16(void *s, int w, size_t n)
 {
-  uint16_t* o = s;
+  uint16_t *o = (uint16_t *) s;
 
   assert(!(n & 1));
 
@@ -256,8 +256,8 @@ static void normalize_offset()
     assert(offset >= 0);
     assert(offset < size);
 
-    tmpchars = malloc(sizeof(wchar_t) * offset);
-    tmpattrs = malloc(sizeof(uint16_t) * offset);
+    tmpchars = new wchar_t[offset];
+    tmpattrs = new uint16_t[offset];
 
     memcpy(tmpchars, terminal.chars[i], sizeof(*tmpchars) * offset);
     memcpy(tmpattrs, terminal.attr[i], sizeof(*tmpattrs) * offset);
@@ -270,8 +270,8 @@ static void normalize_offset()
 
     terminal.offset[i] = 0;
 
-    free(tmpattrs);
-    free(tmpchars);
+    delete [] tmpattrs;
+    delete [] tmpchars;
   }
 }
 
@@ -476,7 +476,7 @@ init_session (char *const* args)
 
   pthread_mutex_init (&terminal.bufferLock, 0);
 
-  terminal.buffer = calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
+  terminal.buffer = (char *) calloc(2 * terminal.size.ws_col * terminal.history_size, sizeof(wchar_t) + sizeof(uint16_t));
   c = terminal.buffer;
   terminal.chars[0] = (wchar_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
   terminal.attr[0] = (uint16_t*) c; c += terminal.size.ws_col * terminal.history_size * sizeof(uint16_t);
@@ -564,7 +564,7 @@ static void update_selection (Time time)
   }
 
   select_alloc = terminal.select_end - terminal.select_begin + 1;
-  select_text = calloc(select_alloc, 1);
+  select_text = (unsigned char *) calloc(select_alloc, 1);
   select_length = 0;
 
   size_t last_graph = 0;
@@ -574,7 +574,7 @@ static void update_selection (Time time)
   while (i != terminal.select_end)
   {
     int ch = terminal.curchars[(i + offset) % size];
-    int width = terminal.size.ws_col;
+    size_t width = terminal.size.ws_col;
 
     if (ch == 0 || ch == 0xffff)
       ch = ' ';
@@ -582,7 +582,7 @@ static void update_selection (Time time)
     if (select_length + 4 > select_alloc)
     {
       select_alloc *= 2;
-      select_text = realloc(select_text, select_alloc);
+      select_text = (unsigned char *) realloc(select_text, select_alloc);
     }
 
     if (i > terminal.select_begin && (i % width) == 0)
@@ -634,7 +634,8 @@ static void update_selection (Time time)
 }
 
 static void
-send_selection (XSelectionRequestEvent* request, const void *text, size_t length)
+send_selection (XSelectionRequestEvent* request,
+                const unsigned char *text, size_t length)
 {
   XSelectionEvent response;
   int ret;
@@ -683,7 +684,7 @@ static void paste (Atom selection, Time time)
 void term_process_data(const unsigned char *buf, size_t count)
 {
   const unsigned char *end;
-  int k, l;
+  int k;
 
   int size = terminal.size.ws_col * terminal.history_size;
 
@@ -1031,7 +1032,7 @@ void term_process_data(const unsigned char *buf, size_t count)
             }
           else if (*buf == ';')
             {
-              if (terminal.escape < sizeof(terminal.param) + 1)
+              if (terminal.escape < (int) sizeof(terminal.param) + 1)
                 terminal.param[++terminal.escape - 2] = 0;
               else
                 terminal.param[(sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
@@ -1425,7 +1426,7 @@ void term_process_data(const unsigned char *buf, size_t count)
 
                         default:
 
-                          for (l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
+                          for (size_t l = 0; l < sizeof(ansi_helper) / sizeof(ansi_helper[0]); ++l)
                             {
                               if (ansi_helper[l].index == terminal.param[k])
                                 {
@@ -1552,7 +1553,7 @@ void X11_handle_configure (void)
       uint16_t* oldattr[2] = {terminal.attr[0], terminal.attr[1]};
 
       char *oldbuffer = terminal.buffer;
-      terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
+      terminal.buffer = (char *) calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
 
       char *c;
       c = terminal.buffer;
@@ -1645,7 +1646,8 @@ static void *
 tty_read_thread_entry (void *arg)
 {
   unsigned char buf[4096];
-  int result, fill = 0;
+  ssize_t result;
+  size_t fill = 0;
   struct pollfd pfd;
 
   pfd.fd = terminal.fd;
@@ -1981,7 +1983,7 @@ int x11_process_events()
                           free (clipboard_text);
                           clipboard_length = select_length;
 
-                          if (!(clipboard_text = malloc (select_length)))
+                          if (!(clipboard_text = (unsigned char *) malloc (select_length)))
                             break;
 
                           memcpy (clipboard_text, select_text, clipboard_length);
@@ -2306,10 +2308,6 @@ main (int argc, char** argv)
   const char *home;
   char *palette_str, *token;
 
-  for (i = 1; i < argc; ++i)
-    if (!strcmp (argv[i], "-e"))
-      argv[i] = "--";
-
   setlocale(LC_ALL, "en_US.UTF-8");
 
   while ((i = getopt_long (argc, argv, "T:", long_options, 0)) != -1)
@@ -2420,7 +2418,7 @@ main (int argc, char** argv)
 
   if (optind < argc)
     {
-      if (argc - optind + 1 > sizeof (args) / sizeof (args[0]))
+      if (argc - optind + 1 > (int) ARRAY_SIZE (args))
         errx (EXIT_FAILURE, "Too many arguments");
 
       for (i = optind; i < argc; ++i)
@@ -2430,7 +2428,7 @@ main (int argc, char** argv)
     }
   else
     {
-      args[0] = "/bin/bash";
+      args[0] = (char *) "/bin/bash";
       args[1] = 0;
     }
 

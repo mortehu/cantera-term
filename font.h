@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <wchar.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct FONT_Data;
 
 struct FONT_Glyph
@@ -46,5 +50,9 @@ FONT_GlyphForCharacter (struct FONT_Data *font, wint_t character);
 
 struct FONT_Glyph *
 FONT_GlyphWithSize (unsigned int width, unsigned int height);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* !FONT_H_ */
