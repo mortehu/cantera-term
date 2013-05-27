@@ -239,6 +239,8 @@ init_gl_30 (void)
   glEnableVertexAttribArray (shader.vertex_position_attribute);
   glEnableVertexAttribArray (shader.texture_coord_attribute);
   glEnableVertexAttribArray (shader.color_attribute);
+
+  glEnable (GL_TEXTURE_2D);
 }
 
 void

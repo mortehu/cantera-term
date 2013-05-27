@@ -47,18 +47,9 @@
 
 static int print_version;
 static int print_help;
-static unsigned int parent_window;
-static int pty_fd = -1;
-static const char *title = "cantera-term";
 
 static struct option long_options[] =
 {
-  { "width",    required_argument, 0,              'w' },
-  { "height",   required_argument, 0,              'h' },
-  { "title",    required_argument, 0,              'T' },
-  { "command",  required_argument, 0,              'e' },
-  { "into",     required_argument, 0,              'i' },
-  { "pty-fd",   required_argument, 0,              'p' },
   { "version",        no_argument, &print_version, 1 },
   { "help",           no_argument, &print_help,    1 },
   { 0, 0, 0, 0 }
@@ -69,7 +60,7 @@ static int hidden;
 
 unsigned int scroll_extra;
 
-const char* font_name;
+const char *font_name;
 unsigned int font_size, font_weight;
 struct FONT_Data *font;
 int home_fd;
@@ -92,7 +83,7 @@ static unsigned short alt_charset[62] =
 };
 
 static int done;
-static const char* session_path;
+static const char *session_path;
 
 static void normalize_offset();
 
@@ -147,13 +138,11 @@ int shift_pressed = 0;
 int button1_pressed = 0;
 struct timeval lastpaint = { 0, 0 };
 
-static unsigned char* select_text = NULL;
+static unsigned char *select_text = NULL;
 static size_t select_alloc, select_length;
 
-static unsigned char* clipboard_text = NULL;
+static unsigned char *clipboard_text = NULL;
 static size_t clipboard_length;
-
-#define my_isprint(c) (isprint((c)) || ((c) >= 0x80))
 
 void *memset16(void *s, int w, size_t n)
 {
@@ -232,12 +221,12 @@ static void addchar(int ch)
     return;
 
   if (ch == 0x7f || ch >= 65536)
-  {
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.curattr;
+    {
+      terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = 0;
+      terminal.curchars[(terminal.cursory * terminal.size.ws_col + terminal.cursorx + *terminal.curoffset) % size] = terminal.curattr;
 
-    return;
-  }
+      return;
+    }
 
   if (!GLYPH_IsLoaded (ch))
     term_LoadGlyph (ch);
@@ -357,8 +346,7 @@ static void rscroll(int fromcursor)
 enum range_type
 {
   range_word_or_url,
-  range_parenthesis,
-  range_line
+  range_parenthesis
 };
 
 static int find_range(int range, int* begin, int* end)
@@ -457,10 +445,10 @@ void term_clear_selection (void)
   terminal.select_end = -1;
 }
 
-void init_session(char* const* args)
+void
+init_session (char *const* args)
 {
-  char* c;
-  int stderr_backup;
+  char *c;
 
   memset(&terminal, 0, sizeof(terminal));
 
@@ -470,27 +458,18 @@ void init_session(char* const* args)
   terminal.size.ws_row = X11_window_height / FONT_LineHeight (font);
   terminal.history_size = terminal.size.ws_row + scroll_extra;
 
-  if (pty_fd != -1)
-    {
-      terminal.fd = pty_fd;
-      terminal.pid = getppid ();
-    }
-  else
-    {
-      stderr_backup = dup (2);
-      terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size);
+  if (-1 == (terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size)))
+    err (EX_OSERR, "forkpty() failed");
 
-      if (terminal.pid == -1)
-	err (EX_OSERR, "forkpty() failed");
+  if (!terminal.pid)
+    {
+      /* In child process */
 
-      if (!terminal.pid)
-        {
-          if (-1 == execve(args[0], args, environ))
-	  {
-	    dup2 (stderr_backup, 2);
-	    err (EXIT_FAILURE, "Failed to execute '%s'", args[0]);
-	  }
-        }
+      execve(args[0], args, environ);
+
+      fprintf (stderr, "Failed to execute '%s'", args[0]);
+
+      _exit (EXIT_FAILURE);
     }
 
   fcntl (terminal.fd, F_SETFL, O_NDELAY);
@@ -701,7 +680,7 @@ static void paste (Atom selection, Time time)
   XConvertSelection (X11_display, selection, xa_utf8_string, selection, X11_window, time);
 }
 
-void term_process_data(const unsigned char* buf, size_t count)
+void term_process_data(const unsigned char *buf, size_t count)
 {
   const unsigned char *end;
   int k, l;
@@ -1507,7 +1486,8 @@ void term_process_data(const unsigned char* buf, size_t count)
     }
 }
 
-void term_write(const char* data, size_t len)
+void
+term_write (const char *data, size_t len)
 {
   size_t off = 0;
   ssize_t result;
@@ -1529,7 +1509,8 @@ void term_write(const char* data, size_t len)
     }
 }
 
-void term_strwrite(const char* data)
+void
+term_strwrite (const char *data)
 {
   term_write(data, strlen(data));
 }
@@ -1573,7 +1554,7 @@ void X11_handle_configure (void)
       char *oldbuffer = terminal.buffer;
       terminal.buffer = calloc(2 * cols * terminal.history_size, (sizeof(wchar_t) + sizeof(uint16_t)));
 
-      char* c;
+      char *c;
       c = terminal.buffer;
       terminal.chars[0] = (wchar_t*) c; c += cols * terminal.history_size * sizeof(wchar_t);
       terminal.attr[0] = (uint16_t*) c; c += cols * terminal.history_size * sizeof(uint16_t);
@@ -1626,7 +1607,7 @@ void X11_handle_configure (void)
 }
 
 void
-run_command (int fd, const char* command, const char* arg)
+run_command (int fd, const char *command, const char *arg)
 {
   char path[4096];
   int command_fd;
@@ -1643,13 +1624,13 @@ run_command (int fd, const char* command, const char* arg)
 
   if (!fork ())
     {
-      char* args[3];
+      char *args[3];
 
       if (fd != -1)
         dup2 (fd, 1);
 
       args[0] = path;
-      args[1] = (char*) arg;
+      args[1] = (char *) arg;
       args[2] = 0;
 
       fexecve (command_fd, args, environ);
@@ -1734,10 +1715,20 @@ wait_for_dead_children (void)
         {
           save_session();
 
-          return exit (EXIT_SUCCESS);
+          exit (EXIT_SUCCESS);
         }
     }
 }
+
+#define UPDATE_MODIFIER_STATE(mask)                    \
+  do                                                   \
+    {                                                  \
+      ctrl_pressed = (event.xkey.state & ControlMask); \
+      mod1_pressed = (event.xkey.state & Mod1Mask);    \
+      super_pressed = (event.xkey.state & Mod4Mask);   \
+      shift_pressed = (event.xkey.state & ShiftMask);  \
+    }                                                  \
+  while (0)
 
 int x11_process_events()
 {
@@ -1758,6 +1749,7 @@ int x11_process_events()
         {
         case KeyPress:
 
+          /* Filter synthetic events, to make stealthy key logging more difficult */
           if (event.xkey.send_event)
             break;
 
@@ -1768,10 +1760,7 @@ int x11_process_events()
               int len;
               int history_scroll_reset = 1;
 
-              ctrl_pressed = (event.xkey.state & ControlMask);
-              mod1_pressed = (event.xkey.state & Mod1Mask);
-              super_pressed = (event.xkey.state & Mod4Mask);
-              shift_pressed = (event.xkey.state & ShiftMask);
+              UPDATE_MODIFIER_STATE (event.xkey.state);
 
               len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1, &key_sym, &status);
 
@@ -1815,7 +1804,7 @@ int x11_process_events()
                   else
                     {
                       if (select_text)
-                        run_command(terminal.fd, "calculate", (const char*) select_text);
+                        run_command(terminal.fd, "calculate", (const char *) select_text);
                     }
                 }
 
@@ -2014,7 +2003,7 @@ int x11_process_events()
                   if (mod1_pressed)
                     term_strwrite("\033");
 
-                  term_write((const char*) text, len);
+                  term_write((const char *) text, len);
                 }
 
               if (history_scroll_reset && terminal.history_scroll)
@@ -2030,18 +2019,13 @@ int x11_process_events()
 
         case KeyRelease:
 
-            {
-              ctrl_pressed = (event.xkey.state & ControlMask);
-              mod1_pressed = (event.xkey.state & Mod1Mask);
-              super_pressed = (event.xkey.state & Mod4Mask);
-              shift_pressed = (event.xkey.state & ShiftMask);
-            }
+          UPDATE_MODIFIER_STATE (event.xkey.state);
 
           break;
 
         case MotionNotify:
 
-          ctrl_pressed = (event.xkey.state & ControlMask);
+          UPDATE_MODIFIER_STATE (event.xbutton.state);
 
           if (event.xbutton.state & Button1Mask)
             {
@@ -2059,9 +2043,7 @@ int x11_process_events()
                 new_select_end += size - (terminal.history_scroll * terminal.size.ws_col);
 
               if (ctrl_pressed)
-                {
-                  find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
-                }
+                find_range(range_word_or_url, &terminal.select_begin, &new_select_end);
 
               if (new_select_end != terminal.select_end)
                 {
@@ -2078,9 +2060,7 @@ int x11_process_events()
           /* XXX: Check ICCCM for proper args */
           XSetInputFocus (X11_display, X11_window, RevertToNone, event.xkey.time);
 
-          ctrl_pressed = (event.xkey.state & ControlMask);
-          mod1_pressed = (event.xkey.state & Mod1Mask);
-          shift_pressed = (event.xkey.state & ShiftMask);
+          UPDATE_MODIFIER_STATE (event.xbutton.state);
 
           switch(event.xbutton.button)
             {
@@ -2105,9 +2085,7 @@ int x11_process_events()
                   terminal.select_end = terminal.select_begin;
 
                   if (ctrl_pressed)
-                    {
-                      find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
-                    }
+                    find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
 
                   XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
@@ -2155,7 +2133,7 @@ int x11_process_events()
                   update_selection(event.xbutton.time);
 
                   if (select_text && (event.xkey.state & Mod1Mask))
-                    run_command(terminal.fd, "open-url", (const char*) select_text);
+                    run_command(terminal.fd, "open-url", (const char *) select_text);
 
                   break;
                 }
@@ -2193,7 +2171,7 @@ int x11_process_events()
               int format;
               unsigned long nitems;
               unsigned long bytes_after;
-              unsigned char* prop;
+              unsigned char *prop;
 
               selection = event.xselection.selection;
 
@@ -2214,7 +2192,7 @@ int x11_process_events()
               if (type != xa_utf8_string || format != 8)
                 break;
 
-              term_write((char*) prop, nitems);
+              term_write((char *) prop, nitems);
 
               XFree(prop);
             }
@@ -2319,14 +2297,14 @@ int x11_process_events()
   return 0;
 }
 
-int main(int argc, char** argv)
+int
+main (int argc, char** argv)
 {
   pthread_t tty_read_thread;
-  char* args[16];
-  int i;
-  int session_fd;
-  char* palette_str;
-  char* token;
+  char *args[16];
+  int i, session_fd;
+  const char *home;
+  char *palette_str, *token;
 
   for (i = 1; i < argc; ++i)
     if (!strcmp (argv[i], "-e"))
@@ -2338,40 +2316,7 @@ int main(int argc, char** argv)
     {
       switch (i)
         {
-        case 0:
-
-          break;
-
-        case 'T':
-
-          title = optarg;
-
-          break;
-
-        case 'i':
-
-          parent_window = strtol (optarg, 0, 0);
-
-          break;
-
-        case 'p':
-
-          pty_fd = strtol (optarg, 0, 0);
-
-          break;
-
-
-        case 'w':
-
-          X11_window_width = strtol (optarg, 0, 0);
-
-          break;
-
-        case 'h':
-
-          X11_window_height = strtol (optarg, 0, 0);
-
-          break;
+        case 0: break;
 
         case '?':
 
@@ -2385,12 +2330,10 @@ int main(int argc, char** argv)
     {
       printf ("Usage: %s [OPTION]...\n"
              "\n"
-             "  -T, --title=TITLE          set window title to TITLE\n"
-             "  -e, --command=COMMAND      execute COMMAND instead of /bin/bash\n"
              "      --help     display this help and exit\n"
              "      --version  display version information\n"
              "\n"
-             "Report bugs to <morten@rashbox.org>\n", argv[0]);
+             "Report bugs to <morten.hustveit@gmail.com>\n", argv[0]);
 
       return EXIT_SUCCESS;
     }
@@ -2402,20 +2345,16 @@ int main(int argc, char** argv)
       return EXIT_SUCCESS;
     }
 
-  if (!getenv("DISPLAY"))
-  {
-    fprintf(stderr, "DISPLAY variable not set.\n");
-
-    return EXIT_FAILURE;
-  }
-
   session_path = getenv("SESSION_PATH");
 
   if (session_path)
     unsetenv("SESSION_PATH");
 
-  if (-1 == (home_fd = open(getenv("HOME"), O_RDONLY)))
-    errx (EXIT_FAILURE, "Failed to open HOME directory");
+  if (!(home = getenv ("HOME")))
+    errx (EXIT_FAILURE, "HOME environment variable missing");
+
+  if (-1 == (home_fd = open(home, O_RDONLY)))
+    err (EXIT_FAILURE, "Failed to open HOME directory");
 
   mkdirat(home_fd, ".cantera", 0777);
   mkdirat(home_fd, ".cantera/commands", 0777);
@@ -2424,11 +2363,10 @@ int main(int argc, char** argv)
 
   palette_str = strdup(tree_get_string_default(config, "terminal.palette", "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
 
-  for (i = 0, token = strtok(palette_str, " "); token;
+  for (i = 0, token = strtok(palette_str, " "); i < 16 && token;
       ++i, token = strtok(0, " "))
     {
-      if (palette[i] < 16)
-        palette[i] = 0xff000000 | strtol(token, 0, 16);
+      palette[i] = 0xff000000 | strtol(token, NULL, 16);
     }
 
   scroll_extra = tree_get_integer_default(config, "terminal.history-size", 1000);
@@ -2463,13 +2401,14 @@ int main(int argc, char** argv)
 
   X11_Setup ();
 
-  glEnable (GL_TEXTURE_2D);
-
   FONT_Init ();
   GLYPH_Init ();
 
   if (!(font = FONT_Load (font_name, font_size, font_weight)))
     errx (EXIT_FAILURE, "Failed to load font `%s' of size %u, weight %u", font_name, font_size, font_weight);
+
+  /* Preload the most important glyphs, which will be uploaded to OpenGL in a
+   * single batch */
 
   /* ASCII */
   for (i = ' '; i <= '~'; ++i)
@@ -2480,17 +2419,20 @@ int main(int argc, char** argv)
     term_LoadGlyph (i);
 
   if (optind < argc)
-  {
-    for (i = 0; i < argc - optind && i + 1 < sizeof(args) / sizeof(args[0]); ++i)
-      args[i] = argv[optind + i];
+    {
+      if (argc - optind + 1 > sizeof (args) / sizeof (args[0]))
+        errx (EXIT_FAILURE, "Too many arguments");
 
-    args[i] = 0;
-  }
+      for (i = optind; i < argc; ++i)
+        args[i - optind] = argv[i];
+
+      args[i - optind] = 0;
+    }
   else
-  {
-    args[0] = "/bin/bash";
-    args[1] = 0;
-  }
+    {
+      args[0] = "/bin/bash";
+      args[1] = 0;
+    }
 
   init_session(args);
 
