@@ -2013,8 +2013,7 @@ x11_process_events()
 
         case ButtonPress:
 
-          /* XXX: Check ICCCM for proper args */
-          XSetInputFocus (X11_display, X11_window, RevertToNone, event.xkey.time);
+          XSetInputFocus (X11_display, X11_window, RevertToPointerRoot, event.xkey.time);
 
           switch(event.xbutton.button)
             {
