@@ -1,6 +1,8 @@
 bin_PROGRAMS = cantera-term
 man1_MANS = doc/cantera-term.1
 
+ACLOCAL_AMFLAGS = -I m4
+
 CONVERT = @CONVERT@
 
 AM_CFLAGS = -g -Wall -pthread $(PACKAGES_CFLAGS)
