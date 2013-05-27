@@ -1717,7 +1717,7 @@ tty_read_thread_entry (void *arg)
 
   done = 1;
 
-  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
 
   return NULL;
 }
@@ -1810,7 +1810,7 @@ int x11_process_events()
 
                       update_selection(CurrentTime);
 
-                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                     }
                   else
                     {
@@ -1860,7 +1860,7 @@ int x11_process_events()
                       if (terminal.history_scroll < scroll_extra)
                         {
                           ++terminal.history_scroll;
-                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -1877,7 +1877,7 @@ int x11_process_events()
                       if (terminal.history_scroll)
                         {
                           --terminal.history_scroll;
-                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -1922,7 +1922,7 @@ int x11_process_events()
                       if (terminal.history_scroll > scroll_extra)
                         terminal.history_scroll = scroll_extra;
 
-                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                     }
                   else
                     term_strwrite("\033[5~");
@@ -1938,7 +1938,7 @@ int x11_process_events()
                       else
                         terminal.history_scroll = 0;
 
-                      XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                     }
                   else
                     term_strwrite("\033[6~");
@@ -1953,7 +1953,7 @@ int x11_process_events()
                         {
                           terminal.history_scroll = scroll_extra;
 
-                          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                         }
                     }
                   else if (terminal.appcursor)
@@ -2020,7 +2020,7 @@ int x11_process_events()
               if (history_scroll_reset && terminal.history_scroll)
                 {
                   terminal.history_scroll = 0;
-                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
 
               prev_key_sym = key_sym;
@@ -2067,7 +2067,7 @@ int x11_process_events()
                 {
                   terminal.select_end = new_select_end;
 
-                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
             }
 
@@ -2109,7 +2109,7 @@ int x11_process_events()
                       find_range(range_word_or_url, &terminal.select_begin, &terminal.select_end);
                     }
 
-                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
 
               break;
@@ -2125,7 +2125,7 @@ int x11_process_events()
               if (terminal.history_scroll < scroll_extra)
                 {
                   ++terminal.history_scroll;
-                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
 
               break;
@@ -2135,7 +2135,7 @@ int x11_process_events()
               if (terminal.history_scroll)
                 {
                   --terminal.history_scroll;
-                  XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+                  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
                 }
 
               break;
@@ -2289,7 +2289,7 @@ int x11_process_events()
         case FocusIn:
 
           terminal.focused = 1;
-          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
 
           break;
 
@@ -2310,7 +2310,7 @@ int x11_process_events()
         case FocusOut:
 
           terminal.focused = 0;
-          XClearArea(X11_display, X11_window, 0, 0, X11_window_width, X11_window_height, True);
+          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
 
           break;
         }
