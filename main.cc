@@ -1713,31 +1713,19 @@ wait_for_dead_children (void)
     }
 }
 
-struct KeyInfo
+struct KeyInfo : std::pair<unsigned int, unsigned int>
 {
+  typedef std::pair<unsigned int, unsigned int> super;
+
   KeyInfo(unsigned int symbol)
-    : symbol (symbol),
-      mask (0)
+    : super(symbol, 0)
   {
   }
 
   KeyInfo(unsigned int symbol, unsigned int mask)
-    : symbol (symbol),
-      mask (mask & (ControlMask | Mod1Mask | ShiftMask))
+    : super(symbol, mask & (ControlMask | Mod1Mask | ShiftMask))
   {
   }
-
-  bool operator==(const KeyInfo &rhs) const
-  {
-    return symbol == rhs.symbol && mask == rhs.mask;
-  }
-
-private:
-
-  friend struct std::hash<KeyInfo>;
-
-  unsigned int symbol;
-  unsigned int mask;
 };
 
 namespace std
@@ -1746,9 +1734,9 @@ namespace std
   struct hash<KeyInfo>
   {
     size_t operator()(const KeyInfo &k) const
-      {
-        return (k.mask << 16) | k.symbol;
-      }
+    {
+      return (k.first << 16) | k.second;
+    }
   };
 }
 
