@@ -1778,13 +1778,8 @@ x11_process_events()
   MAP_KEY_TO_STRING(XK_Down,      terminal.appcursor ? "\033OB" : "\033[B");
   MAP_KEY_TO_STRING(XK_Right,     terminal.appcursor ? "\033OC" : "\033[C");
   MAP_KEY_TO_STRING(XK_Left,      terminal.appcursor ? "\033OD" : "\033[D");
-  MAP_KEY_TO_STRING(XK_space,     " ");
 
 #undef MAP_KEY_TO_STRING
-
-  /* Non-breaking space */
-  key_callbacks[KeyInfo (XK_space, ShiftMask)] =
-    [](XKeyEvent *event) { term_strwrite (" "); };
 
   /* Map Ctrl-Left/Right to Home/End */
   key_callbacks[KeyInfo (XK_Left,  ControlMask)] = key_callbacks[XK_Home];
