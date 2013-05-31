@@ -141,6 +141,10 @@ static size_t select_alloc, select_length;
 static unsigned char *clipboard_text = NULL;
 static size_t clipboard_length;
 
+static bool clear;
+static pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
+
 void *memset16(void *s, int w, size_t n)
 {
   uint16_t *o = (uint16_t *) s;
@@ -1634,6 +1638,36 @@ run_command (int fd, const char *command, const char *arg)
 }
 
 static void *
+x11_clear_thread_entry (void *arg)
+{
+  for (;;)
+    {
+      pthread_mutex_lock (&clear_mutex);
+      while (!clear)
+        pthread_cond_wait (&clear_cond, &clear_mutex);
+      clear = false;
+      pthread_mutex_unlock (&clear_mutex);
+
+      XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
+      XFlush(X11_display);
+    }
+
+  return NULL;
+}
+
+static void
+x11_clear (void)
+{
+  if (hidden)
+    return;
+
+  pthread_mutex_lock (&clear_mutex);
+  clear = true;
+  pthread_cond_signal (&clear_cond);
+  pthread_mutex_unlock (&clear_mutex);
+}
+
+static void *
 tty_read_thread_entry (void *arg)
 {
   unsigned char buf[4096];
@@ -1680,18 +1714,14 @@ tty_read_thread_entry (void *arg)
       fill = 0;
       pthread_mutex_unlock (&terminal.bufferLock);
 
-      if (!hidden)
-        {
-          XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
-          XFlush(X11_display);
-        }
+      x11_clear ();
     }
 
   save_session();
 
   done = 1;
 
-  XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
+  x11_clear ();
 
   return NULL;
 }
@@ -2221,7 +2251,7 @@ x11_process_events()
 int
 main (int argc, char** argv)
 {
-  pthread_t tty_read_thread;
+  pthread_t tty_read_thread, x11_clear_thread;
   char *args[16];
   int i, session_fd;
   const char *home;
@@ -2390,6 +2420,9 @@ main (int argc, char** argv)
 
   pthread_create (&tty_read_thread, 0, tty_read_thread_entry, 0);
   pthread_detach (tty_read_thread);
+
+  pthread_create (&x11_clear_thread, 0, x11_clear_thread_entry, 0);
+  pthread_detach (x11_clear_thread);
 
   if (-1 == x11_process_events())
     return EXIT_FAILURE;
