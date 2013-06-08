@@ -1913,7 +1913,10 @@ x11_process_events()
               /* Hack for keyboards with no menu key; remap two consecutive
                * taps of R-Control to Menu */
               if (key_sym == XK_Control_R && prev_key_sym == XK_Control_R)
-                key_sym = XK_Menu;
+                {
+                  key_sym = XK_Menu;
+                  modifier_mask &= ~ControlMask;
+                }
 
               if ((modifier_mask & ShiftMask) && key_sym == XK_Up)
                 {
