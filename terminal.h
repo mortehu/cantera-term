@@ -57,6 +57,7 @@ struct terminal
   int savedx;
   int savedy;
   int appcursor;
+  int hide_cursor;
   int insertmode;
   int alt_charset[2];
   unsigned int ch, nch;

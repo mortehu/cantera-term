@@ -1076,6 +1076,12 @@ void term_process_data(const unsigned char* buf, size_t count)
 
                           break;
 
+                        case 25:
+
+                          terminal.hide_cursor = 0;
+
+                          break;
+
                         case 1049:
 
                           if (terminal.curscreen != 1)
@@ -1098,6 +1104,12 @@ void term_process_data(const unsigned char* buf, size_t count)
                         case 1:
 
                           terminal.appcursor = 0;
+
+                          break;
+
+                        case 25:
+
+                          terminal.hide_cursor = 1;
 
                           break;
 

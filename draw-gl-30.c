@@ -303,6 +303,7 @@ draw_gl_30 (struct terminal *t)
           int xOffset = spaceWidth;
 
           if (t->focused
+              && !t->hide_cursor
               && row == cursory + t->history_scroll
               && col == cursorx)
             {
