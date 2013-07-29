@@ -324,9 +324,10 @@ draw_gl_30 (struct terminal *t)
 
           printable = (line[col] != 0);
 
+          /* `selbegin' might be greater than `selend' if our history window
+           * straddles the end of the history buffer.  */
           if (row * t->size.ws_col + col == selbegin)
             in_selection = 1;
-
           if (row * t->size.ws_col + col == selend)
             in_selection = 0;
 
