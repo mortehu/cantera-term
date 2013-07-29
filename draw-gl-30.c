@@ -299,18 +299,25 @@ draw_gl_30 (struct terminal *t)
       for (col = 0; col < t->size.ws_col; ++col)
         {
           int printable;
-          int attr = attrline[col];
+          unsigned int attr = attrline[col];
           int xOffset = spaceWidth;
+          unsigned int color = palette[attr & 0xF];
+          unsigned int background_color = palette[(attr >> 4) & 7];
 
-          if (t->focused
-              && !t->hide_cursor
+          if (!t->hide_cursor
               && row == cursory + t->history_scroll
               && col == cursorx)
             {
-              attr = REVERSE(attr);
-
-              if (!attr)
-                attr = BG(ATTR_WHITE);
+              if (t->focused)
+                {
+                  color = 0xff000000;
+                  background_color = 0xffffffff;
+                }
+              else
+                {
+                  color = 0xff000000;
+                  background_color = 0xff7f7f7f;
+                }
             }
 
           printable = (line[col] != 0);
@@ -322,9 +329,12 @@ draw_gl_30 (struct terminal *t)
             in_selection = 0;
 
           if (in_selection)
-            attr = REVERSE(attr);
-
-          /* color: (attr >> 4) & 7 */
+            {
+              unsigned int tmp;
+              tmp = color;
+              color = background_color;
+              background_color = tmp;
+            }
 
           if (printable)
             {
@@ -336,22 +346,22 @@ draw_gl_30 (struct terminal *t)
               if (glyph.xOffset > spaceWidth)
                 xOffset = glyph.xOffset;
 
-              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, palette[(attr >> 4) & 7]);
+              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, background_color);
 
               if (attr & ATTR_UNDERLINE)
-                draw_AddSolidQuad (x, y + descent, xOffset, 1, palette[attr & 0x0f]);
+                draw_AddSolidQuad (x, y + descent, xOffset, 1, color);
 
               draw_AddTexturedQuad (x - glyph.x, y - glyph.y,
                                     glyph.width, glyph.height,
                                     u, v,
-                                    palette[attr & 0x0f]);
+                                    color);
             }
           else
             {
-              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, palette[(attr >> 4) & 7]);
+              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, background_color);
 
               if (attr & ATTR_UNDERLINE)
-                draw_AddSolidQuad (x, y + descent, xOffset, 1, palette[attr & 0x0f]);
+                draw_AddSolidQuad (x, y + descent, xOffset, 1, color);
             }
 
           x += xOffset;
