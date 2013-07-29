@@ -4,6 +4,10 @@
 #include "opengl.h"
 #include "font.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define GLYPH_ATLAS_SIZE 512
 
 void
@@ -24,5 +28,9 @@ GLYPH_Get (unsigned int code, struct FONT_Glyph *glyph,
 
 void
 GLYPH_UpdateTexture (void);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* GLYPH_H_ */

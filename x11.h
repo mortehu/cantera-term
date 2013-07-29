@@ -4,6 +4,10 @@
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern Display*     X11_display;
 extern Window       X11_window;
 extern XVisualInfo* X11_visual;
@@ -23,5 +27,9 @@ X11_Setup (void);
 
 void
 X11_handle_configure (void);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* !X11_H_ */
