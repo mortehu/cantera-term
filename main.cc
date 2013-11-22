@@ -2256,6 +2256,8 @@ x11_process_events()
           terminal.focused = 0;
           XClearArea (X11_display, X11_window, 0, 0, 0, 0, True);
 
+          prev_key_sym = 0;
+
           break;
         }
     }
