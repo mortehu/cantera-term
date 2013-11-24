@@ -1,9 +1,10 @@
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include <err.h>
+#include <pthread.h>
 
 #include "font.h"
 #include "glyph.h"
@@ -16,9 +17,14 @@ struct draw_Color {
 };
 
 struct draw_TexturedVertex {
+  draw_TexturedVertex() {}
+
+  draw_TexturedVertex(int x, int y, int u, int v, draw_Color color)
+      : x(x), y(y), u(u), v(v), color(color) {}
+
   int16_t x, y;
   uint16_t u, v;
-  struct draw_Color color;
+  draw_Color color;
 };
 
 struct draw_Shader {
@@ -30,34 +36,7 @@ struct draw_Shader {
 
 static struct draw_Shader shader;
 
-static struct draw_TexturedVertex *texturedVertices;
-static size_t texturedVertexCount, texturedVertexAlloc;
-
-#define ARRAY_GROW_IF(array, count, alloc, increment)                    \
-  do {                                                                   \
-    if (count + increment > alloc) {                                     \
-      void *newArray;                                                    \
-      size_t newAlloc;                                                   \
-                                                                         \
-      newAlloc = alloc * 3 / 2 + 4096 / sizeof(*array);                  \
-                                                                         \
-      if (!(newArray =                                                   \
-                realloc(array, newAlloc * sizeof(*array)))) goto failed; \
-                                                                         \
-      array = newArray;                                                  \
-      alloc = newAlloc;                                                  \
-    }                                                                    \
-  } while (0)
-
-#define ADD_VERTEX(x_, y_, u_, v_, color_)                \
-  do {                                                    \
-    texturedVertices[texturedVertexCount].x = x_;         \
-    texturedVertices[texturedVertexCount].y = y_;         \
-    texturedVertices[texturedVertexCount].u = u_;         \
-    texturedVertices[texturedVertexCount].v = v_;         \
-    texturedVertices[texturedVertexCount].color = color_; \
-    ++texturedVertexCount;                                \
-  } while (0)
+static std::vector<draw_TexturedVertex> texturedVertices;
 
 static void draw_AddSolidQuad(unsigned int x, unsigned int y,
                               unsigned int width, unsigned int height,
@@ -70,16 +49,10 @@ static void draw_AddSolidQuad(unsigned int x, unsigned int y,
   color.g = uint_color >> 8;
   color.b = uint_color;
 
-  ARRAY_GROW_IF(texturedVertices, texturedVertexCount, texturedVertexAlloc, 4);
-
-  ADD_VERTEX(x, y, 0, 0, color);
-  ADD_VERTEX(x, y + height, 0, 0, color);
-  ADD_VERTEX(x + width, y + height, 0, 0, color);
-  ADD_VERTEX(x + width, y, 0, 0, color);
-
-failed:
-
-  ;
+  texturedVertices.emplace_back(x, y, 0, 0, color);
+  texturedVertices.emplace_back(x, y + height, 0, 0, color);
+  texturedVertices.emplace_back(x + width, y + height, 0, 0, color);
+  texturedVertices.emplace_back(x + width, y, 0, 0, color);
 }
 
 static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
@@ -92,16 +65,11 @@ static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
   color.g = uint_color >> 8;
   color.b = uint_color;
 
-  ARRAY_GROW_IF(texturedVertices, texturedVertexCount, texturedVertexAlloc, 4);
-
-  ADD_VERTEX(x, y, u, v, color);
-  ADD_VERTEX(x, y + height, u, v + height, color);
-  ADD_VERTEX(x + width, y + height, u + width, v + height, color);
-  ADD_VERTEX(x + width, y, u + width, v, color);
-
-failed:
-
-  ;
+  texturedVertices.emplace_back(x, y, u, v, color);
+  texturedVertices.emplace_back(x, y + height, u, v + height, color);
+  texturedVertices.emplace_back(x + width, y + height, u + width, v + height,
+                                color);
+  texturedVertices.emplace_back(x + width, y, u + width, v, color);
 }
 
 static void draw_FlushQuads(void) {
@@ -110,16 +78,16 @@ static void draw_FlushQuads(void) {
   glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
   glVertexAttribPointer(shader.color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE,
-                        sizeof(*texturedVertices),
+                        sizeof(texturedVertices[0]),
                         &texturedVertices[0].color.r);
   glVertexAttribPointer(shader.vertex_position_attribute, 2, GL_SHORT, GL_FALSE,
-                        sizeof(*texturedVertices), &texturedVertices[0].x);
+                        sizeof(texturedVertices[0]), &texturedVertices[0].x);
   glVertexAttribPointer(shader.texture_coord_attribute, 2, GL_UNSIGNED_SHORT,
-                        GL_FALSE, sizeof(*texturedVertices),
+                        GL_FALSE, sizeof(texturedVertices[0]),
                         &texturedVertices[0].u);
-  glDrawArrays(GL_QUADS, 0, texturedVertexCount);
+  glDrawArrays(GL_QUADS, 0, texturedVertices.size());
 
-  texturedVertexCount = 0;
+  texturedVertices.clear();
 }
 
 /**
