@@ -11,20 +11,17 @@
 #include "terminal.h"
 #include "x11.h"
 
-struct draw_Color
-{
+struct draw_Color {
   uint8_t r, g, b;
 };
 
-struct draw_TexturedVertex
-{
+struct draw_TexturedVertex {
   int16_t x, y;
   uint16_t u, v;
   struct draw_Color color;
 };
 
-struct draw_Shader
-{
+struct draw_Shader {
   GLuint handle;
   GLuint color_attribute;
   GLuint vertex_position_attribute;
@@ -37,99 +34,90 @@ static struct draw_TexturedVertex *texturedVertices;
 static size_t texturedVertexCount, texturedVertexAlloc;
 
 #define ARRAY_GROW_IF(array, count, alloc, increment)                    \
-  do                                                                     \
-    {                                                                    \
-      if (count + increment > alloc)                                     \
-        {                                                                \
-          void *newArray;                                                \
-          size_t newAlloc;                                               \
+  do {                                                                   \
+    if (count + increment > alloc) {                                     \
+      void *newArray;                                                    \
+      size_t newAlloc;                                                   \
                                                                          \
-          newAlloc = alloc * 3 / 2 + 4096 / sizeof (*array);             \
+      newAlloc = alloc * 3 / 2 + 4096 / sizeof(*array);                  \
                                                                          \
-          if (!(newArray = realloc (array, newAlloc * sizeof (*array)))) \
-            goto failed;                                                 \
+      if (!(newArray =                                                   \
+                realloc(array, newAlloc * sizeof(*array)))) goto failed; \
                                                                          \
-          array = newArray;                                              \
-          alloc = newAlloc;                                              \
-        }                                                                \
+      array = newArray;                                                  \
+      alloc = newAlloc;                                                  \
     }                                                                    \
-  while (0)
+  } while (0)
 
-#define ADD_VERTEX(x_, y_, u_, v_, color_)                               \
-  do                                                                     \
-    {                                                                    \
-      texturedVertices[texturedVertexCount].x = x_;                      \
-      texturedVertices[texturedVertexCount].y = y_;                      \
-      texturedVertices[texturedVertexCount].u = u_;                      \
-      texturedVertices[texturedVertexCount].v = v_;                      \
-      texturedVertices[texturedVertexCount].color = color_;              \
-      ++texturedVertexCount;                                             \
-    }                                                                    \
-  while (0)
+#define ADD_VERTEX(x_, y_, u_, v_, color_)                \
+  do {                                                    \
+    texturedVertices[texturedVertexCount].x = x_;         \
+    texturedVertices[texturedVertexCount].y = y_;         \
+    texturedVertices[texturedVertexCount].u = u_;         \
+    texturedVertices[texturedVertexCount].v = v_;         \
+    texturedVertices[texturedVertexCount].color = color_; \
+    ++texturedVertexCount;                                \
+  } while (0)
 
-static void
-draw_AddSolidQuad (unsigned int x, unsigned int y,
-                   unsigned int width, unsigned int height,
-                   uint32_t uint_color)
-{
+static void draw_AddSolidQuad(unsigned int x, unsigned int y,
+                              unsigned int width, unsigned int height,
+                              uint32_t uint_color) {
   struct draw_Color color;
 
-  if (!(uint_color & 0xffffff))
-    return;
+  if (!(uint_color & 0xffffff)) return;
 
   color.r = uint_color >> 16;
   color.g = uint_color >> 8;
   color.b = uint_color;
 
-  ARRAY_GROW_IF (texturedVertices, texturedVertexCount,
-                 texturedVertexAlloc, 4);
+  ARRAY_GROW_IF(texturedVertices, texturedVertexCount, texturedVertexAlloc, 4);
 
-  ADD_VERTEX (x,         y,          0, 0, color);
-  ADD_VERTEX (x,         y + height, 0, 0, color);
-  ADD_VERTEX (x + width, y + height, 0, 0, color);
-  ADD_VERTEX (x + width, y,          0, 0, color);
+  ADD_VERTEX(x, y, 0, 0, color);
+  ADD_VERTEX(x, y + height, 0, 0, color);
+  ADD_VERTEX(x + width, y + height, 0, 0, color);
+  ADD_VERTEX(x + width, y, 0, 0, color);
 
 failed:
 
   ;
 }
 
-static void
-draw_AddTexturedQuad (unsigned int x, unsigned int y,
-                      unsigned int width, unsigned int height,
-                      unsigned int u, unsigned int v,
-                      uint32_t uint_color)
-{
+static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
+                                 unsigned int width, unsigned int height,
+                                 unsigned int u, unsigned int v,
+                                 uint32_t uint_color) {
   struct draw_Color color;
 
   color.r = uint_color >> 16;
   color.g = uint_color >> 8;
   color.b = uint_color;
 
-  ARRAY_GROW_IF (texturedVertices, texturedVertexCount,
-                 texturedVertexAlloc, 4);
+  ARRAY_GROW_IF(texturedVertices, texturedVertexCount, texturedVertexAlloc, 4);
 
-  ADD_VERTEX (x,         y,          u,         v,          color);
-  ADD_VERTEX (x,         y + height, u,         v + height, color);
-  ADD_VERTEX (x + width, y + height, u + width, v + height, color);
-  ADD_VERTEX (x + width, y,          u + width, v,          color);
+  ADD_VERTEX(x, y, u, v, color);
+  ADD_VERTEX(x, y + height, u, v + height, color);
+  ADD_VERTEX(x + width, y + height, u + width, v + height, color);
+  ADD_VERTEX(x + width, y, u + width, v, color);
 
 failed:
 
   ;
 }
 
-static void
-draw_FlushQuads (void)
-{
-  glBindTexture (GL_TEXTURE_2D, GLYPH_Texture ());
-  glEnable (GL_BLEND);
-  glBlendFunc (GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+static void draw_FlushQuads(void) {
+  glBindTexture(GL_TEXTURE_2D, GLYPH_Texture());
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-  glVertexAttribPointer (shader.color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE, sizeof (*texturedVertices), &texturedVertices[0].color.r);
-  glVertexAttribPointer (shader.vertex_position_attribute, 2, GL_SHORT, GL_FALSE, sizeof (*texturedVertices), &texturedVertices[0].x);
-  glVertexAttribPointer (shader.texture_coord_attribute, 2, GL_UNSIGNED_SHORT, GL_FALSE, sizeof (*texturedVertices), &texturedVertices[0].u);
-  glDrawArrays (GL_QUADS, 0, texturedVertexCount);
+  glVertexAttribPointer(shader.color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE,
+                        sizeof(*texturedVertices),
+                        &texturedVertices[0].color.r);
+  glVertexAttribPointer(shader.vertex_position_attribute, 2, GL_SHORT, GL_FALSE,
+                        sizeof(*texturedVertices), &texturedVertices[0].x);
+  glVertexAttribPointer(shader.texture_coord_attribute, 2, GL_UNSIGNED_SHORT,
+                        GL_FALSE, sizeof(*texturedVertices),
+                        &texturedVertices[0].u);
+  glDrawArrays(GL_QUADS, 0, texturedVertexCount);
 
   texturedVertexCount = 0;
 }
@@ -138,114 +126,112 @@ draw_FlushQuads (void)
  * string: the shader source code
  * type: GL_VERTEX_SHADER or GL_FRAGMENT_SHADER
  */
-static GLuint
-load_shader (const char *error_context, const char *string, GLenum type)
-{
+static GLuint load_shader(const char *error_context, const char *string,
+                          GLenum type) {
   GLuint result;
   GLint string_length, compile_status;
 
-  result = glCreateShader (type);
+  result = glCreateShader(type);
 
-  string_length = strlen (string);
-  glShaderSource (result, 1, &string, &string_length);
-  glCompileShader (result);
+  string_length = strlen(string);
+  glShaderSource(result, 1, &string, &string_length);
+  glCompileShader(result);
 
-  glGetShaderiv (result, GL_COMPILE_STATUS, &compile_status);
+  glGetShaderiv(result, GL_COMPILE_STATUS, &compile_status);
 
-  if (compile_status != GL_TRUE)
-    {
-      GLchar log[1024];
-      GLsizei logLength;
-      glGetShaderInfoLog (result, sizeof (log), &logLength, log);
+  if (compile_status != GL_TRUE) {
+    GLchar log[1024];
+    GLsizei logLength;
+    glGetShaderInfoLog(result, sizeof(log), &logLength, log);
 
-      errx (EXIT_FAILURE, "%s: glCompileShader failed: %.*s",
-            error_context, (int) logLength, log);
-    }
+    errx(EXIT_FAILURE, "%s: glCompileShader failed: %.*s", error_context,
+         (int) logLength, log);
+  }
 
   return result;
 }
 
-static struct draw_Shader
-load_program (const char *vertex_shader_source,
-              const char *fragment_shader_source)
-{
+static struct draw_Shader load_program(const char *vertex_shader_source,
+                                       const char *fragment_shader_source) {
   GLuint vertex_shader, fragment_shader;
   struct draw_Shader result;
   GLint link_status;
 
-  vertex_shader = load_shader ("vertex", vertex_shader_source, GL_VERTEX_SHADER);
-  fragment_shader = load_shader ("fragment", fragment_shader_source, GL_FRAGMENT_SHADER);
+  vertex_shader = load_shader("vertex", vertex_shader_source, GL_VERTEX_SHADER);
+  fragment_shader =
+      load_shader("fragment", fragment_shader_source, GL_FRAGMENT_SHADER);
 
-  result.handle = glCreateProgram ();
-  glAttachShader (result.handle, vertex_shader);
-  glAttachShader (result.handle, fragment_shader);
-  glLinkProgram (result.handle);
+  result.handle = glCreateProgram();
+  glAttachShader(result.handle, vertex_shader);
+  glAttachShader(result.handle, fragment_shader);
+  glLinkProgram(result.handle);
 
-  glGetProgramiv (result.handle, GL_LINK_STATUS, &link_status);
+  glGetProgramiv(result.handle, GL_LINK_STATUS, &link_status);
 
-  if (link_status != GL_TRUE)
-    {
-      GLchar log[1024];
-      GLsizei logLength;
-      glGetProgramInfoLog (result.handle, sizeof (log), &logLength, log);
+  if (link_status != GL_TRUE) {
+    GLchar log[1024];
+    GLsizei logLength;
+    glGetProgramInfoLog(result.handle, sizeof(log), &logLength, log);
 
-      errx (EXIT_FAILURE, "glLinkProgram failed: %.*s",
-            (int) logLength, log);
-    }
+    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int) logLength, log);
+  }
 
-  glUseProgram (result.handle);
+  glUseProgram(result.handle);
 
-  result.vertex_position_attribute = glGetAttribLocation (result.handle, "attr_VertexPosition");
-  result.texture_coord_attribute = glGetAttribLocation (result.handle, "attr_TextureCoord");
-  result.color_attribute = glGetAttribLocation (result.handle, "attr_Color");
+  result.vertex_position_attribute =
+      glGetAttribLocation(result.handle, "attr_VertexPosition");
+  result.texture_coord_attribute =
+      glGetAttribLocation(result.handle, "attr_TextureCoord");
+  result.color_attribute = glGetAttribLocation(result.handle, "attr_Color");
 
   return result;
 }
 
-void
-init_gl_30 (void)
-{
+void init_gl_30(void) {
   static const char *vertex_shader_source =
-    "attribute vec2 attr_VertexPosition;\n"
-    "attribute vec2 attr_TextureCoord;\n"
-    "attribute vec3 attr_Color;\n"
-    "uniform vec2 uniform_RcpWindowSize;\n"
-    "varying vec2 var_TextureCoord;\n"
-    "varying vec3 var_Color;\n"
-    "void main (void)\n"
-    "{\n"
-    "  gl_Position = vec4(-1.0 + (attr_VertexPosition.x * uniform_RcpWindowSize.x) * 2.0,\n"
-    "                      1.0 - (attr_VertexPosition.y * uniform_RcpWindowSize.y) * 2.0, 0.0, 1.0);\n"
-    "  var_TextureCoord = attr_TextureCoord;\n"
-    "  var_Color = attr_Color;\n"
-    "}";
+      "attribute vec2 attr_VertexPosition;\n"
+      "attribute vec2 attr_TextureCoord;\n"
+      "attribute vec3 attr_Color;\n"
+      "uniform vec2 uniform_RcpWindowSize;\n"
+      "varying vec2 var_TextureCoord;\n"
+      "varying vec3 var_Color;\n"
+      "void main (void)\n"
+      "{\n"
+      "  gl_Position = vec4(-1.0 + (attr_VertexPosition.x * "
+      "uniform_RcpWindowSize.x) * 2.0,\n"
+      "                      1.0 - (attr_VertexPosition.y * "
+      "uniform_RcpWindowSize.y) * 2.0, 0.0, 1.0);\n"
+      "  var_TextureCoord = attr_TextureCoord;\n"
+      "  var_Color = attr_Color;\n"
+      "}";
 
   static const char *fragment_shader_source =
-    "varying vec2 var_TextureCoord;\n"
-    "varying vec3 var_Color;\n"
-    "uniform sampler2D uniform_Sampler;\n"
-    "uniform float uniform_TextureScale;\n"
-    "void main (void)\n"
-    "{\n"
-    "  gl_FragColor = vec4(var_Color, 1.0) * texture2D(uniform_Sampler, vec2 (var_TextureCoord.s * uniform_TextureScale, var_TextureCoord.t * uniform_TextureScale));\n"
-    "}";
+      "varying vec2 var_TextureCoord;\n"
+      "varying vec3 var_Color;\n"
+      "uniform sampler2D uniform_Sampler;\n"
+      "uniform float uniform_TextureScale;\n"
+      "void main (void)\n"
+      "{\n"
+      "  gl_FragColor = vec4(var_Color, 1.0) * texture2D(uniform_Sampler, vec2 "
+      "(var_TextureCoord.s * uniform_TextureScale, var_TextureCoord.t * "
+      "uniform_TextureScale));\n"
+      "}";
 
-  glewInit ();
+  glewInit();
 
-  shader = load_program (vertex_shader_source, fragment_shader_source);
+  shader = load_program(vertex_shader_source, fragment_shader_source);
 
-  glUniform1i (glGetUniformLocation (shader.handle, "uniform_Sampler"), 0);
-  glUniform1f (glGetUniformLocation (shader.handle, "uniform_TextureScale"), 1.0f / GLYPH_ATLAS_SIZE);
-  glEnableVertexAttribArray (shader.vertex_position_attribute);
-  glEnableVertexAttribArray (shader.texture_coord_attribute);
-  glEnableVertexAttribArray (shader.color_attribute);
+  glUniform1i(glGetUniformLocation(shader.handle, "uniform_Sampler"), 0);
+  glUniform1f(glGetUniformLocation(shader.handle, "uniform_TextureScale"),
+              1.0f / GLYPH_ATLAS_SIZE);
+  glEnableVertexAttribArray(shader.vertex_position_attribute);
+  glEnableVertexAttribArray(shader.texture_coord_attribute);
+  glEnableVertexAttribArray(shader.color_attribute);
 
-  glEnable (GL_TEXTURE_2D);
+  glEnable(GL_TEXTURE_2D);
 }
 
-void
-draw_gl_30 (struct terminal *t)
-{
+void draw_gl_30(struct terminal *t) {
   unsigned int ascent, descent, spaceWidth, lineHeight;
   int y, row, selbegin, selend;
   unsigned int size;
@@ -253,23 +239,22 @@ draw_gl_30 (struct terminal *t)
 
   size = t->history_size * t->size.ws_col;
 
-  const wchar_t* curchars;
-  const uint16_t* curattrs;
+  const wchar_t *curchars;
+  const uint16_t *curattrs;
   int cursorx, cursory;
   int curoffset;
 
-  glUniform2f (glGetUniformLocation (shader.handle, "uniform_RcpWindowSize"),
-               1.0f / X11_window_width,
-               1.0f / X11_window_height);
+  glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
+              1.0f / X11_window_width, 1.0f / X11_window_height);
 
-  ascent = FONT_Ascent (font);
-  descent = FONT_Descent (font);
-  lineHeight = FONT_LineHeight (font);
-  spaceWidth = FONT_SpaceWidth (font);
+  ascent = FONT_Ascent(font);
+  descent = FONT_Descent(font);
+  lineHeight = FONT_LineHeight(font);
+  spaceWidth = FONT_SpaceWidth(font);
 
   y = ascent;
 
-  pthread_mutex_lock (&t->bufferLock);
+  pthread_mutex_lock(&t->bufferLock);
 
   curchars = t->curchars;
   curattrs = t->curattrs;
@@ -277,109 +262,91 @@ draw_gl_30 (struct terminal *t)
   cursory = t->cursory;
   curoffset = *t->curoffset;
 
-  if (t->select_begin < t->select_end)
-    {
-      selbegin = t->select_begin;
-      selend = t->select_end;
-    }
-  else
-    {
-      selbegin = t->select_end;
-      selend = t->select_begin;
-    }
+  if (t->select_begin < t->select_end) {
+    selbegin = t->select_begin;
+    selend = t->select_end;
+  } else {
+    selbegin = t->select_end;
+    selend = t->select_begin;
+  }
 
   selbegin = (selbegin + t->history_scroll * t->size.ws_col) % size;
   selend = (selend + t->history_scroll * t->size.ws_col) % size;
 
-  for (row = 0; row < t->size.ws_row; ++row)
-    {
-      size_t pos = ((row + t->history_size - t->history_scroll) * t->size.ws_col + curoffset) % size;
-      const wchar_t* line = &curchars[pos];
-      const uint16_t* attrline = &curattrs[pos];
-      int x = 0, col;
+  for (row = 0; row < t->size.ws_row; ++row) {
+    size_t pos = ((row + t->history_size - t->history_scroll) * t->size.ws_col +
+                  curoffset) % size;
+    const wchar_t *line = &curchars[pos];
+    const uint16_t *attrline = &curattrs[pos];
+    int x = 0, col;
 
-      for (col = 0; col < t->size.ws_col; ++col)
-        {
-          int printable;
-          unsigned int attr = attrline[col];
-          int xOffset = spaceWidth;
-          unsigned int color = palette[attr & 0xF];
-          unsigned int background_color = palette[(attr >> 4) & 7];
+    for (col = 0; col < t->size.ws_col; ++col) {
+      int printable;
+      unsigned int attr = attrline[col];
+      int xOffset = spaceWidth;
+      unsigned int color = palette[attr & 0xF];
+      unsigned int background_color = palette[(attr >> 4) & 7];
 
-          if (!t->hide_cursor
-              && row == cursory + t->history_scroll
-              && col == cursorx)
-            {
-              if (t->focused)
-                {
-                  color = 0xff000000;
-                  background_color = 0xffffffff;
-                }
-              else
-                {
-                  color = 0xff000000;
-                  background_color = 0xff7f7f7f;
-                }
-            }
-
-          printable = (line[col] != 0);
-
-          /* `selbegin' might be greater than `selend' if our history window
-           * straddles the end of the history buffer.  */
-          if (row * t->size.ws_col + col == selbegin)
-            in_selection = 1;
-          if (row * t->size.ws_col + col == selend)
-            in_selection = 0;
-
-          if (in_selection)
-            {
-              unsigned int tmp;
-              tmp = color;
-              color = background_color;
-              background_color = tmp;
-            }
-
-          if (printable)
-            {
-              struct FONT_Glyph glyph;
-              uint16_t u, v;
-
-              GLYPH_Get (line[col], &glyph, &u, &v);
-
-              if (glyph.xOffset > spaceWidth)
-                xOffset = glyph.xOffset;
-
-              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, background_color);
-
-              if (attr & ATTR_UNDERLINE)
-                draw_AddSolidQuad (x, y + descent, xOffset, 1, color);
-
-              draw_AddTexturedQuad (x - glyph.x, y - glyph.y,
-                                    glyph.width, glyph.height,
-                                    u, v,
-                                    color);
-            }
-          else
-            {
-              draw_AddSolidQuad (x, y - ascent, xOffset, lineHeight, background_color);
-
-              if (attr & ATTR_UNDERLINE)
-                draw_AddSolidQuad (x, y + descent, xOffset, 1, color);
-            }
-
-          x += xOffset;
+      if (!t->hide_cursor && row == cursory + t->history_scroll &&
+          col == cursorx) {
+        if (t->focused) {
+          color = 0xff000000;
+          background_color = 0xffffffff;
+        } else {
+          color = 0xff000000;
+          background_color = 0xff7f7f7f;
         }
+      }
 
-      y += lineHeight;
+      printable = (line[col] != 0);
+
+      /* `selbegin' might be greater than `selend' if our history window
+       * straddles the end of the history buffer.  */
+      if (row * t->size.ws_col + col == selbegin) in_selection = 1;
+      if (row * t->size.ws_col + col == selend) in_selection = 0;
+
+      if (in_selection) {
+        unsigned int tmp;
+        tmp = color;
+        color = background_color;
+        background_color = tmp;
+      }
+
+      if (printable) {
+        struct FONT_Glyph glyph;
+        uint16_t u, v;
+
+        GLYPH_Get(line[col], &glyph, &u, &v);
+
+        if (glyph.xOffset > spaceWidth) xOffset = glyph.xOffset;
+
+        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
+
+        if (attr & ATTR_UNDERLINE)
+          draw_AddSolidQuad(x, y + descent, xOffset, 1, color);
+
+        draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width,
+                             glyph.height, u, v, color);
+      } else {
+        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
+
+        if (attr & ATTR_UNDERLINE)
+          draw_AddSolidQuad(x, y + descent, xOffset, 1, color);
+      }
+
+      x += xOffset;
     }
 
-  pthread_mutex_unlock (&t->bufferLock);
+    y += lineHeight;
+  }
 
-  GLYPH_UpdateTexture ();
+  pthread_mutex_unlock(&t->bufferLock);
 
-  draw_FlushQuads ();
+  GLYPH_UpdateTexture();
 
-  glXSwapBuffers (X11_display, X11_window);
+  draw_FlushQuads();
 
-  glClear (GL_COLOR_BUFFER_BIT);
+  glXSwapBuffers(X11_display, X11_window);
+
+  glClear(GL_COLOR_BUFFER_BIT);
 }
