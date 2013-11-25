@@ -1623,19 +1623,22 @@ static void *tty_read_thread_entry(void *arg) {
       break;
     }
 
+    if (pfd.revents & POLLRDHUP) break;
+
+    // Read until EAGAIN/EWOULDBLOCK.
     while (0 < (result = read(terminal.fd, buf + fill, sizeof(buf) - fill))) {
       fill += result;
-
       if (fill == sizeof(buf)) break;
     }
 
-    if (result == -1 && errno != EAGAIN) break;
+    if (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK) break;
 
     if (0 != pthread_mutex_trylock(&terminal.bufferLock)) {
-      if (fill < sizeof(buf)) {
-        if (0 < poll(&pfd, 1, 1)) continue;
-      }
+      // We couldn't get the lock straight away.  If the buffer is not full,
+      // and we can get more data within 1 ms, go ahead and read that.
+      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1)) continue;
 
+      // No new data available, go ahead and paint.
       pthread_mutex_lock(&terminal.bufferLock);
     }
 

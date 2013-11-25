@@ -1,3 +1,4 @@
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,36 +201,30 @@ void init_gl_30(void) {
 }
 
 void draw_gl_30(struct terminal *t) {
-  unsigned int ascent, descent, spaceWidth, lineHeight;
-  int y, row, selbegin, selend;
-  unsigned int size;
-  int in_selection = 0;
-
-  size = t->history_size * t->size.ws_col;
-
-  const wchar_t *curchars;
-  const uint16_t *curattrs;
-  int cursorx, cursory;
-  int curoffset;
-
-  glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
-              1.0f / X11_window_width, 1.0f / X11_window_height);
-
-  ascent = FONT_Ascent(font);
-  descent = FONT_Descent(font);
-  lineHeight = FONT_LineHeight(font);
-  spaceWidth = FONT_SpaceWidth(font);
-
-  y = ascent;
-
+  // Step 1: Clone the data we need for drawing under a mutex lock.
   pthread_mutex_lock(&t->bufferLock);
 
-  curchars = t->curchars;
-  curattrs = t->curattrs;
-  cursorx = t->cursorx;
-  cursory = t->cursory;
-  curoffset = *t->curoffset;
+  size_t width = t->size.ws_col;
+  size_t height = t->size.ws_row;
+  size_t history_size = t->history_size * width;
 
+  std::unique_ptr<wchar_t[]> curchars(new wchar_t[width * height]);
+  std::unique_ptr<uint16_t[]> curattrs(new uint16_t[width * height]);
+
+  for (size_t row = 0, offset = (t->history_size - t->history_scroll) * width +
+                                *t->curoffset;
+       row < height; ++row, offset += width) {
+    offset %= history_size;
+    std::copy(&t->curchars[offset], &t->curchars[offset + width],
+              &curchars[row * width]);
+    std::copy(&t->curattrs[offset], &t->curattrs[offset + width],
+              &curattrs[row * width]);
+  }
+
+  size_t cursorx = t->cursorx;
+  size_t cursory = t->cursory + t->history_scroll;
+
+  size_t selbegin, selend;
   if (t->select_begin < t->select_end) {
     selbegin = t->select_begin;
     selend = t->select_end;
@@ -238,26 +233,42 @@ void draw_gl_30(struct terminal *t) {
     selend = t->select_begin;
   }
 
-  selbegin = (selbegin + t->history_scroll * t->size.ws_col) % size;
-  selend = (selend + t->history_scroll * t->size.ws_col) % size;
+  selbegin = (selbegin + t->history_scroll * width) % history_size;
+  selend = (selend + t->history_scroll * width) % history_size;
 
-  for (row = 0; row < t->size.ws_row; ++row) {
-    size_t pos = ((row + t->history_size - t->history_scroll) * t->size.ws_col +
-                  curoffset) % size;
-    const wchar_t *line = &curchars[pos];
-    const uint16_t *attrline = &curattrs[pos];
-    int x = 0, col;
+  bool hide_cursor = t->hide_cursor;
+  bool focused = t->focused;
 
-    for (col = 0; col < t->size.ws_col; ++col) {
+  pthread_mutex_unlock(&t->bufferLock);
+
+  // Step 2: Submit the GL commands.
+  glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
+              1.0f / X11_window_width, 1.0f / X11_window_height);
+
+  unsigned int ascent = FONT_Ascent(font);
+  unsigned int descent = FONT_Descent(font);
+  unsigned int lineHeight = FONT_LineHeight(font);
+  unsigned int spaceWidth = FONT_SpaceWidth(font);
+
+  // TODO(mortehu): Handle case when selection starts above top of screen.
+  bool in_selection = false;
+
+  int y = ascent;
+
+  for (size_t row = 0; row < height; ++row) {
+    const wchar_t *line = &curchars[row * width];
+    const uint16_t *attrline = &curattrs[row * width];
+    int x = 0;
+
+    for (size_t col = 0; col < width; ++col) {
       int printable;
       unsigned int attr = attrline[col];
       int xOffset = spaceWidth;
       unsigned int color = palette[attr & 0xF];
       unsigned int background_color = palette[(attr >> 4) & 7];
 
-      if (!t->hide_cursor && row == cursory + t->history_scroll &&
-          col == cursorx) {
-        if (t->focused) {
+      if (!hide_cursor && row == cursory && col == cursorx) {
+        if (focused) {
           color = 0xff000000;
           background_color = 0xffffffff;
         } else {
@@ -270,8 +281,8 @@ void draw_gl_30(struct terminal *t) {
 
       /* `selbegin' might be greater than `selend' if our history window
        * straddles the end of the history buffer.  */
-      if (row * t->size.ws_col + col == selbegin) in_selection = 1;
-      if (row * t->size.ws_col + col == selend) in_selection = 0;
+      if (row * width + col == selbegin) in_selection = true;
+      if (row * width + col == selend) in_selection = false;
 
       if (in_selection) {
         unsigned int tmp;
@@ -286,7 +297,9 @@ void draw_gl_30(struct terminal *t) {
 
         GLYPH_Get(line[col], &glyph, &u, &v);
 
-        if (glyph.xOffset > spaceWidth) xOffset = glyph.xOffset;
+        if (glyph.xOffset > 0 &&
+            static_cast<unsigned int>(glyph.xOffset) > spaceWidth)
+          xOffset = glyph.xOffset;
 
         draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
 
@@ -307,8 +320,6 @@ void draw_gl_30(struct terminal *t) {
 
     y += lineHeight;
   }
-
-  pthread_mutex_unlock(&t->bufferLock);
 
   GLYPH_UpdateTexture();
 
