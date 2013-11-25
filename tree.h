@@ -1,30 +1,31 @@
 #ifndef TREE_H_
 #define TREE_H_ 1
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <memory>
+#include <string>
+#include <vector>
 
-struct tree;
+struct tree {
+  struct node {
+    std::string path, value;
+  };
 
-struct tree* tree_create(const char* name);
+  std::string name;
+  std::vector<node> nodes;
+};
 
-void tree_destroy(struct tree* t);
+tree* tree_create(const char* name);
 
-void tree_create_node(struct tree* t, const char* path, const char* value);
+void tree_create_node(tree* t, const char* path, const char* value);
 
-long long int tree_get_integer_default(const struct tree* t, const char* path,
+long long int tree_get_integer_default(const tree* t, const char* path,
                                        long long int def);
 
-const char* tree_get_string_default(const struct tree* t, const char* path,
+const char* tree_get_string_default(const tree* t, const char* path,
                                     const char* def);
 
-size_t tree_get_strings(const struct tree* t, const char* path, char*** result);
+size_t tree_get_strings(const tree* t, const char* path, char*** result);
 
-struct tree* tree_load_cfg(const char* path);
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
+tree* tree_load_cfg(const char* path);
 
 #endif /* !TREE_H_ */

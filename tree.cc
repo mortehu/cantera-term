@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,19 +18,8 @@
 
 extern int home_fd;
 
-struct tree_node {
-  std::string path, value;
-};
-
-struct tree {
-  std::string name;
-  std::vector<tree_node> nodes;
-};
-
-void tree_destroy(struct tree* t) { delete t; }
-
-void tree_create_node(struct tree* t, const char* path, const char* value) {
-  tree_node new_node;
+void tree_create_node(tree* t, const char* path, const char* value) {
+  tree::node new_node;
 
   new_node.path = path;
   new_node.value = value;
@@ -37,7 +27,7 @@ void tree_create_node(struct tree* t, const char* path, const char* value) {
   t->nodes.push_back(new_node);
 }
 
-long long int tree_get_integer_default(const struct tree* t, const char* path,
+long long int tree_get_integer_default(const tree* t, const char* path,
                                        long long int def) {
   char* tmp;
   long long int result;
@@ -61,7 +51,7 @@ long long int tree_get_integer_default(const struct tree* t, const char* path,
   return def;
 }
 
-const char* tree_get_string_default(const struct tree* t, const char* path,
+const char* tree_get_string_default(const tree* t, const char* path,
                                     const char* def) {
   size_t i;
 
@@ -94,9 +84,7 @@ static void read_all(int fd, void* buf, size_t total, const char* path) {
   }
 }
 
-struct tree* tree_load_cfg(const char* path) {
-  struct tree* result;
-  char* data;
+tree* tree_load_cfg(const char* path) {
   off_t size;
   int fd;
 
@@ -110,11 +98,11 @@ struct tree* tree_load_cfg(const char* path) {
   char* c;
   int lineno = 1;
 
-  result = new tree;
+  std::unique_ptr<tree> result(new tree);
   result->name = path;
 
   if (-1 == (fd = openat(home_fd, path, O_RDONLY))) {
-    if (errno == ENOENT) return result;
+    if (errno == ENOENT) return result.release();
 
     err(EX_NOINPUT, "%s: open failed", path);
   }
@@ -125,14 +113,14 @@ struct tree* tree_load_cfg(const char* path) {
   if (-1 == lseek(fd, 0, SEEK_SET))
     err(EX_OSERR, "%s: failed to seek to start of file", path);
 
-  data = new char[size + 1];
+  std::unique_ptr<char[]> data(new char[size + 1]);
 
-  read_all(fd, data, size, path);
+  read_all(fd, &data[0], size, path);
   data[size] = 0;
 
   close(fd);
 
-  c = data;
+  c = &data[0];
 
   while (*c) {
     while (isspace(*c)) {
@@ -268,7 +256,7 @@ struct tree* tree_load_cfg(const char* path) {
 
       symbol[symbol_len] = 0;
 
-      tree_create_node(result, symbol, value);
+      tree_create_node(result.get(), symbol, value);
 
       if (section_stackp)
         symbol_len = section_stack[section_stackp - 1];
@@ -279,7 +267,5 @@ struct tree* tree_load_cfg(const char* path) {
     }
   }
 
-  delete[] data;
-
-  return result;
+  return result.release();
 }

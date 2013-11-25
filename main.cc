@@ -29,6 +29,7 @@
 #include <utmp.h>
 #include <wchar.h>
 
+#include <memory>
 #include <unordered_map>
 
 #include <X11/Xatom.h>
@@ -55,7 +56,7 @@ static struct option long_options[] = {
   { "help", no_argument, &print_help, 1 }, { 0, 0, 0, 0 }
 };
 
-struct tree *config = 0;
+std::unique_ptr<tree> config;
 static int hidden;
 
 unsigned int scroll_extra;
@@ -239,32 +240,27 @@ static void normalize_offset() {
 
   for (i = 0; i < 2; ++i) {
     int offset = terminal.offset[i];
-    wchar_t *tmpchars;
-    uint16_t *tmpattrs;
 
     assert(offset >= 0);
     assert(offset < size);
 
-    tmpchars = new wchar_t[offset];
-    tmpattrs = new uint16_t[offset];
+    std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[offset]);
+    std::unique_ptr<uint16_t[]> tmpattrs(new uint16_t[offset]);
 
-    memcpy(tmpchars, terminal.chars[i], sizeof(*tmpchars) * offset);
-    memcpy(tmpattrs, terminal.attr[i], sizeof(*tmpattrs) * offset);
+    memcpy(&tmpchars[0], terminal.chars[i], sizeof(tmpchars[0]) * offset);
+    memcpy(&tmpattrs[0], terminal.attr[i], sizeof(tmpattrs[0]) * offset);
 
     memmove(terminal.chars[i], terminal.chars[i] + offset,
-            sizeof(*tmpchars) * (size - offset));
+            sizeof(tmpchars[0]) * (size - offset));
     memmove(terminal.attr[i], terminal.attr[i] + offset,
-            sizeof(*tmpattrs) * (size - offset));
+            sizeof(tmpattrs[0]) * (size - offset));
 
-    memmove(terminal.chars[i] + (size - offset), tmpchars,
-            sizeof(*tmpchars) * offset);
-    memmove(terminal.attr[i] + (size - offset), tmpattrs,
-            sizeof(*tmpattrs) * offset);
+    memmove(terminal.chars[i] + (size - offset), &tmpchars[0],
+            sizeof(tmpchars[0]) * offset);
+    memmove(terminal.attr[i] + (size - offset), &tmpattrs[0],
+            sizeof(tmpattrs[0]) * offset);
 
     terminal.offset[i] = 0;
-
-    delete[] tmpattrs;
-    delete[] tmpchars;
   }
 }
 
@@ -2166,10 +2162,10 @@ int main(int argc, char **argv) {
   mkdirat(home_fd, ".cantera", 0777);
   mkdirat(home_fd, ".cantera/commands", 0777);
 
-  config = tree_load_cfg(".cantera/config");
+  config.reset(tree_load_cfg(".cantera/config"));
 
   palette_str = strdup(tree_get_string_default(
-      config, "terminal.palette",
+      config.get(), "terminal.palette",
       "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff "
       "54ff54 54ffff ff5454 ff54ff ffff54 ffffff"));
 
@@ -2179,10 +2175,10 @@ int main(int argc, char **argv) {
   }
 
   scroll_extra =
-      tree_get_integer_default(config, "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config, "terminal.font", "Andale Mono");
-  font_size = tree_get_integer_default(config, "terminal.font-size", 12);
-  font_weight = tree_get_integer_default(config, "terminal.font-weight", 200);
+      tree_get_integer_default(config.get(), "terminal.history-size", 1000);
+  font_name = tree_get_string_default(config.get(), "terminal.font", "Andale Mono");
+  font_size = tree_get_integer_default(config.get(), "terminal.font-size", 12);
+  font_weight = tree_get_integer_default(config.get(), "terminal.font-weight", 200);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
