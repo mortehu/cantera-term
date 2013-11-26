@@ -47,6 +47,7 @@ class Terminal {
   void InsertChars(size_t count);
   void AddChar(int ch);
   void NormalizeHistoryBuffer();
+  void ClearLine(size_t line);
   void Scroll(bool fromcursor);
   void ReverseScroll(bool fromcursor);
   bool FindRange(RangeType range_type, int* begin, int* end) const;
@@ -66,8 +67,8 @@ class Terminal {
   uint16_t* attr[2];
   wchar_t* curchars;
   uint16_t* curattrs;
-  size_t offset[2];
-  size_t* curoffset;
+  size_t scroll_line[2];
+  size_t* cur_scroll_line;
   int curscreen;
   int curattr;
   int reverse;

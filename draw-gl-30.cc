@@ -211,8 +211,8 @@ void draw_gl_30(Terminal *t) {
   std::unique_ptr<wchar_t[]> curchars(new wchar_t[width * height]);
   std::unique_ptr<uint16_t[]> curattrs(new uint16_t[width * height]);
 
-  for (size_t row = 0, offset = (t->history_size - t->history_scroll) * width +
-                                *t->curoffset;
+  for (size_t row = 0, offset = (t->history_size - t->history_scroll +
+                                 *t->cur_scroll_line) * width;
        row < height; ++row, offset += width) {
     offset %= history_size;
     std::copy(&t->curchars[offset], &t->curchars[offset + width],
