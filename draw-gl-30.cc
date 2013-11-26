@@ -200,7 +200,7 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(struct terminal *t) {
+void draw_gl_30(Terminal *t) {
   // Step 1: Clone the data we need for drawing under a mutex lock.
   pthread_mutex_lock(&t->bufferLock);
 

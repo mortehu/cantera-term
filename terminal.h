@@ -4,6 +4,8 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#include <X11/X.h>
+
 #include "font.h"
 
 #define ATTR_BLINK 0x0008
@@ -27,9 +29,35 @@
 #define REVERSE(color) \
   ((((color) & 0x70) >> 4) | (((color) & 0x07) << 4) | ((color) & 0x88))
 
-struct terminal {
-  pid_t pid;
-  int fd;
+class Terminal {
+ public:
+  enum RangeType {
+    kRangeWordOrURL,
+    kRangeParenthesis,
+  };
+
+  Terminal();
+
+  void Init(char* const* args, unsigned int width, unsigned int height);
+  void Resize(unsigned int width, unsigned int height);
+
+  void ProcessData(const unsigned char* buf, size_t count);
+
+  void SetScreen(int screen);
+  void InsertChars(size_t count);
+  void AddChar(int ch);
+  void NormalizeHistoryBuffer();
+  void Scroll(bool fromcursor);
+  void ReverseScroll(bool fromcursor);
+  bool FindRange(RangeType range_type, int* begin, int* end) const;
+  void ClearSelection();
+  void UpdateSelection(Time time);
+
+  void SaveSession();
+
+  void Write(const char *data, size_t len);
+  void WriteString(const char *string) { Write(string, strlen(string)); }
+  void WaitForDeadChildren(void);
 
   pthread_mutex_t bufferLock;
 
@@ -38,8 +66,8 @@ struct terminal {
   uint16_t* attr[2];
   wchar_t* curchars;
   uint16_t* curattrs;
-  int offset[2];
-  int* curoffset;
+  size_t offset[2];
+  size_t* curoffset;
   int curscreen;
   int curattr;
   int reverse;
@@ -54,13 +82,9 @@ struct terminal {
   int cursory;
   int escape;
   int param[8];
-  int savedx;
-  int savedy;
   int appcursor;
   int hide_cursor;
   int insertmode;
-  int alt_charset[2];
-  unsigned int ch, nch;
 
   int select_begin;
   int select_end;
@@ -68,10 +92,21 @@ struct terminal {
   int focused;
 
   unsigned int history_scroll;
+
+  int fd;
+
+ private:
+  pid_t pid_;
+
+  bool use_alt_charset_[2];
+  unsigned int ch_, nch_;
+
+  int savedx_, savedy_;
 };
 
-extern struct FONT_Data* font;
+extern FONT_Data* font;
 extern unsigned int palette[16];
+extern int home_fd;
 
 void term_clear_selection(void);
 

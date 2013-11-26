@@ -29,6 +29,7 @@
 #include <utmp.h>
 #include <wchar.h>
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 
@@ -46,47 +47,31 @@
 #include "tree.h"
 #include "x11.h"
 
-#define PARTIAL_REPAINT 1
+extern char **environ;
 
-static int print_version;
-static int print_help;
+FONT_Data *font;
+unsigned int palette[16];
+int home_fd;
 
-static struct option long_options[] = {
-  { "version", no_argument, &print_version, 1 },
-  { "help", no_argument, &print_help, 1 }, { 0, 0, 0, 0 }
-};
+namespace {
+
+int print_version;
+int print_help;
+
+struct option long_options[] = { { "version", no_argument, &print_version, 1 },
+                                 { "help", no_argument, &print_help, 1 },
+                                 { 0, 0, 0, 0 } };
 
 std::unique_ptr<tree> config;
-static int hidden;
+bool hidden;
 
 unsigned int scroll_extra;
 
 const char *font_name;
 unsigned int font_size, font_weight;
-struct FONT_Data *font;
-int home_fd;
 
-extern char **environ;
-
-unsigned int palette[16];
-
-/* Alternate characters, from 0x41 to 0x7E, inclusive */
-static unsigned short alt_charset[62] = {
-  0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a,
-  0x2603,                       // 41-47 hi mr. snowman!
-  0, 0, 0, 0, 0, 0, 0, 0,       // 48-4f
-  0, 0, 0, 0, 0, 0, 0, 0,       // 50-57
-  0, 0, 0, 0, 0, 0, 0, 0x0020,  // 58-5f
-  0x25c6, 0x2592, 0x2409, 0x240c, 0x240d, 0x240a, 0x00b0, 0x00b1,  // 60-67
-  0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514, 0x253c, 0x23ba,  // 68-6f
-  0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534, 0x252c,  // 70-77
-  0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,          // 78-7e
-};
-
-static int done;
-static const char *session_path;
-
-static void normalize_offset();
+int done;
+const char *session_path;
 
 const struct {
   uint16_t index;
@@ -121,21 +106,19 @@ const struct {
   { 49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT }
 };
 
-struct terminal terminal;
-int screenidx;
-int cols;
-int rows;
-struct timeval lastpaint = { 0, 0 };
+Terminal terminal;
 
-static unsigned char *select_text = NULL;
-static size_t select_alloc, select_length;
+unsigned char *select_text = NULL;
+size_t select_alloc, select_length;
 
-static unsigned char *clipboard_text = NULL;
-static size_t clipboard_length;
+unsigned char *clipboard_text = NULL;
+size_t clipboard_length;
 
-static bool clear;
-static pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
+bool clear;
+pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
+
+}
 
 void *memset16(void *s, int w, size_t n) {
   uint16_t *o = (uint16_t *)s;
@@ -150,44 +133,6 @@ void *memset16(void *s, int w, size_t n) {
   return s;
 }
 
-static void setscreen(int screen) {
-  terminal.storedcursorx[terminal.curscreen] = terminal.cursorx;
-  terminal.storedcursory[terminal.curscreen] = terminal.cursory;
-
-  terminal.curscreen = screen;
-  terminal.curchars = terminal.chars[screen];
-  terminal.curattrs = terminal.attr[screen];
-  terminal.cursorx = terminal.storedcursorx[screen];
-  terminal.cursory = terminal.storedcursory[screen];
-  terminal.curoffset = &terminal.offset[screen];
-}
-
-static void insert_chars(int count) {
-  int k;
-  int size;
-
-  size = terminal.size.ws_col * terminal.history_size;
-
-  for (k = terminal.size.ws_col; k-- > terminal.cursorx + count;) {
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + k +
-                       *terminal.curoffset) % size] =
-        terminal.curchars[(terminal.cursory * terminal.size.ws_col + k - count +
-                           *terminal.curoffset) % size];
-    terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k +
-                       *terminal.curoffset) % size] =
-        terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k - count +
-                           *terminal.curoffset) % size];
-  }
-
-  while (k >= terminal.cursorx) {
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col + k +
-                       *terminal.curoffset) % size] = 'X';
-    terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k +
-                       *terminal.curoffset) % size] = terminal.curattr;
-    --k;
-  }
-}
-
 static void term_LoadGlyph(wchar_t character) {
   struct FONT_Glyph *glyph;
 
@@ -199,245 +144,55 @@ static void term_LoadGlyph(wchar_t character) {
   free(glyph);
 }
 
-static void addchar(int ch) {
-  int size;
-
-  size = terminal.size.ws_col * terminal.history_size;
-
-  if (terminal.alt_charset[terminal.curscreen]) {
-    if (ch >= 0x41 && ch <= 0x7e) ch = alt_charset[ch - 0x41];
-  }
-
-  if (ch < 32) return;
-
-  if (ch == 0x7f || ch >= 65536) {
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                       terminal.cursorx + *terminal.curoffset) % size] = 0;
-    terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                       terminal.cursorx + *terminal.curoffset) % size] =
-        terminal.curattr;
-
-    return;
-  }
-
-  if (!GLYPH_IsLoaded(ch)) term_LoadGlyph(ch);
-
-  if (terminal.insertmode) insert_chars(1);
-
-  terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                     terminal.cursorx + *terminal.curoffset) % size] = ch;
-  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                     terminal.cursorx + *terminal.curoffset) % size] =
-      terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-  ++terminal.cursorx;
+Terminal::Terminal()
+    : chars(),
+      attr(),
+      curchars(),
+      curattrs(),
+      offset(),
+      curoffset(),
+      curscreen(),
+      curattr(),
+      reverse(),
+      history_size(),
+      fontsize(),
+      storedcursorx(),
+      storedcursory(),
+      scrolltop(),
+      scrollbottom(),
+      cursorx(),
+      cursory(),
+      escape(),
+      param(),
+      appcursor(),
+      hide_cursor(),
+      insertmode(),
+      select_begin(-1),
+      select_end(-1),
+      focused(),
+      history_scroll(),
+      use_alt_charset_(),
+      nch_(),
+      savedx_(),
+      savedy_() {
+  pthread_mutex_init(&bufferLock, 0);
 }
 
-static void normalize_offset() {
-  int size = terminal.size.ws_col * terminal.history_size;
-  int i;
-
-  if (!*terminal.curoffset) return;
-
-  for (i = 0; i < 2; ++i) {
-    int offset = terminal.offset[i];
-
-    assert(offset >= 0);
-    assert(offset < size);
-
-    std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[offset]);
-    std::unique_ptr<uint16_t[]> tmpattrs(new uint16_t[offset]);
-
-    memcpy(&tmpchars[0], terminal.chars[i], sizeof(tmpchars[0]) * offset);
-    memcpy(&tmpattrs[0], terminal.attr[i], sizeof(tmpattrs[0]) * offset);
-
-    memmove(terminal.chars[i], terminal.chars[i] + offset,
-            sizeof(tmpchars[0]) * (size - offset));
-    memmove(terminal.attr[i], terminal.attr[i] + offset,
-            sizeof(tmpattrs[0]) * (size - offset));
-
-    memmove(terminal.chars[i] + (size - offset), &tmpchars[0],
-            sizeof(tmpchars[0]) * offset);
-    memmove(terminal.attr[i] + (size - offset), &tmpattrs[0],
-            sizeof(tmpattrs[0]) * offset);
-
-    terminal.offset[i] = 0;
-  }
-}
-
-static void scroll(int fromcursor) {
-  int first, length;
-
-  term_clear_selection();
-
-  if (!fromcursor && terminal.scrolltop == 0 &&
-      terminal.scrollbottom == terminal.size.ws_row) {
-    size_t clear_offset;
-
-    clear_offset =
-        *terminal.curoffset + terminal.size.ws_row * terminal.size.ws_col;
-    clear_offset %= (terminal.size.ws_col * terminal.history_size);
-
-    memset(terminal.curchars + clear_offset, 0,
-           sizeof(*terminal.curchars) * terminal.size.ws_col);
-    memset16(terminal.curattrs + clear_offset, terminal.curattr,
-             sizeof(*terminal.curattrs) * terminal.size.ws_col);
-
-    *terminal.curoffset += terminal.size.ws_col;
-    *terminal.curoffset %= terminal.size.ws_col * terminal.history_size;
-
-    return;
-  }
-
-  normalize_offset();
-
-  if (fromcursor) {
-    first = terminal.cursory * terminal.size.ws_col;
-    length =
-        (terminal.scrollbottom - terminal.cursory - 1) * terminal.size.ws_col;
-  } else {
-    first = terminal.scrolltop * terminal.size.ws_col;
-    length =
-        (terminal.scrollbottom - terminal.scrolltop - 1) * terminal.size.ws_col;
-  }
-
-  memmove(terminal.curchars + first,
-          terminal.curchars + first + terminal.size.ws_col,
-          length * sizeof(wchar_t));
-  memset(terminal.curchars + first + length, 0,
-         terminal.size.ws_col * sizeof(wchar_t));
-
-  memmove(terminal.curattrs + first,
-          terminal.curattrs + first + terminal.size.ws_col,
-          sizeof(uint16_t) * length);
-  memset16(terminal.curattrs + first + length, terminal.curattr,
-           sizeof(uint16_t) * terminal.size.ws_col);
-}
-
-static void rscroll(int fromcursor) {
-  int first, length;
-
-  term_clear_selection();
-
-  normalize_offset();
-
-  if (fromcursor) {
-    first = terminal.cursory * terminal.size.ws_col;
-    length =
-        (terminal.scrollbottom - terminal.cursory - 1) * terminal.size.ws_col;
-  } else {
-    first = terminal.scrolltop * terminal.size.ws_col;
-    length =
-        (terminal.scrollbottom - terminal.scrolltop - 1) * terminal.size.ws_col;
-  }
-
-  memmove(terminal.curchars + first + terminal.size.ws_col,
-          terminal.curchars + first, length * sizeof(wchar_t));
-  memset(terminal.curchars + first, 0, terminal.size.ws_col * sizeof(wchar_t));
-
-  memmove(terminal.curattrs + first + terminal.size.ws_col,
-          terminal.curattrs + first, sizeof(uint16_t) * length);
-  memset16(terminal.curattrs + first, terminal.curattr,
-           sizeof(uint16_t) * terminal.size.ws_col);
-}
-
-enum range_type {
-  range_word_or_url,
-  range_parenthesis
-};
-
-static int find_range(int range, int *begin, int *end) {
-  int i, ch;
-  unsigned int offset, size;
-
-  size = terminal.history_size * terminal.size.ws_col;
-  offset = *terminal.curoffset;
-
-  if (range == range_word_or_url) {
-    i = *begin;
-
-    while (i) {
-      if (!(i % terminal.size.ws_col)) break;
-
-      ch = terminal.curchars[(offset + i - 1) % size];
-
-      if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
-
-      --i;
-    }
-
-    *begin = i;
-
-    i = *end;
-
-    while ((i % terminal.size.ws_col) < terminal.size.ws_col) {
-      ch = terminal.curchars[(offset + i) % size];
-
-      if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
-
-      ++i;
-    }
-
-    *end = i;
-
-    if (*begin == *end) return 0;
-
-    return 1;
-  } else if (range == range_parenthesis) {
-    int paren_level = 0;
-    i = *begin;
-
-    while (i > 0) {
-      ch = terminal.curchars[(offset + i) % size];
-
-      if ((!ch || ((i + 1) % terminal.size.ws_col == 0) || isspace(ch)) &&
-          !paren_level) {
-        ++i;
-
-        break;
-      }
-
-      if (ch == ')') ++paren_level;
-
-      if (ch == '(') {
-        if (!paren_level) break;
-
-        --paren_level;
-      }
-
-      --i;
-    }
-
-    *begin = i;
-
-    if (*end > i + 1) {
-      if (terminal.curchars[(offset + *end - 1) % size] == '=') --*end;
-    }
-
-    return 1;
-  } else
-    return 0;
-}
-
-void term_clear_selection(void) {
-  terminal.select_begin = -1;
-  terminal.select_end = -1;
-}
-
-void init_session(char *const *args) {
+void Terminal::Init(char *const *args, unsigned int width,
+                    unsigned int height) {
   char *c;
 
-  memset(&terminal, 0, sizeof(terminal));
+  size.ws_col = width / FONT_SpaceWidth(font);
+  size.ws_row = height / FONT_LineHeight(font);
+  size.ws_xpixel = width;
+  size.ws_ypixel = height;
 
-  terminal.size.ws_xpixel = X11_window_width;
-  terminal.size.ws_ypixel = X11_window_height;
-  terminal.size.ws_col = X11_window_width / FONT_SpaceWidth(font);
-  terminal.size.ws_row = X11_window_height / FONT_LineHeight(font);
-  terminal.history_size = terminal.size.ws_row + scroll_extra;
+  history_size = size.ws_row + scroll_extra;
 
-  if (-1 == (terminal.pid = forkpty(&terminal.fd, 0, 0, &terminal.size)))
+  if (-1 == (pid_ = forkpty(&fd, 0, 0, &size)))
     err(EX_OSERR, "forkpty() failed");
 
-  if (!terminal.pid) {
+  if (!pid_) {
     /* In child process */
 
     execve(args[0], args, environ);
@@ -447,106 +202,1118 @@ void init_session(char *const *args) {
     _exit(EXIT_FAILURE);
   }
 
-  fcntl(terminal.fd, F_SETFL, O_NDELAY);
+  fcntl(fd, F_SETFL, O_NDELAY);
 
-  pthread_mutex_init(&terminal.bufferLock, 0);
+  buffer = (char *)calloc(2 * size.ws_col * history_size,
+                          sizeof(wchar_t) + sizeof(uint16_t));
+  c = buffer;
+  chars[0] = (wchar_t *)c;
+  c += size.ws_col * history_size * sizeof(wchar_t);
+  attr[0] = (uint16_t *)c;
+  c += size.ws_col * history_size * sizeof(uint16_t);
+  chars[1] = (wchar_t *)c;
+  c += size.ws_col * history_size * sizeof(wchar_t);
+  attr[1] = (uint16_t *)c;
+  curattr = 0x07;
+  scrollbottom = size.ws_row;
+  memset(chars[0], 0, size.ws_col * history_size * sizeof(wchar_t));
+  memset16(attr[0], curattr, sizeof(uint16_t) * size.ws_col * history_size);
+  memset16(attr[1], curattr, sizeof(uint16_t) * size.ws_col * history_size);
+  offset[0] = 0;
+  offset[1] = 0;
 
-  terminal.buffer =
-      (char *)calloc(2 * terminal.size.ws_col * terminal.history_size,
-                     sizeof(wchar_t) + sizeof(uint16_t));
-  c = terminal.buffer;
-  terminal.chars[0] = (wchar_t *)c;
-  c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
-  terminal.attr[0] = (uint16_t *)c;
-  c += terminal.size.ws_col * terminal.history_size * sizeof(uint16_t);
-  terminal.chars[1] = (wchar_t *)c;
-  c += terminal.size.ws_col * terminal.history_size * sizeof(wchar_t);
-  terminal.attr[1] = (uint16_t *)c;
-  terminal.curattr = 0x07;
-  terminal.scrollbottom = terminal.size.ws_row;
-  memset(terminal.chars[0], 0,
-         terminal.size.ws_col * terminal.history_size * sizeof(wchar_t));
-  memset16(terminal.attr[0], terminal.curattr,
-           sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
-  memset16(terminal.attr[1], terminal.curattr,
-           sizeof(uint16_t) * terminal.size.ws_col * terminal.history_size);
-  terminal.offset[0] = 0;
-  terminal.offset[1] = 0;
+  ClearSelection();
 
-  term_clear_selection();
-
-  setscreen(0);
+  SetScreen(0);
 }
 
-static void save_session() {
-  int fd;
-  size_t size;
+void Terminal::Resize(unsigned int width, unsigned int height) {
+  int cols = std::max(width / FONT_SpaceWidth(font), 1U);
+  int rows = std::max(height / FONT_LineHeight(font), 1U);
 
-  if (!session_path) return;
+  int oldcols = size.ws_col;
+  int oldrows = size.ws_row;
 
-  if (terminal.cursorx) term_process_data((const unsigned char *)"\r\n", 2);
+  size.ws_xpixel = width;
+  size.ws_ypixel = height;
+  size.ws_col = cols;
+  size.ws_row = rows;
+  history_size = rows + scroll_extra;
 
-  fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (cols != oldcols || rows != oldrows) {
+    wchar_t *oldchars[2] = { chars[0], chars[1] };
+    uint16_t *oldattr[2] = { attr[0], attr[1] };
 
-  if (fd == -1) return;
+    char *oldbuffer = buffer;
+    buffer = (char *)calloc(2 * cols * history_size,
+                            (sizeof(wchar_t) + sizeof(uint16_t)));
 
-  normalize_offset();
+    char *c;
+    c = buffer;
+    chars[0] = (wchar_t *)c;
+    c += cols * history_size * sizeof(wchar_t);
+    attr[0] = (uint16_t *)c;
+    c += cols * history_size * sizeof(uint16_t);
+    chars[1] = (wchar_t *)c;
+    c += cols * history_size * sizeof(wchar_t);
+    attr[1] = (uint16_t *)c;
+    scrollbottom = rows;
 
-  size = terminal.history_size * terminal.size.ws_col;
+    int srcoff = 0;
+    int minrows;
 
-  write(fd, &terminal.size, sizeof(terminal.size));
-  write(fd, &terminal.cursorx, sizeof(terminal.cursorx));
-  write(fd, &terminal.cursory, sizeof(terminal.cursory));
-  write(fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
-  write(fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
+    if (rows > oldrows) {
+      minrows = oldrows;
+    } else {
+      if (cursory >= rows) srcoff = cursory - rows + 1;
+      minrows = rows;
+    }
 
-  close(fd);
+    int mincols = (cols < oldcols) ? cols : oldcols;
+
+    for (int i = 0; i < minrows; ++i) {
+      memcpy(&chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols],
+             mincols * sizeof(wchar_t));
+      memcpy(&attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols],
+             mincols * sizeof(attr[0][0]));
+    }
+
+    for (int i = 0; i < minrows; ++i) {
+      memcpy(&chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols],
+             mincols * sizeof(wchar_t));
+      memcpy(&attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols],
+             mincols * sizeof(attr[1][0]));
+    }
+
+    free(oldbuffer);
+
+    curchars = chars[curscreen];
+    curattrs = attr[curscreen];
+
+    cursory = cursory - srcoff;
+    storedcursory[1 - curscreen] += rows - oldrows;
+#define CLIP_CURSOR(val, max) \
+  {                           \
+    if (val < 0)              \
+      val = 0;                \
+    else if (val >= max)      \
+      val = max - 1;          \
+  }
+    CLIP_CURSOR(cursorx, cols);
+    CLIP_CURSOR(cursory, rows);
+    CLIP_CURSOR(storedcursorx[1 - curscreen], cols);
+    CLIP_CURSOR(storedcursory[1 - curscreen], rows);
+#undef CLIP_CURSOR
+
+    ioctl(fd, TIOCSWINSZ, &size);
+  }
 }
 
-static void sighandler(int signal) {
-  static int first = 1;
+void Terminal::ProcessData(const unsigned char *buf, size_t count) {
+  const unsigned char *end;
+  int k;
 
-  fprintf(stderr, "Got signal %d\n", signal);
+  size_t history_buffer_size = size.ws_col * history_size;
 
-  if (first) {
-    first = 0;
-    save_session();
+  // TODO(mortehu): Make sure cursor does not leave screen.
+  end = buf + count;
+
+  while (cursory >= size.ws_row) {
+    Scroll(false);
+    --cursory;
   }
 
-  exit(EXIT_SUCCESS);
+  // Redundant, optimized character processing code for the typical case.
+  if (!escape && !insertmode && !nch_) {
+    unsigned int attr, offset;
+
+    attr = reverse ? REVERSE(curattr) : curattr;
+
+    offset =
+        (cursory * size.ws_col + cursorx + *curoffset) % history_buffer_size;
+
+    for (; buf != end; ++buf) {
+      if (*buf >= ' ' && *buf <= '~') {
+        if (cursorx == size.ws_col) {
+          if (++cursory >= size.ws_row) {
+            Scroll(false);
+            --cursory;
+          }
+
+          cursorx = 0;
+
+          offset = (cursory * size.ws_col + *curoffset) % history_buffer_size;
+        }
+
+        curchars[offset] = *buf;
+        curattrs[offset] = attr;
+        ++cursorx;
+        ++offset;
+      } else if (*buf == '\r') {
+        cursorx = 0;
+        offset = (cursory * size.ws_col + *curoffset) % history_buffer_size;
+      } else if (*buf == '\n') {
+        ++cursory;
+
+        if (cursory == scrollbottom || cursory >= size.ws_row) {
+          Scroll(false);
+          --cursory;
+        }
+
+        offset = (cursory * size.ws_col + cursorx + *curoffset) %
+                 history_buffer_size;
+      } else
+        break;
+    }
+  }
+
+  for (; buf != end; ++buf) {
+    switch (escape) {
+      case 0:
+
+        switch (*buf) {
+          case '\033':
+
+            escape = 1;
+            memset(param, 0, sizeof(param));
+
+            break;
+
+          case '\b':
+
+            if (cursorx > 0) --cursorx;
+
+            break;
+
+          case '\t':
+
+            if (cursorx < size.ws_col - 8)
+              cursorx = (cursorx + 8) & ~7;
+            else
+              cursorx = size.ws_col - 1;
+
+            break;
+
+          case '\n':
+
+            ++cursory;
+
+            while (cursory == scrollbottom || cursory >= size.ws_row) {
+              Scroll(false);
+              --cursory;
+            }
+
+            break;
+
+          case '\r':
+
+            cursorx = 0;
+
+            break;
+
+          case '\177':
+
+            if (cursory < size.ws_row)
+              terminal.curchars[(cursory * size.ws_col + cursorx + *curoffset) %
+                                history_buffer_size] = 0;
+
+            break;
+
+          case('O' & 0x3F) : /* ^O = default character set */
+
+            break;
+
+          case('N' & 0x3F) : /* ^N = alternate character set */
+
+            break;
+
+          default:
+
+            assert(cursorx >= 0 && cursorx <= size.ws_col);
+            assert(cursory >= 0 && cursory < size.ws_row);
+
+            if (cursorx == size.ws_col) {
+              ++cursory;
+              cursorx = 0;
+            }
+
+            while (cursory >= size.ws_row) {
+              Scroll(false);
+              --cursory;
+            }
+
+            if (nch_) {
+              if ((*buf & 0xC0) != 0x80) {
+                nch_ = 0;
+                AddChar(*buf);
+              } else {
+                ch_ <<= 6;
+                ch_ |= *buf & 0x3F;
+
+                if (0 == --nch_) {
+                  AddChar(ch_);
+                }
+              }
+            } else {
+              if ((*buf & 0x80) == 0) {
+                AddChar(*buf);
+              } else if ((*buf & 0xE0) == 0xC0) {
+                ch_ = *buf & 0x1F;
+                nch_ = 1;
+              } else if ((*buf & 0xF0) == 0xE0) {
+                ch_ = *buf & 0x0F;
+                nch_ = 2;
+              } else if ((*buf & 0xF8) == 0xF0) {
+                ch_ = *buf & 0x03;
+                nch_ = 3;
+              } else if ((*buf & 0xFC) == 0xF8) {
+                ch_ = *buf & 0x01;
+                nch_ = 4;
+              }
+            }
+        }
+
+        break;
+
+      case 1:
+
+        switch (*buf) {
+          case 'D':
+
+            ++cursory;
+
+            while (cursory == scrollbottom || cursory >= size.ws_row) {
+              Scroll(false);
+              --cursory;
+            }
+
+            break;
+
+          case 'E':
+
+            escape = 0;
+            cursorx = 0;
+            ++cursory;
+
+            while (cursory == scrollbottom || cursory >= size.ws_row) {
+              Scroll(false);
+              --cursory;
+            }
+
+            break;
+
+          case '[':
+
+            escape = 2;
+            memset(param, 0, sizeof(param));
+
+            break;
+
+          case '%':
+
+            escape = 2;
+            param[0] = -1;
+
+            break;
+
+          case ']':
+
+            escape = 2;
+            param[0] = -2;
+
+            break;
+
+          case '(':
+
+            escape = 2;
+            param[0] = -4;
+
+            break;
+
+          case '#':
+
+            escape = 2;
+            param[0] = -5;
+
+            break;
+
+          case 'M':
+
+            if (cursorx == 0 && cursory == scrolltop)
+              ReverseScroll(false);
+            else if (cursory)
+              --cursory;
+
+            escape = 0;
+
+            break;
+
+          default:
+
+            escape = 0;
+        }
+
+        break;
+
+      default:
+
+        if (param[0] == -1)
+          escape = 0;
+        else if (param[0] == -2) {
+          /* Handle ESC ] Ps ; Pt BEL */
+          if (escape == 2) {
+            if (*buf >= '0' && *buf <= '9') {
+              param[1] *= 10;
+              param[1] += *buf - '0';
+            } else
+              ++escape;
+          } else {
+            if (*buf != '\007') {
+              /* XXX: Store text */
+            } else
+              escape = 0;
+          }
+        } else if (param[0] == -4) {
+          switch (*buf) {
+            case '0':
+              use_alt_charset_[curscreen] = true;
+              break;
+            case 'B':
+              use_alt_charset_[curscreen] = false;
+              break;
+          }
+
+          escape = 0;
+        } else if (param[0] == -5) {
+          escape = 0;
+        } else if (escape == 2 && *buf == '?') {
+          param[0] = -3;
+          ++escape;
+        } else if (escape == 2 && *buf == '>') {
+          param[0] = -4;
+          ++escape;
+        } else if (*buf == ';') {
+          if (escape < (int) sizeof(param) + 1)
+            param[++escape - 2] = 0;
+          else
+            param[(sizeof(param) / sizeof(param[0])) - 1] = 0;
+        } else if (*buf >= '0' && *buf <= '9') {
+          param[escape - 2] *= 10;
+          param[escape - 2] += *buf - '0';
+        } else if (param[0] == -3) {
+          if (*buf == 'h') {
+            for (k = 1; k < escape - 1; ++k) {
+              switch (param[k]) {
+                case 1:
+
+                  appcursor = 1;
+
+                  break;
+
+                case 25:
+
+                  hide_cursor = 0;
+
+                  break;
+
+                case 1049:
+
+                  if (curscreen != 1) {
+                    memset(chars[1], 0,
+                           size.ws_col * history_size * sizeof(wchar_t));
+                    memset(attr[1], 0x07,
+                           size.ws_col * history_size * sizeof(uint16_t));
+                    SetScreen(1);
+                  }
+
+                  break;
+              }
+            }
+          } else if (*buf == 'l') {
+            for (k = 1; k < escape - 1; ++k) {
+              switch (param[k]) {
+                case 1:
+
+                  appcursor = 0;
+
+                  break;
+
+                case 25:
+
+                  hide_cursor = 1;
+
+                  break;
+
+                case 1049:
+
+                  if (curscreen != 0) SetScreen(0);
+
+                  break;
+              }
+            }
+          }
+
+          escape = 0;
+        } else {
+          switch (*buf) {
+            case '@':
+
+              if (!param[0]) param[0] = 1;
+
+              InsertChars(param[0]);
+
+              break;
+
+            case 'A':
+
+              if (!param[0]) param[0] = 1;
+
+              cursory -= (param[0] < cursory) ? param[0] : cursory;
+
+              break;
+
+            case 'B':
+
+              if (!param[0]) param[0] = 1;
+
+              cursory =
+                  (param[0] + cursory < size.ws_row) ? (param[0] + cursory)
+                                                     : (size.ws_row - 1);
+
+              break;
+
+            case 'C':
+
+              if (!param[0]) param[0] = 1;
+
+              cursorx =
+                  (param[0] + cursorx < size.ws_col) ? (param[0] + cursorx)
+                                                     : (size.ws_col - 1);
+
+              break;
+
+            case 'D':
+
+              if (!param[0]) param[0] = 1;
+
+              cursorx -= (param[0] < cursorx) ? param[0] : cursorx;
+
+              break;
+
+            case 'E':
+
+              cursorx = 0;
+              ++cursory;
+
+              while (cursory == scrollbottom || cursory >= size.ws_row) {
+                Scroll(false);
+                --cursory;
+              }
+
+              break;
+
+            case 'F':
+
+              cursorx = 0;
+
+              if (cursory == scrolltop)
+                ReverseScroll(false);
+              else if (cursory)
+                --cursory;
+
+              escape = 0;
+
+              break;
+
+            case 'G':
+
+              if (param[0] > 0) --param[0];
+
+              cursorx = (param[0] < size.ws_col) ? param[0] : (size.ws_col - 1);
+
+              break;
+
+            case 'H':
+            case 'f':
+
+              if (param[0] > 0) --param[0];
+
+              if (param[1] > 0) --param[1];
+
+              cursory = (param[0] < size.ws_row) ? param[0] : (size.ws_row - 1);
+              cursorx = (param[1] < size.ws_col) ? param[1] : (size.ws_col - 1);
+
+              break;
+
+            case 'J':
+
+              if (param[0] == 0) {
+                /* Clear from cursor to end */
+
+                NormalizeHistoryBuffer();
+
+                int count = size.ws_col * (size.ws_row - cursory - 1) +
+                            (size.ws_col - cursorx);
+                memset(&curchars[cursory * size.ws_col + cursorx], 0,
+                       count * sizeof(wchar_t));
+                memset16(&curattrs[cursory * size.ws_col + cursorx], curattr,
+                         count * sizeof(uint16_t));
+              } else if (param[0] == 1) {
+                /* Clear from start to cursor */
+
+                NormalizeHistoryBuffer();
+
+                int count = (size.ws_col * cursory + cursorx);
+                memset(curchars, 0, count * sizeof(wchar_t));
+                memset16(curattrs, curattr, count * sizeof(uint16_t));
+              } else if (param[0] == 2) {
+                size_t screen_buffer_size = size.ws_col * size.ws_row;
+
+                if (*curoffset + screen_buffer_size > history_buffer_size) {
+                  memset(curchars + *curoffset, 0,
+                         (history_buffer_size - *curoffset) * sizeof(wchar_t));
+                  memset(curchars, 0, (screen_buffer_size + *curoffset -
+                                       history_buffer_size) * sizeof(wchar_t));
+
+                  memset16(
+                      curattrs + *curoffset, 0x07,
+                      (history_buffer_size - *curoffset) * sizeof(uint16_t));
+                  memset16(curattrs, 0x07,
+                           (screen_buffer_size + *curoffset -
+                            history_buffer_size) * sizeof(uint16_t));
+                } else {
+                  memset(curchars + *curoffset, 0,
+                         screen_buffer_size * sizeof(wchar_t));
+                  memset16(curattrs + *curoffset, 0x07,
+                           screen_buffer_size * sizeof(uint16_t));
+                }
+
+                cursory = 0;
+                cursorx = 0;
+              }
+
+              break;
+
+            case 'K':
+
+              if (!param[0]) {
+                /* Clear from cursor to end */
+
+                for (k = cursorx; k < size.ws_col; ++k) {
+                  curchars[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = 0;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = curattr;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] =
+                      reverse ? REVERSE(curattr) : curattr;
+                }
+              } else if (param[0] == 1) {
+                /* Clear from start to cursor */
+
+                for (k = 0; k <= cursorx; ++k) {
+                  curchars[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = 0;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = curattr;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] =
+                      reverse ? REVERSE(curattr) : curattr;
+                }
+              } else if (param[0] == 2) {
+                /* Clear entire line */
+
+                for (k = 0; k < size.ws_col; ++k) {
+                  curchars[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = 0;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] = curattr;
+                  curattrs[(cursory * size.ws_col + k + *curoffset) %
+                           history_buffer_size] =
+                      reverse ? REVERSE(curattr) : curattr;
+                }
+              }
+
+              break;
+
+            case 'L':
+
+              if (!param[0])
+                param[0] = 1;
+              else if (param[0] > size.ws_row)
+                param[0] = size.ws_row;
+
+              while (param[0]--)
+                ReverseScroll(true);
+
+              break;
+
+            case 'M':
+
+              if (!param[0])
+                param[0] = 1;
+              else if (param[0] > size.ws_row)
+                param[0] = size.ws_row;
+
+              while (param[0]--)
+                Scroll(true);
+
+              break;
+
+            case 'P':
+
+              /* Delete character at cursor */
+
+              NormalizeHistoryBuffer();
+
+              if (!param[0])
+                param[0] = 1;
+              else if (param[0] > size.ws_col)
+                param[0] = size.ws_col;
+
+              while (param[0]--) {
+                memmove(&curchars[cursory * size.ws_col + cursorx],
+                        &curchars[cursory * size.ws_col + cursorx + 1],
+                        (size.ws_col - cursorx - 1) * sizeof(wchar_t));
+                memmove(&curattrs[cursory * size.ws_col + cursorx],
+                        &curattrs[cursory * size.ws_col + cursorx + 1],
+                        (size.ws_col - cursorx - 1) * sizeof(uint16_t));
+                curchars[(cursory + 1) * size.ws_col - 1] = 0;
+                curattrs[(cursory + 1) * size.ws_col - 1] =
+                    reverse ? REVERSE(curattr) : curattr;
+              }
+
+              break;
+
+            case 'S':
+
+              if (!param[0]) param[0] = 1;
+
+              while (param[0]--)
+                Scroll(false);
+
+              break;
+
+            case 'T':
+
+              if (!param[0]) param[0] = 1;
+
+              while (param[0]--)
+                ReverseScroll(false);
+
+              break;
+
+            case 'X':
+
+              if (param[0] <= 0) param[0] = 1;
+
+              for (k = cursorx; k < cursorx + param[0] && k < size.ws_col;
+                   ++k) {
+                curchars[(cursory * size.ws_col + k + *curoffset) %
+                         history_buffer_size] = 0;
+                curattrs[(cursory * size.ws_col + k + *curoffset) %
+                         history_buffer_size] = curattr;
+                curattrs[(cursory * size.ws_col + k + *curoffset) %
+                         history_buffer_size] =
+                    reverse ? REVERSE(curattr) : curattr;
+              }
+
+              break;
+
+            case 'd':
+
+              if (param[0] > 0)
+                --param[0];
+              else
+                param[0] = 0;
+
+              cursory = (param[0] < size.ws_row) ? param[0] : (size.ws_row - 1);
+
+              break;
+
+            case 'h':
+
+              for (k = 0; k < escape - 1; ++k) {
+                switch (param[k]) {
+                  case 4:
+
+                    insertmode = 1;
+
+                    break;
+                }
+              }
+
+              break;
+
+            case 'l':
+
+              for (k = 0; k < escape - 1; ++k) {
+                switch (param[k]) {
+                  case 4:
+
+                    insertmode = 0;
+
+                    break;
+                }
+              }
+
+              break;
+
+            case 'm':
+
+              for (k = 0; k < escape - 1; ++k) {
+                switch (param[k]) {
+                  case 7:
+
+                    reverse = 1;
+
+                    break;
+
+                  case 27:
+
+                    reverse = 0;
+
+                    break;
+
+                  case 0:
+
+                    reverse = 0;
+
+                  default:
+
+                    for (size_t l = 0;
+                         l < sizeof(ansi_helper) / sizeof(ansi_helper[0]);
+                         ++l) {
+                      if (ansi_helper[l].index == param[k]) {
+                        curattr &= ansi_helper[l].and_mask;
+                        curattr |= ansi_helper[l].or_mask;
+
+                        break;
+                      }
+                    }
+
+                    break;
+                }
+              }
+
+              break;
+
+            case 'r':
+
+              if (param[0] < param[1]) {
+                --param[0];
+
+                if (param[1] > size.ws_row) param[1] = size.ws_row;
+
+                if (param[0] < 0) param[0] = 0;
+
+                scrolltop = param[0];
+                scrollbottom = param[1];
+              } else {
+                scrolltop = 0;
+                scrollbottom = size.ws_row;
+              }
+
+              break;
+
+            case 's':
+
+              savedx_ = cursorx;
+              savedy_ = cursory;
+
+              break;
+
+            case 'u':
+
+              cursorx = savedx_;
+              cursory = savedy_;
+
+              break;
+          }
+
+          escape = 0;
+        }
+    }
+  }
 }
 
-static void update_selection(Time time) {
+void Terminal::SetScreen(int screen) {
+  storedcursorx[curscreen] = cursorx;
+  storedcursory[curscreen] = cursory;
+
+  curscreen = screen;
+  curchars = chars[screen];
+  curattrs = attr[screen];
+  cursorx = storedcursorx[screen];
+  cursory = storedcursory[screen];
+  curoffset = &offset[screen];
+}
+
+void Terminal::InsertChars(size_t count) {
+  size_t history_buffer_size = size.ws_col * history_size;
+  size_t k = size.ws_col;
+
+  while (k-- > cursorx + count) {
+    curchars[(cursory * size.ws_col + k + *curoffset) % history_buffer_size] =
+        curchars[(cursory * size.ws_col + k - count + *curoffset) %
+                 history_buffer_size];
+    curattrs[(cursory * size.ws_col + k + *curoffset) % history_buffer_size] =
+        curattrs[(cursory * size.ws_col + k - count + *curoffset) %
+                 history_buffer_size];
+  }
+
+  while (k >= static_cast<size_t>(cursorx)) {
+    curchars[(cursory * size.ws_col + k + *curoffset) % history_buffer_size] =
+        'X';
+    curattrs[(cursory * size.ws_col + k + *curoffset) % history_buffer_size] =
+        curattr;
+    --k;
+  }
+}
+
+void Terminal::AddChar(int ch) {
+  // Alternate characters, from 0x41 to 0x7E, inclusive.
+  static const int kAltCharset[62] = {
+    0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0020, 0x25c6, 0x2592, 0x2409, 0x240c, 0x240d,
+    0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514,
+    0x253c, 0x23ba, 0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534,
+    0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,
+  };
+
+  size_t history_buffer_size = size.ws_col * history_size;
+
+  if (use_alt_charset_[curscreen]) {
+    if (ch >= 0x41 && ch <= 0x7e) ch = kAltCharset[ch - 0x41];
+  }
+
+  if (ch < 32) return;
+
+  if (ch == 0x7f || ch >= 65536) {
+    curchars[(cursory * size.ws_col + cursorx + *curoffset) %
+             history_buffer_size] = 0;
+    curchars[(cursory * size.ws_col + cursorx + *curoffset) %
+             history_buffer_size] = curattr;
+    return;
+  }
+
+  if (!GLYPH_IsLoaded(ch)) term_LoadGlyph(ch);
+
+  if (insertmode) terminal.InsertChars(1);
+
+  curchars[(cursory * size.ws_col + cursorx + *curoffset) %
+           history_buffer_size] = ch;
+  curattrs[(cursory * size.ws_col + cursorx + *curoffset) %
+           history_buffer_size] = reverse ? REVERSE(curattr) : curattr;
+  ++cursorx;
+}
+
+void Terminal::NormalizeHistoryBuffer() {
+  size_t history_buffer_size = size.ws_col * history_size;
+
+  if (!*curoffset) return;
+
+  for (size_t i = 0; i < 2; ++i) {
+    size_t buffer_offset = offset[i];
+
+    assert(buffer_offset >= 0);
+    assert(buffer_offset < history_buffer_size);
+
+    std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[buffer_offset]);
+    std::unique_ptr<uint16_t[]> tmpattrs(new uint16_t[buffer_offset]);
+
+    memcpy(&tmpchars[0], chars[i], sizeof(tmpchars[0]) * buffer_offset);
+    memcpy(&tmpattrs[0], attr[i], sizeof(tmpattrs[0]) * buffer_offset);
+
+    memmove(chars[i], chars[i] + buffer_offset,
+            sizeof(tmpchars[0]) * (history_buffer_size - buffer_offset));
+    memmove(attr[i], attr[i] + buffer_offset,
+            sizeof(tmpattrs[0]) * (history_buffer_size - buffer_offset));
+
+    memmove(chars[i] + (history_buffer_size - buffer_offset), &tmpchars[0],
+            sizeof(tmpchars[0]) * buffer_offset);
+    memmove(attr[i] + (history_buffer_size - buffer_offset), &tmpattrs[0],
+            sizeof(tmpattrs[0]) * buffer_offset);
+
+    offset[i] = 0;
+  }
+}
+
+void Terminal::Scroll(bool fromcursor) {
+  terminal.ClearSelection();
+
+  if (!fromcursor && scrolltop == 0 && scrollbottom == size.ws_row) {
+    size_t clear_offset;
+
+    clear_offset = *curoffset + size.ws_row * size.ws_col;
+    clear_offset %= (size.ws_col * history_size);
+
+    memset(curchars + clear_offset, 0, sizeof(*curchars) * size.ws_col);
+    memset16(curattrs + clear_offset, curattr, sizeof(*curattrs) * size.ws_col);
+
+    *curoffset += size.ws_col;
+    *curoffset %= size.ws_col * history_size;
+
+    return;
+  }
+
+  NormalizeHistoryBuffer();
+
+  int first, length;
+
+  if (fromcursor) {
+    first = cursory * size.ws_col;
+    length = (scrollbottom - cursory - 1) * size.ws_col;
+  } else {
+    first = scrolltop * size.ws_col;
+    length = (scrollbottom - scrolltop - 1) * size.ws_col;
+  }
+
+  memmove(curchars + first, curchars + first + size.ws_col,
+          length * sizeof(wchar_t));
+  memset(curchars + first + length, 0, size.ws_col * sizeof(wchar_t));
+
+  memmove(curattrs + first, curattrs + first + size.ws_col,
+          sizeof(uint16_t) * length);
+  memset16(curattrs + first + length, curattr, sizeof(uint16_t) * size.ws_col);
+}
+
+void Terminal::ReverseScroll(bool fromcursor) {
+  terminal.ClearSelection();
+
+  NormalizeHistoryBuffer();
+
+  int first, length;
+
+  if (fromcursor) {
+    first = cursory * size.ws_col;
+    length = (scrollbottom - cursory - 1) * size.ws_col;
+  } else {
+    first = scrolltop * size.ws_col;
+    length = (scrollbottom - scrolltop - 1) * size.ws_col;
+  }
+
+  memmove(curchars + first + size.ws_col, curchars + first,
+          length * sizeof(wchar_t));
+  memset(curchars + first, 0, size.ws_col * sizeof(wchar_t));
+
+  memmove(curattrs + first + size.ws_col, curattrs + first,
+          sizeof(uint16_t) * length);
+  memset16(curattrs + first, curattr, sizeof(uint16_t) * size.ws_col);
+}
+
+bool Terminal::FindRange(RangeType range_type, int *begin, int *end) const {
+  size_t history_buffer_size = size.ws_col * history_size;
+  size_t offset = *curoffset;
+
+  int i, ch;
+
+  switch (range_type) {
+    case Terminal::kRangeWordOrURL:
+      i = *begin;
+
+      while (i) {
+        if (!(i % size.ws_col)) break;
+
+        ch = curchars[(offset + i - 1) % history_buffer_size];
+
+        if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
+
+        --i;
+      }
+
+      *begin = i;
+
+      i = *end;
+
+      while ((i % size.ws_col) < size.ws_col) {
+        ch = curchars[(offset + i) % history_buffer_size];
+
+        if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
+
+        ++i;
+      }
+
+      *end = i;
+
+      return *begin != *end;
+
+    case Terminal::kRangeParenthesis: {
+      int paren_level = 0;
+      i = *begin;
+
+      while (i > 0) {
+        ch = curchars[(offset + i) % history_buffer_size];
+
+        if ((!ch || ((i + 1) % size.ws_col == 0) || isspace(ch)) &&
+            !paren_level) {
+          ++i;
+
+          break;
+        }
+
+        if (ch == ')') ++paren_level;
+
+        if (ch == '(') {
+          if (!paren_level) break;
+
+          --paren_level;
+        }
+
+        --i;
+      }
+
+      *begin = i;
+
+      if (*end > i + 1 &&
+          curchars[(offset + *end - 1) % history_buffer_size] == '=')
+        --*end;
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void Terminal::ClearSelection() {
+  select_begin = -1;
+  select_end = -1;
+}
+
+void Terminal::UpdateSelection(Time time) {
   int i;
-  unsigned int size, offset;
+  unsigned int offset;
 
-  if (terminal.select_begin == terminal.select_end) return;
+  if (select_begin == select_end) return;
 
-  size = terminal.size.ws_col * terminal.history_size;
-  offset = *terminal.curoffset;
+  size_t history_buffer_size = size.ws_col * history_size;
+  offset = *curoffset;
 
   if (select_text) {
     free(select_text);
     select_text = 0;
   }
 
-  if (terminal.select_begin > terminal.select_end) {
-    i = terminal.select_begin;
-    terminal.select_begin = terminal.select_end;
-    terminal.select_end = i;
+  if (select_begin > select_end) {
+    i = select_begin;
+    select_begin = select_end;
+    select_end = i;
   }
 
-  select_alloc = terminal.select_end - terminal.select_begin + 1;
+  select_alloc = select_end - select_begin + 1;
   select_text = (unsigned char *)calloc(select_alloc, 1);
   select_length = 0;
 
   size_t last_graph = 0;
   size_t last_graph_col = 0;
-  i = terminal.select_begin;
+  i = select_begin;
 
-  while (i != terminal.select_end) {
-    int ch = terminal.curchars[(i + offset) % size];
-    size_t width = terminal.size.ws_col;
+  while (i != select_end) {
+    int ch = curchars[(i + offset) % history_buffer_size];
+    size_t width = size.ws_col;
 
     if (ch == 0 || ch == 0xffff) ch = ' ';
 
@@ -555,7 +1322,7 @@ static void update_selection(Time time) {
       select_text = (unsigned char *)realloc(select_text, select_alloc);
     }
 
-    if (i > terminal.select_begin && (i % width) == 0) {
+    if (i > select_begin && (i % width) == 0) {
       select_length = last_graph;
       if (last_graph_col != (width - 1)) select_text[select_length++] = '\n';
       last_graph = select_length;
@@ -588,10 +1355,45 @@ static void update_selection(Time time) {
   if (X11_window != XGetSelectionOwner(X11_display, XA_PRIMARY)) {
     /* We did not get the selection */
 
-    terminal.select_begin = terminal.select_end;
+    select_begin = select_end;
     free(select_text);
     select_text = 0;
   }
+}
+
+void Terminal::SaveSession() {
+  if (!session_path) return;
+
+  if (cursorx) terminal.ProcessData((const unsigned char *)"\r\n", 2);
+
+  int fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+
+  if (fd == -1) return;
+
+  NormalizeHistoryBuffer();
+
+  size_t history_buffer_size = size.ws_col * history_size;
+
+  write(fd, &size, sizeof(size));
+  write(fd, &cursorx, sizeof(cursorx));
+  write(fd, &cursory, sizeof(cursory));
+  write(fd, chars[0], history_buffer_size * sizeof(*chars[0]));
+  write(fd, attr[0], history_buffer_size * sizeof(*attr[0]));
+
+  close(fd);
+}
+
+static void sighandler(int signal) {
+  static int first = 1;
+
+  fprintf(stderr, "Got signal %d\n", signal);
+
+  if (first) {
+    first = 0;
+    terminal.SaveSession();
+  }
+
+  exit(EXIT_SUCCESS);
 }
 
 static void send_selection(XSelectionRequestEvent *request,
@@ -636,810 +1438,14 @@ static void paste(Atom selection, Time time) {
                     X11_window, time);
 }
 
-void term_process_data(const unsigned char *buf, size_t count) {
-  const unsigned char *end;
-  int k;
-
-  int size = terminal.size.ws_col * terminal.history_size;
-
-  /* XXX: Make sure cursor does not leave screen */
-
-  end = buf + count;
-
-  while (terminal.cursory >= terminal.size.ws_row) {
-    scroll(0);
-    --terminal.cursory;
-  }
-
-  /* Redundant character processing code for the typical case */
-  if (!terminal.escape && !terminal.insertmode && !terminal.nch) {
-    unsigned int attr, offset;
-
-    attr = terminal.reverse ? REVERSE(terminal.curattr) : terminal.curattr;
-
-    offset = (terminal.cursory * terminal.size.ws_col + terminal.cursorx +
-              *terminal.curoffset) % size;
-
-    for (; buf != end; ++buf) {
-      if (*buf >= ' ' && *buf <= '~') {
-        if (terminal.cursorx == terminal.size.ws_col) {
-          if (++terminal.cursory >= terminal.size.ws_row) {
-            scroll(0);
-            --terminal.cursory;
-          }
-
-          terminal.cursorx = 0;
-
-          offset = (terminal.cursory * terminal.size.ws_col +
-                    *terminal.curoffset) % size;
-        }
-
-        terminal.curchars[offset] = *buf;
-        terminal.curattrs[offset] = attr;
-        ++terminal.cursorx;
-        ++offset;
-      } else if (*buf == '\r') {
-        terminal.cursorx = 0;
-        offset = (terminal.cursory * terminal.size.ws_col +
-                  *terminal.curoffset) % size;
-      } else if (*buf == '\n') {
-        ++terminal.cursory;
-
-        if (terminal.cursory == terminal.scrollbottom ||
-            terminal.cursory >= terminal.size.ws_row) {
-          scroll(0);
-          --terminal.cursory;
-        }
-
-        offset = (terminal.cursory * terminal.size.ws_col + terminal.cursorx +
-                  *terminal.curoffset) % size;
-      } else
-        break;
-    }
-  }
-
-  for (; buf != end; ++buf) {
-    switch (terminal.escape) {
-      case 0:
-
-        switch (*buf) {
-          case '\033':
-
-            terminal.escape = 1;
-            memset(terminal.param, 0, sizeof(terminal.param));
-
-            break;
-
-          case '\b':
-
-            if (terminal.cursorx > 0) --terminal.cursorx;
-
-            break;
-
-          case '\t':
-
-            if (terminal.cursorx < terminal.size.ws_col - 8)
-              terminal.cursorx = (terminal.cursorx + 8) & ~7;
-            else
-              terminal.cursorx = terminal.size.ws_col - 1;
-
-            break;
-
-          case '\n':
-
-            ++terminal.cursory;
-
-            while (terminal.cursory == terminal.scrollbottom ||
-                   terminal.cursory >= terminal.size.ws_row) {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-            break;
-
-          case '\r':
-
-            terminal.cursorx = 0;
-
-            break;
-
-          case '\177':
-
-            if (terminal.cursory < terminal.size.ws_row)
-              terminal
-                  .curchars[(terminal.cursory * terminal.size.ws_col +
-                             terminal.cursorx + *terminal.curoffset) % size] =
-                      0;
-
-            break;
-
-          case('O' & 0x3F) : /* ^O = default character set */
-
-            break;
-
-          case('N' & 0x3F) : /* ^N = alternate character set */
-
-            break;
-
-          default:
-
-            assert(terminal.cursorx >= 0 &&
-                   terminal.cursorx <= terminal.size.ws_col);
-            assert(terminal.cursory >= 0 &&
-                   terminal.cursory < terminal.size.ws_row);
-
-            if (terminal.cursorx == terminal.size.ws_col) {
-              ++terminal.cursory;
-              terminal.cursorx = 0;
-            }
-
-            while (terminal.cursory >= terminal.size.ws_row) {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-            if (terminal.nch) {
-              if ((*buf & 0xC0) != 0x80) {
-                terminal.nch = 0;
-                addchar(*buf);
-              } else {
-                terminal.ch <<= 6;
-                terminal.ch |= *buf & 0x3F;
-
-                if (0 == --terminal.nch) {
-                  addchar(terminal.ch);
-                }
-              }
-            } else {
-              if ((*buf & 0x80) == 0) {
-                addchar(*buf);
-              } else if ((*buf & 0xE0) == 0xC0) {
-                terminal.ch = *buf & 0x1F;
-                terminal.nch = 1;
-              } else if ((*buf & 0xF0) == 0xE0) {
-                terminal.ch = *buf & 0x0F;
-                terminal.nch = 2;
-              } else if ((*buf & 0xF8) == 0xF0) {
-                terminal.ch = *buf & 0x03;
-                terminal.nch = 3;
-              } else if ((*buf & 0xFC) == 0xF8) {
-                terminal.ch = *buf & 0x01;
-                terminal.nch = 4;
-              }
-            }
-        }
-
-        break;
-
-      case 1:
-
-        switch (*buf) {
-          case 'D':
-
-            ++terminal.cursory;
-
-            while (terminal.cursory == terminal.scrollbottom ||
-                   terminal.cursory >= terminal.size.ws_row) {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-            break;
-
-          case 'E':
-
-            terminal.escape = 0;
-            terminal.cursorx = 0;
-            ++terminal.cursory;
-
-            while (terminal.cursory == terminal.scrollbottom ||
-                   terminal.cursory >= terminal.size.ws_row) {
-              scroll(0);
-              --terminal.cursory;
-            }
-
-            break;
-
-          case '[':
-
-            terminal.escape = 2;
-            memset(terminal.param, 0, sizeof(terminal.param));
-
-            break;
-
-          case '%':
-
-            terminal.escape = 2;
-            terminal.param[0] = -1;
-
-            break;
-
-          case ']':
-
-            terminal.escape = 2;
-            terminal.param[0] = -2;
-
-            break;
-
-          case '(':
-
-            terminal.escape = 2;
-            terminal.param[0] = -4;
-
-            break;
-
-          case '#':
-
-            terminal.escape = 2;
-            terminal.param[0] = -5;
-
-            break;
-
-          case 'M':
-
-            if (terminal.cursorx == 0 && terminal.cursory == terminal.scrolltop)
-              rscroll(0);
-            else if (terminal.cursory)
-              --terminal.cursory;
-
-            terminal.escape = 0;
-
-            break;
-
-          default:
-
-            terminal.escape = 0;
-        }
-
-        break;
-
-      default:
-
-        if (terminal.param[0] == -1)
-          terminal.escape = 0;
-        else if (terminal.param[0] == -2) {
-          /* Handle ESC ] Ps ; Pt BEL */
-          if (terminal.escape == 2) {
-            if (*buf >= '0' && *buf <= '9') {
-              terminal.param[1] *= 10;
-              terminal.param[1] += *buf - '0';
-            } else
-              ++terminal.escape;
-          } else {
-            if (*buf != '\007') {
-              /* XXX: Store text */
-            } else
-              terminal.escape = 0;
-          }
-        } else if (terminal.param[0] == -4) {
-          switch (*buf) {
-            case '0':
-
-              terminal.alt_charset[terminal.curscreen] = 1;
-
-              break;
-
-            case 'B':
-
-              terminal.alt_charset[terminal.curscreen] = 0;
-
-              break;
-          }
-
-          terminal.escape = 0;
-        } else if (terminal.param[0] == -5) {
-          terminal.escape = 0;
-        } else if (terminal.escape == 2 && *buf == '?') {
-          terminal.param[0] = -3;
-          ++terminal.escape;
-        } else if (terminal.escape == 2 && *buf == '>') {
-          terminal.param[0] = -4;
-          ++terminal.escape;
-        } else if (*buf == ';') {
-          if (terminal.escape < (int) sizeof(terminal.param) + 1)
-            terminal.param[++terminal.escape - 2] = 0;
-          else
-            terminal.param[
-                (sizeof(terminal.param) / sizeof(terminal.param[0])) - 1] = 0;
-        } else if (*buf >= '0' && *buf <= '9') {
-          terminal.param[terminal.escape - 2] *= 10;
-          terminal.param[terminal.escape - 2] += *buf - '0';
-        } else if (terminal.param[0] == -3) {
-          if (*buf == 'h') {
-            for (k = 1; k < terminal.escape - 1; ++k) {
-              switch (terminal.param[k]) {
-                case 1:
-
-                  terminal.appcursor = 1;
-
-                  break;
-
-                case 25:
-
-                  terminal.hide_cursor = 0;
-
-                  break;
-
-                case 1049:
-
-                  if (terminal.curscreen != 1) {
-                    memset(terminal.chars[1], 0,
-                           terminal.size.ws_col * terminal.history_size *
-                               sizeof(wchar_t));
-                    memset(terminal.attr[1], 0x07,
-                           terminal.size.ws_col * terminal.history_size *
-                               sizeof(uint16_t));
-                    setscreen(1);
-                  }
-
-                  break;
-              }
-            }
-          } else if (*buf == 'l') {
-            for (k = 1; k < terminal.escape - 1; ++k) {
-              switch (terminal.param[k]) {
-                case 1:
-
-                  terminal.appcursor = 0;
-
-                  break;
-
-                case 25:
-
-                  terminal.hide_cursor = 1;
-
-                  break;
-
-                case 1049:
-
-                  if (terminal.curscreen != 0) setscreen(0);
-
-                  break;
-              }
-            }
-          }
-
-          terminal.escape = 0;
-        } else {
-          switch (*buf) {
-            case '@':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              insert_chars(terminal.param[0]);
-
-              break;
-
-            case 'A':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              terminal.cursory -=
-                  (terminal.param[0] < terminal.cursory) ? terminal.param[0]
-                                                         : terminal.cursory;
-
-              break;
-
-            case 'B':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              terminal.cursory =
-                  (terminal.param[0] + terminal.cursory < terminal.size.ws_row)
-                      ? (terminal.param[0] + terminal.cursory)
-                      : (terminal.size.ws_row - 1);
-
-              break;
-
-            case 'C':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              terminal.cursorx =
-                  (terminal.param[0] + terminal.cursorx < terminal.size.ws_col)
-                      ? (terminal.param[0] + terminal.cursorx)
-                      : (terminal.size.ws_col - 1);
-
-              break;
-
-            case 'D':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              terminal.cursorx -=
-                  (terminal.param[0] < terminal.cursorx) ? terminal.param[0]
-                                                         : terminal.cursorx;
-
-              break;
-
-            case 'E':
-
-              terminal.cursorx = 0;
-              ++terminal.cursory;
-
-              while (terminal.cursory == terminal.scrollbottom ||
-                     terminal.cursory >= terminal.size.ws_row) {
-                scroll(0);
-                --terminal.cursory;
-              }
-
-              break;
-
-            case 'F':
-
-              terminal.cursorx = 0;
-
-              if (terminal.cursory == terminal.scrolltop)
-                rscroll(0);
-              else if (terminal.cursory)
-                --terminal.cursory;
-
-              terminal.escape = 0;
-
-              break;
-
-            case 'G':
-
-              if (terminal.param[0] > 0) --terminal.param[0];
-
-              terminal.cursorx = (terminal.param[0] < terminal.size.ws_col)
-                                     ? terminal.param[0]
-                                     : (terminal.size.ws_col - 1);
-
-              break;
-
-            case 'H':
-            case 'f':
-
-              if (terminal.param[0] > 0) --terminal.param[0];
-
-              if (terminal.param[1] > 0) --terminal.param[1];
-
-              terminal.cursory = (terminal.param[0] < terminal.size.ws_row)
-                                     ? terminal.param[0]
-                                     : (terminal.size.ws_row - 1);
-              terminal.cursorx = (terminal.param[1] < terminal.size.ws_col)
-                                     ? terminal.param[1]
-                                     : (terminal.size.ws_col - 1);
-
-              break;
-
-            case 'J':
-
-              if (terminal.param[0] == 0) {
-                /* Clear from cursor to end */
-
-                normalize_offset();
-
-                int count = terminal.size.ws_col *
-                                (terminal.size.ws_row - terminal.cursory - 1) +
-                            (terminal.size.ws_col - terminal.cursorx);
-                memset(
-                    &terminal.curchars[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx],
-                    0, count * sizeof(wchar_t));
-                memset16(
-                    &terminal.curattrs[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx],
-                    terminal.curattr, count * sizeof(uint16_t));
-              } else if (terminal.param[0] == 1) {
-                /* Clear from start to cursor */
-
-                normalize_offset();
-
-                int count = (terminal.size.ws_col * terminal.cursory +
-                             terminal.cursorx);
-                memset(terminal.curchars, 0, count * sizeof(wchar_t));
-                memset16(terminal.curattrs, terminal.curattr,
-                         count * sizeof(uint16_t));
-              } else if (terminal.param[0] == 2) {
-                size_t screen_size, history_size;
-
-                screen_size = terminal.size.ws_col * terminal.size.ws_row;
-                history_size = terminal.size.ws_col * terminal.history_size;
-
-                if (*terminal.curoffset + screen_size > history_size) {
-                  memset(
-                      terminal.curchars + *terminal.curoffset, 0,
-                      (history_size - *terminal.curoffset) * sizeof(wchar_t));
-                  memset(terminal.curchars, 0,
-                         (screen_size + *terminal.curoffset - history_size) *
-                             sizeof(wchar_t));
-
-                  memset16(
-                      terminal.curattrs + *terminal.curoffset, 0x07,
-                      (history_size - *terminal.curoffset) * sizeof(uint16_t));
-                  memset16(terminal.curattrs, 0x07,
-                           (screen_size + *terminal.curoffset - history_size) *
-                               sizeof(uint16_t));
-                } else {
-                  memset(terminal.curchars + *terminal.curoffset, 0,
-                         screen_size * sizeof(wchar_t));
-                  memset16(terminal.curattrs + *terminal.curoffset, 0x07,
-                           screen_size * sizeof(uint16_t));
-                }
-
-                terminal.cursory = 0;
-                terminal.cursorx = 0;
-              }
-
-              break;
-
-            case 'K':
-
-              if (!terminal.param[0]) {
-                /* Clear from cursor to end */
-
-                for (k = terminal.cursorx; k < terminal.size.ws_col; ++k) {
-                  terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] = 0;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.curattr;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.reverse ? REVERSE(terminal.curattr)
-                                       : terminal.curattr;
-                }
-              } else if (terminal.param[0] == 1) {
-                /* Clear from start to cursor */
-
-                for (k = 0; k <= terminal.cursorx; ++k) {
-                  terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] = 0;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.curattr;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.reverse ? REVERSE(terminal.curattr)
-                                       : terminal.curattr;
-                }
-              } else if (terminal.param[0] == 2) {
-                /* Clear entire line */
-
-                for (k = 0; k < terminal.size.ws_col; ++k) {
-                  terminal.curchars[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] = 0;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.curattr;
-                  terminal.curattrs[(terminal.cursory * terminal.size.ws_col +
-                                     k + *terminal.curoffset) % size] =
-                      terminal.reverse ? REVERSE(terminal.curattr)
-                                       : terminal.curattr;
-                }
-              }
-
-              break;
-
-            case 'L':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_row)
-                terminal.param[0] = terminal.size.ws_row;
-
-              while (terminal.param[0]--)
-                rscroll(1);
-
-              break;
-
-            case 'M':
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_row)
-                terminal.param[0] = terminal.size.ws_row;
-
-              while (terminal.param[0]--)
-                scroll(1);
-
-              break;
-
-            case 'P':
-
-              /* Delete character at cursor */
-
-              normalize_offset();
-
-              if (!terminal.param[0])
-                terminal.param[0] = 1;
-              else if (terminal.param[0] > terminal.size.ws_col)
-                terminal.param[0] = terminal.size.ws_col;
-
-              while (terminal.param[0]--) {
-                memmove(
-                    &terminal.curchars[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx],
-                    &terminal.curchars[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx + 1],
-                    (terminal.size.ws_col - terminal.cursorx - 1) *
-                        sizeof(wchar_t));
-                memmove(
-                    &terminal.curattrs[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx],
-                    &terminal.curattrs[terminal.cursory * terminal.size.ws_col +
-                                       terminal.cursorx + 1],
-                    (terminal.size.ws_col - terminal.cursorx - 1) *
-                        sizeof(uint16_t));
-                terminal.curchars[(terminal.cursory + 1) *
-                                      terminal.size.ws_col - 1] = 0;
-                terminal.curattrs[(terminal.cursory + 1) *
-                                      terminal.size.ws_col - 1] =
-                    terminal.reverse ? REVERSE(terminal.curattr)
-                                     : terminal.curattr;
-              }
-
-              break;
-
-            case 'S':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              while (terminal.param[0]--)
-                scroll(0);
-
-              break;
-
-            case 'T':
-
-              if (!terminal.param[0]) terminal.param[0] = 1;
-
-              while (terminal.param[0]--)
-                rscroll(0);
-
-              break;
-
-            case 'X':
-
-              if (terminal.param[0] <= 0) terminal.param[0] = 1;
-
-              for (k = terminal.cursorx;
-                   k < terminal.cursorx + terminal.param[0] &&
-                       k < terminal.size.ws_col;
-                   ++k) {
-                terminal.curchars[(terminal.cursory * terminal.size.ws_col + k +
-                                   *terminal.curoffset) % size] = 0;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k +
-                                   *terminal.curoffset) % size] =
-                    terminal.curattr;
-                terminal.curattrs[(terminal.cursory * terminal.size.ws_col + k +
-                                   *terminal.curoffset) % size] =
-                    terminal.reverse ? REVERSE(terminal.curattr)
-                                     : terminal.curattr;
-              }
-
-              break;
-
-            case 'd':
-
-              if (terminal.param[0] > 0)
-                --terminal.param[0];
-              else
-                terminal.param[0] = 0;
-
-              terminal.cursory = (terminal.param[0] < terminal.size.ws_row)
-                                     ? terminal.param[0]
-                                     : (terminal.size.ws_row - 1);
-
-              break;
-
-            case 'h':
-
-              for (k = 0; k < terminal.escape - 1; ++k) {
-                switch (terminal.param[k]) {
-                  case 4:
-
-                    terminal.insertmode = 1;
-
-                    break;
-                }
-              }
-
-              break;
-
-            case 'l':
-
-              for (k = 0; k < terminal.escape - 1; ++k) {
-                switch (terminal.param[k]) {
-                  case 4:
-
-                    terminal.insertmode = 0;
-
-                    break;
-                }
-              }
-
-              break;
-
-            case 'm':
-
-              for (k = 0; k < terminal.escape - 1; ++k) {
-                switch (terminal.param[k]) {
-                  case 7:
-
-                    terminal.reverse = 1;
-
-                    break;
-
-                  case 27:
-
-                    terminal.reverse = 0;
-
-                    break;
-
-                  case 0:
-
-                    terminal.reverse = 0;
-
-                  default:
-
-                    for (size_t l = 0;
-                         l < sizeof(ansi_helper) / sizeof(ansi_helper[0]);
-                         ++l) {
-                      if (ansi_helper[l].index == terminal.param[k]) {
-                        terminal.curattr &= ansi_helper[l].and_mask;
-                        terminal.curattr |= ansi_helper[l].or_mask;
-
-                        break;
-                      }
-                    }
-
-                    break;
-                }
-              }
-
-              break;
-
-            case 'r':
-
-              if (terminal.param[0] < terminal.param[1]) {
-                --terminal.param[0];
-
-                if (terminal.param[1] > terminal.size.ws_row)
-                  terminal.param[1] = terminal.size.ws_row;
-
-                if (terminal.param[0] < 0) terminal.param[0] = 0;
-
-                terminal.scrolltop = terminal.param[0];
-                terminal.scrollbottom = terminal.param[1];
-              } else {
-                terminal.scrolltop = 0;
-                terminal.scrollbottom = terminal.size.ws_row;
-              }
-
-              break;
-
-            case 's':
-
-              terminal.savedx = terminal.cursorx;
-              terminal.savedy = terminal.cursory;
-
-              break;
-
-            case 'u':
-
-              terminal.cursorx = terminal.savedx;
-              terminal.cursory = terminal.savedy;
-
-              break;
-          }
-
-          terminal.escape = 0;
-        }
-    }
-  }
-}
-
-void term_write(const char *data, size_t len) {
+void Terminal::Write(const char *data, size_t len) {
   size_t off = 0;
   ssize_t result;
 
-  term_clear_selection();
+  ClearSelection();
 
   while (off < len) {
-    result = write(terminal.fd, data + off, len - off);
+    result = write(fd, data + off, len - off);
 
     if (result < 0) {
       done = 1;
@@ -1451,103 +1457,17 @@ void term_write(const char *data, size_t len) {
   }
 }
 
-void term_strwrite(const char *data) { term_write(data, strlen(data)); }
-
 void X11_handle_configure(void) {
-  int i;
-
   /* Resize event -- create new buffers and copy+clip old data */
 
-  normalize_offset();
+  terminal.NormalizeHistoryBuffer();
 
   glViewport(0, 0, X11_window_width, X11_window_height);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glOrtho(0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
-  cols = X11_window_width / FONT_SpaceWidth(font);
-  rows = X11_window_height / FONT_LineHeight(font);
-
-  if (!cols) cols = 1;
-
-  if (!rows) rows = 1;
-
-  int oldcols = terminal.size.ws_col;
-  int oldrows = terminal.size.ws_row;
-
-  terminal.size.ws_xpixel = X11_window_width;
-  terminal.size.ws_ypixel = X11_window_height;
-  terminal.size.ws_col = cols;
-  terminal.size.ws_row = rows;
-  terminal.history_size = rows + scroll_extra;
-
-  if (cols != oldcols || rows != oldrows) {
-    wchar_t *oldchars[2] = { terminal.chars[0], terminal.chars[1] };
-    uint16_t *oldattr[2] = { terminal.attr[0], terminal.attr[1] };
-
-    char *oldbuffer = terminal.buffer;
-    terminal.buffer = (char *)calloc(2 * cols * terminal.history_size,
-                                     (sizeof(wchar_t) + sizeof(uint16_t)));
-
-    char *c;
-    c = terminal.buffer;
-    terminal.chars[0] = (wchar_t *)c;
-    c += cols * terminal.history_size * sizeof(wchar_t);
-    terminal.attr[0] = (uint16_t *)c;
-    c += cols * terminal.history_size * sizeof(uint16_t);
-    terminal.chars[1] = (wchar_t *)c;
-    c += cols * terminal.history_size * sizeof(wchar_t);
-    terminal.attr[1] = (uint16_t *)c;
-    terminal.scrollbottom = rows;
-
-    int srcoff = 0;
-    int minrows;
-
-    if (rows > oldrows)
-      minrows = oldrows;
-    else {
-      if (terminal.cursory >= rows) srcoff = terminal.cursory - rows + 1;
-      minrows = rows;
-    }
-
-    int mincols = (cols < oldcols) ? cols : oldcols;
-
-    for (i = 0; i < minrows; ++i) {
-      memcpy(&terminal.chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols],
-             mincols * sizeof(wchar_t));
-      memcpy(&terminal.attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols],
-             mincols * sizeof(terminal.attr[0][0]));
-    }
-
-    for (i = 0; i < minrows; ++i) {
-      memcpy(&terminal.chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols],
-             mincols * sizeof(wchar_t));
-      memcpy(&terminal.attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols],
-             mincols * sizeof(terminal.attr[1][0]));
-    }
-
-    free(oldbuffer);
-
-    terminal.curchars = terminal.chars[terminal.curscreen];
-    terminal.curattrs = terminal.attr[terminal.curscreen];
-
-    terminal.cursory = terminal.cursory - srcoff;
-    terminal.storedcursory[1 - terminal.curscreen] += rows - oldrows;
-#define CLIP_CURSOR(val, max) \
-  {                           \
-    if (val < 0)              \
-      val = 0;                \
-    else if (val >= max)      \
-      val = max - 1;          \
-  }
-    CLIP_CURSOR(terminal.cursorx, cols);
-    CLIP_CURSOR(terminal.cursory, rows);
-    CLIP_CURSOR(terminal.storedcursorx[1 - terminal.curscreen], cols);
-    CLIP_CURSOR(terminal.storedcursory[1 - terminal.curscreen], rows);
-#undef CLIP_CURSOR
-
-    ioctl(terminal.fd, TIOCSWINSZ, &terminal.size);
-  }
+  terminal.Resize(X11_window_width, X11_window_height);
 }
 
 void run_command(int fd, const char *command, const char *arg) {
@@ -1638,14 +1558,14 @@ static void *tty_read_thread_entry(void *arg) {
       pthread_mutex_lock(&terminal.bufferLock);
     }
 
-    term_process_data(buf, fill);
+    terminal.ProcessData(buf, fill);
     fill = 0;
     pthread_mutex_unlock(&terminal.bufferLock);
 
     x11_clear();
   }
 
-  save_session();
+  terminal.SaveSession();
 
   done = 1;
 
@@ -1654,13 +1574,13 @@ static void *tty_read_thread_entry(void *arg) {
   return NULL;
 }
 
-static void wait_for_dead_children(void) {
+void Terminal::WaitForDeadChildren(void) {
   pid_t pid;
   int status;
 
   while (0 < (pid = waitpid(-1, &status, WNOHANG))) {
-    if (pid == terminal.pid) {
-      save_session();
+    if (pid == terminal.pid_) {
+      terminal.SaveSession();
 
       exit(EXIT_SUCCESS);
     }
@@ -1690,11 +1610,11 @@ int x11_process_events() {
   XEvent event;
   int result;
 
-#define MAP_KEY_TO_STRING(keysym, string)               \
-  key_callbacks[keysym] = [](XKeyEvent * event) {       \
-    if (event->state & Mod1Mask) term_strwrite("\033"); \
-    term_strwrite((string));                            \
-  };                                                    \
+#define MAP_KEY_TO_STRING(keysym, string)                      \
+  key_callbacks[keysym] = [](XKeyEvent * event) {              \
+    if (event->state & Mod1Mask) terminal.WriteString("\033"); \
+    terminal.WriteString((string));                            \
+  };                                                           \
 
   MAP_KEY_TO_STRING(XK_F1, "\033OP");
   MAP_KEY_TO_STRING(XK_F2, "\033OQ");
@@ -1727,7 +1647,7 @@ int x11_process_events() {
 
   /* Inline calculator */
   key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent * event) {
-    normalize_offset();
+    terminal.NormalizeHistoryBuffer();
 
     terminal.select_end =
         terminal.cursory * terminal.size.ws_col + terminal.cursorx;
@@ -1738,9 +1658,10 @@ int x11_process_events() {
     } else
       terminal.select_begin = terminal.select_end - 1;
 
-    find_range(range_parenthesis, &terminal.select_begin, &terminal.select_end);
+    terminal.FindRange(Terminal::kRangeParenthesis, &terminal.select_begin,
+                       &terminal.select_end);
 
-    update_selection(CurrentTime);
+    terminal.UpdateSelection(CurrentTime);
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
   };
@@ -1782,7 +1703,7 @@ int x11_process_events() {
 
     if (XFilterEvent(&event, X11_window)) continue;
 
-    wait_for_dead_children();
+    terminal.WaitForDeadChildren();
 
     switch (event.type) {
       case KeyPress:
@@ -1865,9 +1786,9 @@ int x11_process_events() {
             if (handler != key_callbacks.end())
               handler->second(&event.xkey);
             else if (len) {
-              if ((modifier_mask & Mod1Mask)) term_strwrite("\033");
+              if ((modifier_mask & Mod1Mask)) terminal.WriteString("\033");
 
-              term_write((const char *)text, len);
+              terminal.Write(reinterpret_cast<const char *>(text), len);
             }
           }
 
@@ -1899,8 +1820,8 @@ int x11_process_events() {
                 size - (terminal.history_scroll * terminal.size.ws_col);
 
           if (event.xbutton.state & ControlMask)
-            find_range(range_word_or_url, &terminal.select_begin,
-                       &new_select_end);
+            terminal.FindRange(Terminal::kRangeWordOrURL,
+                               &terminal.select_begin, &new_select_end);
 
           if (new_select_end != terminal.select_end) {
             terminal.select_end = new_select_end;
@@ -1936,8 +1857,8 @@ int x11_process_events() {
             terminal.select_end = terminal.select_begin;
 
             if (event.xbutton.state & ControlMask)
-              find_range(range_word_or_url, &terminal.select_begin,
-                         &terminal.select_end);
+              terminal.FindRange(Terminal::kRangeWordOrURL,
+                                 &terminal.select_begin, &terminal.select_end);
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           } break;
@@ -1971,9 +1892,9 @@ int x11_process_events() {
 
       case ButtonRelease:
 
-        if (event.xbutton.button == 1) /* Left button */
-            {
-          update_selection(event.xbutton.time);
+        /* Left button */
+        if (event.xbutton.button == 1) {
+          terminal.UpdateSelection(event.xbutton.time);
 
           if (select_text && (event.xkey.state & Mod1Mask))
             run_command(terminal.fd, "open-url", (const char *)select_text);
@@ -2020,7 +1941,7 @@ int x11_process_events() {
 
         if (type != xa_utf8_string || format != 8) break;
 
-        term_write((char *)prop, nitems);
+        terminal.Write(reinterpret_cast<const char *>(prop), nitems);
 
         XFree(prop);
       } break;
@@ -2028,13 +1949,13 @@ int x11_process_events() {
       case SelectionClear:
 
         if (event.xselectionclear.selection == XA_PRIMARY)
-          term_clear_selection();
+          terminal.ClearSelection();
 
         break;
 
       case MapNotify:
 
-        hidden = 0;
+        hidden = false;
 
         X11_handle_configure();
 
@@ -2042,7 +1963,7 @@ int x11_process_events() {
 
       case UnmapNotify:
 
-        hidden = 1;
+        hidden = true;
 
         break;
 
@@ -2176,9 +2097,11 @@ int main(int argc, char **argv) {
 
   scroll_extra =
       tree_get_integer_default(config.get(), "terminal.history-size", 1000);
-  font_name = tree_get_string_default(config.get(), "terminal.font", "Andale Mono");
+  font_name =
+      tree_get_string_default(config.get(), "terminal.font", "Andale Mono");
   font_size = tree_get_integer_default(config.get(), "terminal.font-size", 12);
-  font_weight = tree_get_integer_default(config.get(), "terminal.font-weight", 200);
+  font_weight =
+      tree_get_integer_default(config.get(), "terminal.font-weight", 200);
 
   signal(SIGTERM, sighandler);
   signal(SIGIO, sighandler);
@@ -2234,7 +2157,7 @@ int main(int argc, char **argv) {
     args[1] = 0;
   }
 
-  init_session(args);
+  terminal.Init(args, X11_window_width, X11_window_height);
 
   X11_handle_configure();
 

@@ -14,9 +14,8 @@
 #include <unistd.h>
 
 #include "array.h"
+#include "terminal.h"
 #include "tree.h"
-
-extern int home_fd;
 
 void tree_create_node(tree* t, const char* path, const char* value) {
   tree::node new_node;
