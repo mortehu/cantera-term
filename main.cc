@@ -167,8 +167,6 @@ Terminal::Terminal()
 
 void Terminal::Init(char *const *args, unsigned int width,
                     unsigned int height) {
-  char *c;
-
   size.ws_col = width / FONT_SpaceWidth(font);
   size.ws_row = height / FONT_LineHeight(font);
   size.ws_xpixel = width;
@@ -191,16 +189,11 @@ void Terminal::Init(char *const *args, unsigned int width,
 
   fcntl(fd, F_SETFL, O_NDELAY);
 
-  buffer = (char *)calloc(2 * size.ws_col * history_size,
-                          sizeof(wchar_t) + sizeof(uint16_t));
-  c = buffer;
-  chars[0] = (wchar_t *)c;
-  c += size.ws_col * history_size * sizeof(wchar_t);
-  attr[0] = (uint16_t *)c;
-  c += size.ws_col * history_size * sizeof(uint16_t);
-  chars[1] = (wchar_t *)c;
-  c += size.ws_col * history_size * sizeof(wchar_t);
-  attr[1] = (uint16_t *)c;
+  chars[0] = new wchar_t[size.ws_col * history_size];
+  chars[1] = new wchar_t[size.ws_col * history_size];
+  attr[0] = new uint16_t[size.ws_col * history_size];
+  attr[1] = new uint16_t[size.ws_col * history_size];
+
   curattr = 0x07;
   scrollbottom = size.ws_row;
   std::fill(chars[0], chars[0] + size.ws_col * history_size, 0);
@@ -230,19 +223,11 @@ void Terminal::Resize(unsigned int width, unsigned int height) {
     wchar_t *oldchars[2] = { chars[0], chars[1] };
     uint16_t *oldattr[2] = { attr[0], attr[1] };
 
-    char *oldbuffer = buffer;
-    buffer = (char *)calloc(2 * cols * history_size,
-                            (sizeof(wchar_t) + sizeof(uint16_t)));
+    chars[0] = new wchar_t[size.ws_col * history_size];
+    chars[1] = new wchar_t[size.ws_col * history_size];
+    attr[0] = new uint16_t[size.ws_col * history_size];
+    attr[1] = new uint16_t[size.ws_col * history_size];
 
-    char *c;
-    c = buffer;
-    chars[0] = (wchar_t *)c;
-    c += cols * history_size * sizeof(wchar_t);
-    attr[0] = (uint16_t *)c;
-    c += cols * history_size * sizeof(uint16_t);
-    chars[1] = (wchar_t *)c;
-    c += cols * history_size * sizeof(wchar_t);
-    attr[1] = (uint16_t *)c;
     scrollbottom = rows;
 
     int srcoff = 0;
@@ -271,7 +256,10 @@ void Terminal::Resize(unsigned int width, unsigned int height) {
              mincols * sizeof(attr[1][0]));
     }
 
-    free(oldbuffer);
+    delete [] oldattr[1];
+    delete [] oldattr[0];
+    delete [] oldchars[1];
+    delete [] oldchars[0];
 
     curchars = chars[curscreen];
     curattrs = attr[curscreen];
