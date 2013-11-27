@@ -217,8 +217,7 @@ void Terminal::Init(char *const *args, unsigned int width,
   curattr = 0x07;
   scrollbottom = size.ws_row;
   std::fill(chars[0], chars[0] + size.ws_col * history_size, 0);
-  std::fill(attr[0], attr[0] + size.ws_col * history_size, curattr);
-  std::fill(attr[1], attr[1] + size.ws_col * history_size, curattr);
+  std::fill(attr[0], attr[0] + size.ws_col * history_size, effective_attribute());
   scroll_line[0] = 0;
   scroll_line[1] = 0;
 
@@ -323,11 +322,8 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
   // Redundant, optimized character processing code for the typical case.
   if (!escape && !insertmode && !nch_) {
-    unsigned int attr, offset;
-
-    attr = reverse ? REVERSE(curattr) : curattr;
-
-    offset =
+    uint16_t attr = effective_attribute();
+    size_t offset =
         (*cur_scroll_line + cursory) % history_size * size.ws_col + cursorx;
 
     for (; buf != end; ++buf) {
@@ -360,8 +356,9 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
         offset =
             (*cur_scroll_line + cursory) % history_size * size.ws_col + cursorx;
-      } else
+      } else {
         break;
+      }
     }
   }
 
@@ -617,10 +614,10 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                 case 1049:
 
                   if (curscreen != 1) {
-                    memset(chars[1], 0,
-                           size.ws_col * history_size * sizeof(wchar_t));
-                    memset(attr[1], 0x07,
-                           size.ws_col * history_size * sizeof(uint16_t));
+                    std::fill(chars[1], chars[1] + size.ws_col * history_size,
+                              0);
+                    std::fill(attr[1], attr[1] + size.ws_col * history_size,
+                              0x07);
                     SetScreen(1);
                   }
 
@@ -754,8 +751,8 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                             (size.ws_col - cursorx);
                 memset(&curchars[cursory * size.ws_col + cursorx], 0,
                        count * sizeof(wchar_t));
-                memset16(&curattrs[cursory * size.ws_col + cursorx], curattr,
-                         count * sizeof(uint16_t));
+                memset16(&curattrs[cursory * size.ws_col + cursorx],
+                         effective_attribute(), count * sizeof(uint16_t));
               } else if (param[0] == 1) {
                 /* Clear from start to cursor */
 
@@ -763,7 +760,8 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
                 int count = (size.ws_col * cursory + cursorx);
                 memset(curchars, 0, count * sizeof(wchar_t));
-                memset16(curattrs, curattr, count * sizeof(uint16_t));
+                memset16(curattrs, effective_attribute(),
+                         count * sizeof(uint16_t));
               } else if (param[0] == 2) {
                 for (size_t i = 0; i < size.ws_row; ++i)
                   ClearLine((i + size.ws_row) % history_size);
@@ -794,10 +792,11 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                   end = size.ws_col;
               }
 
+              uint16_t attr = effective_attribute();
+
               for (size_t x = begin; x < end; ++x) {
                 curchars[line_offset + x] = 0;
-                curattrs[line_offset + x] =
-                    reverse ? REVERSE(curattr) : curattr;
+                curattrs[line_offset + x] = attr;
               }
             } break;
 
@@ -825,7 +824,7 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
               break;
 
-            case 'P':
+            case 'P': {
 
               /* Delete character at cursor */
 
@@ -836,6 +835,8 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
               else if (param[0] > size.ws_col)
                 param[0] = size.ws_col;
 
+              uint16_t attr = effective_attribute();
+
               while (param[0]--) {
                 memmove(&curchars[cursory * size.ws_col + cursorx],
                         &curchars[cursory * size.ws_col + cursorx + 1],
@@ -844,11 +845,10 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                         &curattrs[cursory * size.ws_col + cursorx + 1],
                         (size.ws_col - cursorx - 1) * sizeof(uint16_t));
                 curchars[(cursory + 1) * size.ws_col - 1] = 0;
-                curattrs[(cursory + 1) * size.ws_col - 1] =
-                    reverse ? REVERSE(curattr) : curattr;
+                curattrs[(cursory + 1) * size.ws_col - 1] = attr;
               }
 
-              break;
+            } break;
 
             case 'S':
 
@@ -868,20 +868,21 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
               break;
 
-            case 'X':
+            case 'X': {
 
               if (param[0] <= 0) param[0] = 1;
+
+              uint16_t attr = effective_attribute();
 
               for (k = cursorx; k < cursorx + param[0] && k < size.ws_col;
                    ++k) {
                 curchars[(cursory + *cur_scroll_line) % history_size *
                              size.ws_col + k] = 0;
                 curattrs[(cursory + *cur_scroll_line) % history_size *
-                             size.ws_col + k] =
-                    reverse ? REVERSE(curattr) : curattr;
+                             size.ws_col + k] = attr;
               }
 
-              break;
+            } break;
 
             case 'd':
 
@@ -1023,9 +1024,11 @@ void Terminal::InsertChars(size_t count) {
     curattrs[line_offset + k] = curattrs[line_offset + k - count];
   }
 
+  uint16_t attr = effective_attribute();
+
   for (; k >= static_cast<size_t>(cursorx); --k) {
     curchars[line_offset + k] = 'X';
-    curattrs[line_offset + k] = curattr;
+    curattrs[line_offset + k] = attr;
   }
 }
 
@@ -1052,7 +1055,7 @@ void Terminal::AddChar(int ch) {
 
   if (ch == 0x7f || ch >= 65536) {
     curchars[offset] = 0;
-    curattrs[offset] = reverse ? REVERSE(curattr) : curattr;
+    curattrs[offset] = effective_attribute();
     return;
   }
 
@@ -1061,7 +1064,7 @@ void Terminal::AddChar(int ch) {
   if (insertmode) terminal.InsertChars(1);
 
   curchars[offset] = ch;
-  curattrs[offset] = reverse ? REVERSE(curattr) : curattr;
+  curattrs[offset] = effective_attribute();
   ++cursorx;
 }
 
@@ -1101,7 +1104,7 @@ void Terminal::ClearLine(size_t line) {
 
   std::fill(curchars + offset, curchars + offset + size.ws_col, 0);
   std::fill(curattrs + offset, curattrs + offset + size.ws_col,
-            reverse ? REVERSE(curattr) : curattr);
+            effective_attribute());
 }
 
 void Terminal::Scroll(bool fromcursor) {
@@ -1132,7 +1135,8 @@ void Terminal::Scroll(bool fromcursor) {
 
   memmove(curattrs + first, curattrs + first + size.ws_col,
           sizeof(uint16_t) * length);
-  memset16(curattrs + first + length, curattr, sizeof(uint16_t) * size.ws_col);
+  memset16(curattrs + first + length, effective_attribute(),
+           sizeof(uint16_t) * size.ws_col);
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
@@ -1156,7 +1160,8 @@ void Terminal::ReverseScroll(bool fromcursor) {
 
   memmove(curattrs + first + size.ws_col, curattrs + first,
           sizeof(uint16_t) * length);
-  memset16(curattrs + first, curattr, sizeof(uint16_t) * size.ws_col);
+  memset16(curattrs + first, effective_attribute(),
+           sizeof(uint16_t) * size.ws_col);
 }
 
 bool Terminal::FindRange(RangeType range_type, int *begin, int *end) const {

@@ -56,9 +56,13 @@ class Terminal {
 
   void SaveSession();
 
-  void Write(const char *data, size_t len);
-  void WriteString(const char *string) { Write(string, strlen(string)); }
+  void Write(const char* data, size_t len);
+  void WriteString(const char* string) { Write(string, strlen(string)); }
   void WaitForDeadChildren(void);
+
+  uint16_t effective_attribute() const {
+    return reverse ? REVERSE(curattr) : curattr;
+  }
 
   pthread_mutex_t bufferLock;
 
