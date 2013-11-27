@@ -120,19 +120,6 @@ pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
 
 }
 
-static void *memset16(void *s, int w, size_t n) {
-  uint16_t *o = (uint16_t *)s;
-
-  assert(!(n & 1));
-
-  n >>= 1;
-
-  while (n--)
-    *o++ = w;
-
-  return s;
-}
-
 static void term_LoadGlyph(wchar_t character) {
   struct FONT_Glyph *glyph;
 
@@ -751,8 +738,9 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                             (size.ws_col - cursorx);
                 memset(&curchars[cursory * size.ws_col + cursorx], 0,
                        count * sizeof(wchar_t));
-                memset16(&curattrs[cursory * size.ws_col + cursorx],
-                         effective_attribute(), count * sizeof(uint16_t));
+                std::fill(&curattrs[cursory * size.ws_col + cursorx],
+                          &curattrs[cursory * size.ws_col + cursorx + count],
+                          effective_attribute());
               } else if (param[0] == 1) {
                 /* Clear from start to cursor */
 
@@ -760,8 +748,7 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
                 int count = (size.ws_col * cursory + cursorx);
                 memset(curchars, 0, count * sizeof(wchar_t));
-                memset16(curattrs, effective_attribute(),
-                         count * sizeof(uint16_t));
+                std::fill(curchars, curchars + count, effective_attribute());
               } else if (param[0] == 2) {
                 for (size_t i = 0; i < size.ws_row; ++i)
                   ClearLine((i + size.ws_row) % history_size);
@@ -1135,8 +1122,8 @@ void Terminal::Scroll(bool fromcursor) {
 
   memmove(curattrs + first, curattrs + first + size.ws_col,
           sizeof(uint16_t) * length);
-  memset16(curattrs + first + length, effective_attribute(),
-           sizeof(uint16_t) * size.ws_col);
+  std::fill(curattrs + first + length, curattrs + first + length + size.ws_col,
+            effective_attribute());
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
@@ -1160,8 +1147,8 @@ void Terminal::ReverseScroll(bool fromcursor) {
 
   memmove(curattrs + first + size.ws_col, curattrs + first,
           sizeof(uint16_t) * length);
-  memset16(curattrs + first, effective_attribute(),
-           sizeof(uint16_t) * size.ws_col);
+  std::fill(curattrs + first, curattrs + first + size.ws_col,
+            effective_attribute());
 }
 
 bool Terminal::FindRange(RangeType range_type, int *begin, int *end) const {
