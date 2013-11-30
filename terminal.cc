@@ -87,15 +87,15 @@ void Terminal::Init(unsigned int width, unsigned int height,
 
   history_size = size_.ws_row + scroll_extra;
 
-  chars[0] = new wchar_t[size_.ws_col * history_size];
-  chars[1] = new wchar_t[size_.ws_col * history_size];
-  attr[0] = new uint16_t[size_.ws_col * history_size];
-  attr[1] = new uint16_t[size_.ws_col * history_size];
+  chars[0].reset(new wchar_t[size_.ws_col * history_size]);
+  chars[1].reset(new wchar_t[size_.ws_col * history_size]);
+  attr[0].reset(new uint16_t[size_.ws_col * history_size]);
+  attr[1].reset(new uint16_t[size_.ws_col * history_size]);
 
   curattr = 0x07;
   scrollbottom = size_.ws_row;
-  std::fill(chars[0], chars[0] + size_.ws_col * history_size, 0);
-  std::fill(attr[0], attr[0] + size_.ws_col * history_size,
+  std::fill(&chars[0][0], &chars[0][size_.ws_col * history_size], 0);
+  std::fill(&attr[0][0], &attr[0][size_.ws_col * history_size],
             EffectiveAttribute());
   scroll_line[0] = 0;
   scroll_line[1] = 0;
@@ -124,13 +124,15 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   history_size += rows - oldrows;
 
   if (cols != oldcols || rows != oldrows) {
-    wchar_t *oldchars[2] = { chars[0], chars[1] };
-    uint16_t *oldattr[2] = { attr[0], attr[1] };
+    std::unique_ptr<wchar_t[]> oldchars[2] = { std::move(chars[0]),
+                                               std::move(chars[1]) };
+    std::unique_ptr<uint16_t[]> oldattr[2] = { std::move(attr[0]),
+                                               std::move(attr[1]) };
 
-    chars[0] = new wchar_t[size_.ws_col * history_size];
-    chars[1] = new wchar_t[size_.ws_col * history_size];
-    attr[0] = new uint16_t[size_.ws_col * history_size];
-    attr[1] = new uint16_t[size_.ws_col * history_size];
+    chars[0].reset(new wchar_t[size_.ws_col * history_size]);
+    chars[1].reset(new wchar_t[size_.ws_col * history_size]);
+    attr[0].reset(new uint16_t[size_.ws_col * history_size]);
+    attr[1].reset(new uint16_t[size_.ws_col * history_size]);
 
     scrollbottom = rows;
 
@@ -160,13 +162,8 @@ void Terminal::Resize(unsigned int width, unsigned int height,
              mincols * sizeof(attr[1][0]));
     }
 
-    delete[] oldattr[1];
-    delete[] oldattr[0];
-    delete[] oldchars[1];
-    delete[] oldchars[0];
-
-    curchars = chars[curscreen];
-    curattrs = attr[curscreen];
+    curchars = chars[curscreen].get();
+    curattrs = attr[curscreen].get();
 
     cursory = cursory - srcoff;
     storedcursory[1 - curscreen] += rows - oldrows;
@@ -925,8 +922,8 @@ void Terminal::SetScreen(int screen) {
   storedcursory[curscreen] = cursory;
 
   curscreen = screen;
-  curchars = chars[screen];
-  curattrs = attr[screen];
+  curchars = chars[screen].get();
+  curattrs = attr[screen].get();
   cursorx = storedcursorx[screen];
   cursory = storedcursory[screen];
   cur_scroll_line = &scroll_line[screen];
@@ -999,18 +996,18 @@ void Terminal::NormalizeHistoryBuffer() {
     std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[buffer_offset]);
     std::unique_ptr<uint16_t[]> tmpattrs(new uint16_t[buffer_offset]);
 
-    memcpy(&tmpchars[0], chars[i], sizeof(tmpchars[0]) * buffer_offset);
-    memcpy(&tmpattrs[0], attr[i], sizeof(tmpattrs[0]) * buffer_offset);
+    memcpy(&tmpchars[0], &chars[i][0], sizeof(tmpchars[0]) * buffer_offset);
+    memcpy(&tmpattrs[0], &attr[i][0], sizeof(tmpattrs[0]) * buffer_offset);
 
-    memmove(chars[i], chars[i] + buffer_offset,
+    memmove(&chars[i][0], &chars[i][buffer_offset],
             sizeof(tmpchars[0]) * (history_buffer_size - buffer_offset));
-    memmove(attr[i], attr[i] + buffer_offset,
+    memmove(&attr[i][0], &attr[i][buffer_offset],
             sizeof(tmpattrs[0]) * (history_buffer_size - buffer_offset));
 
-    memmove(chars[i] + (history_buffer_size - buffer_offset), &tmpchars[0],
-            sizeof(tmpchars[0]) * buffer_offset);
-    memmove(attr[i] + (history_buffer_size - buffer_offset), &tmpattrs[0],
-            sizeof(tmpattrs[0]) * buffer_offset);
+    memcpy(&chars[i][history_buffer_size - buffer_offset], &tmpchars[0],
+           sizeof(tmpchars[0]) * buffer_offset);
+    memcpy(&attr[i][history_buffer_size - buffer_offset], &tmpattrs[0],
+           sizeof(tmpattrs[0]) * buffer_offset);
 
     scroll_line[i] = 0;
   }
@@ -1245,8 +1242,8 @@ void Terminal::SaveSession(const char *session_path) {
   write(session_fd, &size_, sizeof(size_));
   write(session_fd, &cursorx, sizeof(cursorx));
   write(session_fd, &cursory, sizeof(cursory));
-  write(session_fd, chars[0], history_buffer_size * sizeof(*chars[0]));
-  write(session_fd, attr[0], history_buffer_size * sizeof(*attr[0]));
+  write(session_fd, chars[0].get(), history_buffer_size * sizeof(chars[0][0]));
+  write(session_fd, attr[0].get(), history_buffer_size * sizeof(attr[0][0]));
 
   close(session_fd);
 }

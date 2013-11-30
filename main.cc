@@ -919,8 +919,10 @@ int main(int argc, char **argv) {
       terminal.cursorx = 0;
       terminal.cursory = 0;
     } else {
-      read(session_fd, terminal.chars[0], size * sizeof(*terminal.chars[0]));
-      read(session_fd, terminal.attr[0], size * sizeof(*terminal.attr[0]));
+      read(session_fd, &terminal.chars[0][0],
+           size * sizeof(terminal.chars[0][0]));
+      read(session_fd, &terminal.attr[0][0],
+           size * sizeof(terminal.attr[0][0]));
 
       if (terminal.cursory >= terminal.Size().ws_row)
         terminal.cursory = terminal.Size().ws_row - 1;

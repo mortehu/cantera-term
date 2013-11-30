@@ -69,8 +69,8 @@ class Terminal {
   const winsize& Size() const { return size_; }
 
   char* buffer;
-  wchar_t* chars[2];
-  uint16_t* attr[2];
+  std::unique_ptr<wchar_t[]> chars[2];
+  std::unique_ptr<uint16_t[]> attr[2];
   wchar_t* curchars;
   uint16_t* curattrs;
   size_t scroll_line[2];
