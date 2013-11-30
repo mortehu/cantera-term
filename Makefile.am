@@ -1,4 +1,5 @@
 bin_PROGRAMS = cantera-term
+check_PROGRAMS = fuzz
 man1_MANS = doc/cantera-term.1
 
 ACLOCAL_AMFLAGS = -I m4
@@ -11,6 +12,10 @@ AM_CPPFLAGS = -I/usr/include/freetype2 -DBINDIR=\"$(bindir)\" -DPKGDATADIR=\"$(p
 
 cantera_term_SOURCES = main.cc terminal.h terminal.cc tree.cc tree.h x11.c x11.h font.c font.h glyph.c glyph.h draw-gl-30.cc
 cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL
+
+fuzz_SOURCES = fuzz.cc terminal.h terminal.cc
+
+TESTS = fuzz
 
 EXTRA_DIST = doc/cantera-term.1
 

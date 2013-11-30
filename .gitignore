@@ -22,6 +22,7 @@ config.h.in
 config.sub
 configure
 depcomp
+fuzz
 install-sh
 libtool
 ltmain.sh
