@@ -94,7 +94,7 @@ void Terminal::Init(unsigned int width, unsigned int height,
 
   curattr = 0x07;
   scrollbottom = size_.ws_row;
-  std::fill(&chars[0][0], &chars[0][size_.ws_col * history_size], 0);
+  std::fill(&chars[0][0], &chars[0][size_.ws_col * history_size], ' ');
   std::fill(&attr[0][0], &attr[0][size_.ws_col * history_size],
             EffectiveAttribute());
   scroll_line[0] = 0;
@@ -709,22 +709,21 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               if (!param[0])
                 param[0] = 1;
-              else if (param[0] > size_.ws_col)
-                param[0] = size_.ws_col;
+              if (cursorx + param[0] > size_.ws_col)
+                param[0] = size_.ws_col - cursorx;
 
-              uint16_t attr = EffectiveAttribute();
+              std::copy(&curchars[cursory * size_.ws_col + cursorx + param[0]],
+                        &curchars[(cursory + 1) * size_.ws_col],
+                        &curchars[cursory * size_.ws_col + cursorx]);
+              std::copy(&curattrs[cursory * size_.ws_col + cursorx + param[0]],
+                        &curattrs[(cursory + 1) * size_.ws_col],
+                        &curattrs[cursory * size_.ws_col + cursorx]);
 
-              while (param[0]--) {
-                memmove(&curchars[cursory * size_.ws_col + cursorx],
-                        &curchars[cursory * size_.ws_col + cursorx + 1],
-                        (size_.ws_col - cursorx - 1) * sizeof(wchar_t));
-                memmove(&curattrs[cursory * size_.ws_col + cursorx],
-                        &curattrs[cursory * size_.ws_col + cursorx + 1],
-                        (size_.ws_col - cursorx - 1) * sizeof(uint16_t));
-                curchars[(cursory + 1) * size_.ws_col - 1] = 0;
-                curattrs[(cursory + 1) * size_.ws_col - 1] = attr;
-              }
-
+              std::fill(&curchars[(cursory + 1) * size_.ws_col - param[0]],
+                        &curchars[(cursory + 1) * size_.ws_col], ' ');
+              std::fill(&curattrs[(cursory + 1) * size_.ws_col - param[0]],
+                        &curattrs[(cursory + 1) * size_.ws_col],
+                        EffectiveAttribute());
             } break;
 
             case 'S':
