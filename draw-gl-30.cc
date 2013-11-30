@@ -1,3 +1,5 @@
+#include "draw.h"
+
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
@@ -200,47 +202,7 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(Terminal *t) {
-  // Step 1: Clone the data we need for drawing under a mutex lock.
-  pthread_mutex_lock(&t->bufferLock);
-
-  size_t width = t->size.ws_col;
-  size_t height = t->size.ws_row;
-  size_t history_size = t->history_size * width;
-
-  std::unique_ptr<wchar_t[]> curchars(new wchar_t[width * height]);
-  std::unique_ptr<uint16_t[]> curattrs(new uint16_t[width * height]);
-
-  for (size_t row = 0, offset = (t->history_size - t->history_scroll +
-                                 *t->cur_scroll_line) * width;
-       row < height; ++row, offset += width) {
-    offset %= history_size;
-    std::copy(&t->curchars[offset], &t->curchars[offset + width],
-              &curchars[row * width]);
-    std::copy(&t->curattrs[offset], &t->curattrs[offset + width],
-              &curattrs[row * width]);
-  }
-
-  size_t cursorx = t->cursorx;
-  size_t cursory = t->cursory + t->history_scroll;
-
-  size_t selbegin, selend;
-  if (t->select_begin < t->select_end) {
-    selbegin = t->select_begin;
-    selend = t->select_end;
-  } else {
-    selbegin = t->select_end;
-    selend = t->select_begin;
-  }
-
-  selbegin = (selbegin + t->history_scroll * width) % history_size;
-  selend = (selend + t->history_scroll * width) % history_size;
-
-  bool hide_cursor = t->hide_cursor;
-  bool focused = t->focused;
-
-  pthread_mutex_unlock(&t->bufferLock);
-
+void draw_gl_30(const Terminal::State &state) {
   // Step 2: Submit the GL commands.
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
@@ -255,20 +217,20 @@ void draw_gl_30(Terminal *t) {
 
   int y = ascent;
 
-  for (size_t row = 0; row < height; ++row) {
-    const wchar_t *line = &curchars[row * width];
-    const uint16_t *attrline = &curattrs[row * width];
+  for (size_t row = 0; row < state.height; ++row) {
+    const wchar_t *line = &state.chars[row * state.width];
+    const uint16_t *attrline = &state.attrs[row * state.width];
     int x = 0;
 
-    for (size_t col = 0; col < width; ++col) {
-      int printable;
+    for (size_t col = 0; col < state.width; ++col) {
       unsigned int attr = attrline[col];
       int xOffset = spaceWidth;
       unsigned int color = palette[attr & 0xF];
       unsigned int background_color = palette[(attr >> 4) & 7];
 
-      if (!hide_cursor && row == cursory && col == cursorx) {
-        if (focused) {
+      if (!state.cursor_hidden && row == state.cursor_y &&
+          col == state.cursor_x) {
+        if (state.focused) {
           color = 0xff000000;
           background_color = 0xffffffff;
         } else {
@@ -277,12 +239,10 @@ void draw_gl_30(Terminal *t) {
         }
       }
 
-      printable = (line[col] != 0);
-
-      /* `selbegin' might be greater than `selend' if our history window
-       * straddles the end of the history buffer.  */
-      if (row * width + col == selbegin) in_selection = true;
-      if (row * width + col == selend) in_selection = false;
+      // `selection_begin' might be greater than `selection_end' if our history
+      // window straddles the end of the history buffer.
+      if (row * state.width + col == state.selection_begin) in_selection = true;
+      if (row * state.width + col == state.selection_end) in_selection = false;
 
       if (in_selection) {
         unsigned int tmp;
@@ -291,11 +251,24 @@ void draw_gl_30(Terminal *t) {
         background_color = tmp;
       }
 
-      if (printable) {
+      int character = line[col];
+
+      if (character > ' ') {
         struct FONT_Glyph glyph;
         uint16_t u, v;
 
-        GLYPH_Get(line[col], &glyph, &u, &v);
+        if (!GLYPH_IsLoaded(character)) {
+          struct FONT_Glyph *glyph;
+
+          if (!(glyph = FONT_GlyphForCharacter(font, character)))
+            fprintf(stderr, "Failed to get glyph for '%d'", character);
+
+          GLYPH_Add(character, glyph);
+
+          free(glyph);
+        }
+
+        GLYPH_Get(character, &glyph, &u, &v);
 
         if (glyph.xOffset > 0 &&
             static_cast<unsigned int>(glyph.xOffset) > spaceWidth)

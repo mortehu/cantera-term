@@ -21,7 +21,7 @@ struct FONT_Data {
 
 static FT_Library ft_library;
 
-static FT_GlyphSlot font_FreeTypeGlyphForCharacter(struct FONT_Data *font,
+static FT_GlyphSlot font_FreeTypeGlyphForCharacter(const struct FONT_Data *font,
                                                    wint_t character,
                                                    FT_Face *face,
                                                    unsigned int loadFlags);
@@ -167,7 +167,7 @@ unsigned int FONT_SpaceWidth(struct FONT_Data *font) {
   return font->spaceWidth;
 }
 
-struct FONT_Glyph *FONT_GlyphForCharacter(struct FONT_Data *font,
+struct FONT_Glyph *FONT_GlyphForCharacter(const struct FONT_Data *font,
                                           wint_t character) {
   struct FONT_Glyph *result;
   FT_GlyphSlot glyph;
@@ -215,7 +215,7 @@ struct FONT_Glyph *FONT_GlyphWithSize(unsigned int width, unsigned int height) {
   return result;
 }
 
-static FT_GlyphSlot font_FreeTypeGlyphForCharacter(struct FONT_Data *font,
+static FT_GlyphSlot font_FreeTypeGlyphForCharacter(const struct FONT_Data *font,
                                                    wint_t character,
                                                    FT_Face *face,
                                                    unsigned int loadFlags) {

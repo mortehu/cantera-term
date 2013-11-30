@@ -38,7 +38,7 @@ unsigned int FONT_LineHeight(struct FONT_Data *font);
 
 unsigned int FONT_SpaceWidth(struct FONT_Data *font);
 
-struct FONT_Glyph *FONT_GlyphForCharacter(struct FONT_Data *font,
+struct FONT_Glyph *FONT_GlyphForCharacter(const struct FONT_Data *font,
                                           wint_t character);
 
 struct FONT_Glyph *FONT_GlyphWithSize(unsigned int width, unsigned int height);

@@ -1,6 +1,10 @@
 #ifndef TERMINAL_H_
 #define TERMINAL_H_ 1
 
+#include <memory>
+#include <string.h>
+#include <string>
+
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
@@ -31,6 +35,16 @@
 
 class Terminal {
  public:
+  struct State {
+    size_t width, height;
+    std::unique_ptr<wchar_t[]> chars;
+    std::unique_ptr<uint16_t[]> attrs;
+    size_t cursor_x, cursor_y;
+    size_t selection_begin, selection_end;
+    bool cursor_hidden;
+    bool focused;
+  };
+
   enum RangeType {
     kRangeWordOrURL,
     kRangeParenthesis,
@@ -38,33 +52,21 @@ class Terminal {
 
   Terminal();
 
-  void Init(char* const* args, unsigned int width, unsigned int height);
+  void Init(unsigned int width, unsigned int height, size_t scroll_extra);
   void Resize(unsigned int width, unsigned int height);
 
   void ProcessData(const unsigned char* buf, size_t count);
+  void GetState(State* state) const;
 
-  void SetScreen(int screen);
-  void InsertChars(size_t count);
-  void AddChar(int ch);
-  void NormalizeHistoryBuffer();
-  void ClearLine(size_t line);
-  void Scroll(bool fromcursor);
-  void ReverseScroll(bool fromcursor);
+  void Select(RangeType range_type);
   bool FindRange(RangeType range_type, int* begin, int* end) const;
   void ClearSelection();
-  void UpdateSelection(Time time);
+  std::string GetSelection();
 
-  void SaveSession();
+  void SaveSession(const char* session_path);
+  void RestoreSession(int fd);
 
-  void Write(const char* data, size_t len);
-  void WriteString(const char* string) { Write(string, strlen(string)); }
-  void WaitForDeadChildren(void);
-
-  uint16_t effective_attribute() const {
-    return reverse ? REVERSE(curattr) : curattr;
-  }
-
-  pthread_mutex_t bufferLock;
+  const winsize& Size() const { return size_; }
 
   char* buffer;
   wchar_t* chars[2];
@@ -76,8 +78,7 @@ class Terminal {
   int curscreen;
   int curattr;
   int reverse;
-  struct winsize size;
-  unsigned int history_size;
+  size_t history_size;
   int fontsize;
   int storedcursorx[2];
   int storedcursory[2];
@@ -98,10 +99,21 @@ class Terminal {
 
   unsigned int history_scroll;
 
-  int fd;
-
  private:
-  pid_t pid_;
+  void NormalizeHistoryBuffer();
+  void Scroll(bool fromcursor);
+  void ReverseScroll(bool fromcursor);
+
+  void SetScreen(int screen);
+  void InsertChars(size_t count);
+  void AddChar(int ch);
+  void ClearLine(size_t line);
+
+  uint16_t EffectiveAttribute() const {
+    return reverse ? REVERSE(curattr) : curattr;
+  }
+
+  struct winsize size_;
 
   bool use_alt_charset_[2];
   unsigned int ch_, nch_;
@@ -112,9 +124,5 @@ class Terminal {
 extern FONT_Data* font;
 extern unsigned int palette[16];
 extern int home_fd;
-
-void term_clear_selection(void);
-
-void term_process_data(const unsigned char* buf, size_t count);
 
 #endif /* !TERMINAL_H_ */
