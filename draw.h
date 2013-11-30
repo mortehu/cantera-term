@@ -3,10 +3,11 @@
 
 #include <wchar.h>
 
+#include "font.h"
 #include "terminal.h"
 
 void init_gl_30(void);
 
-void draw_gl_30(const Terminal::State& state);
+void draw_gl_30(const Terminal::State& state, const FONT_Data* font, unsigned int palette[16]);
 
 #endif /* !DRAW_H_ */

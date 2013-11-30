@@ -30,13 +30,13 @@ struct FONT_Data *FONT_Load(const char *name, unsigned int size,
 
 void FONT_Free(struct FONT_Data *font);
 
-unsigned int FONT_Ascent(struct FONT_Data *font);
+unsigned int FONT_Ascent(const struct FONT_Data *font);
 
-unsigned int FONT_Descent(struct FONT_Data *font);
+unsigned int FONT_Descent(const struct FONT_Data *font);
 
-unsigned int FONT_LineHeight(struct FONT_Data *font);
+unsigned int FONT_LineHeight(const struct FONT_Data *font);
 
-unsigned int FONT_SpaceWidth(struct FONT_Data *font);
+unsigned int FONT_SpaceWidth(const struct FONT_Data *font);
 
 struct FONT_Glyph *FONT_GlyphForCharacter(const struct FONT_Data *font,
                                           wint_t character);

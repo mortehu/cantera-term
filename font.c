@@ -145,25 +145,25 @@ void FONT_Free(struct FONT_Data *font) {
   free(font->faces);
 }
 
-unsigned int FONT_Ascent(struct FONT_Data *font) {
+unsigned int FONT_Ascent(const struct FONT_Data *font) {
   if (!font->faceCount) return 0.0;
 
   return font->faces[0]->size->metrics.ascender >> 6;
 }
 
-unsigned int FONT_Descent(struct FONT_Data *font) {
+unsigned int FONT_Descent(const struct FONT_Data *font) {
   if (!font->faceCount) return 0.0;
 
   return -font->faces[0]->size->metrics.descender >> 6;
 }
 
-unsigned int FONT_LineHeight(struct FONT_Data *font) {
+unsigned int FONT_LineHeight(const struct FONT_Data *font) {
   if (!font->faceCount) return 0.0;
 
   return font->faces[0]->size->metrics.height >> 6;
 }
 
-unsigned int FONT_SpaceWidth(struct FONT_Data *font) {
+unsigned int FONT_SpaceWidth(const struct FONT_Data *font) {
   return font->spaceWidth;
 }
 

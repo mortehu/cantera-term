@@ -26,6 +26,6 @@ const char* tree_get_string_default(const tree* t, const char* path,
 
 size_t tree_get_strings(const tree* t, const char* path, char*** result);
 
-tree* tree_load_cfg(const char* path);
+tree* tree_load_cfg(int home_fd, const char* path);
 
 #endif /* !TREE_H_ */

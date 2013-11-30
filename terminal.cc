@@ -78,9 +78,10 @@ Terminal::Terminal()
       savedy_() {}
 
 void Terminal::Init(unsigned int width, unsigned int height,
+                    unsigned int space_width, unsigned int line_height,
                     size_t scroll_extra) {
-  size_.ws_col = width / FONT_SpaceWidth(font);
-  size_.ws_row = height / FONT_LineHeight(font);
+  size_.ws_col = width / space_width;
+  size_.ws_row = height / line_height;
   size_.ws_xpixel = width;
   size_.ws_ypixel = height;
 
@@ -104,13 +105,14 @@ void Terminal::Init(unsigned int width, unsigned int height,
   SetScreen(0);
 }
 
-void Terminal::Resize(unsigned int width, unsigned int height) {
+void Terminal::Resize(unsigned int width, unsigned int height,
+                      unsigned int space_width, unsigned int line_height) {
   if (width == size_.ws_xpixel && height == size_.ws_ypixel) return;
 
   NormalizeHistoryBuffer();
 
-  int cols = std::max(width / FONT_SpaceWidth(font), 1U);
-  int rows = std::max(height / FONT_LineHeight(font), 1U);
+  int cols = std::max(width / space_width, 1U);
+  int rows = std::max(height / line_height, 1U);
 
   int oldcols = size_.ws_col;
   int oldrows = size_.ws_row;

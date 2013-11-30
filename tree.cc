@@ -83,7 +83,7 @@ static void read_all(int fd, void* buf, size_t total, const char* path) {
   }
 }
 
-tree* tree_load_cfg(const char* path) {
+tree* tree_load_cfg(int home_fd, const char* path) {
   off_t size;
   int fd;
 

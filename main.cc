@@ -49,10 +49,6 @@
 
 extern char **environ;
 
-FONT_Data *font;
-unsigned int palette[16];
-int home_fd;
-
 namespace {
 
 int print_version;
@@ -69,8 +65,12 @@ unsigned int scroll_extra;
 
 const char *font_name;
 unsigned int font_size, font_weight;
+FONT_Data *font;
+
+unsigned int palette[16];
 
 int done;
+int home_fd;
 const char *session_path;
 
 Terminal terminal;
@@ -176,7 +176,8 @@ void X11_handle_configure(void) {
   glLoadIdentity();
   glOrtho(0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
-  terminal.Resize(X11_window_width, X11_window_height);
+  terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+                  FONT_LineHeight(font));
 
   ioctl(fd, TIOCSWINSZ, &terminal.Size());
 }
@@ -711,8 +712,7 @@ int x11_process_events() {
         terminal.GetState(&draw_state);
         pthread_mutex_unlock(&buffer_lock);
 
-        draw_gl_30(draw_state);
-
+        draw_gl_30(draw_state, font, palette);
       } break;
 
       case EnterNotify: {
@@ -809,7 +809,7 @@ int main(int argc, char **argv) {
   mkdirat(home_fd, ".cantera", 0777);
   mkdirat(home_fd, ".cantera/commands", 0777);
 
-  config.reset(tree_load_cfg(".cantera/config"));
+  config.reset(tree_load_cfg(home_fd, ".cantera/config"));
 
   palette_str = strdup(tree_get_string_default(
       config.get(), "terminal.palette",
@@ -898,7 +898,8 @@ int main(int argc, char **argv) {
 
   fcntl(fd, F_SETFL, O_NDELAY);
 
-  terminal.Init(X11_window_width, X11_window_height, scroll_extra);
+  terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+                FONT_LineHeight(font), scroll_extra);
 
   X11_handle_configure();
 

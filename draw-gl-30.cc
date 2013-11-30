@@ -202,7 +202,8 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(const Terminal::State &state) {
+void draw_gl_30(const Terminal::State &state, const FONT_Data *font,
+                unsigned int palette[16]) {
   // Step 2: Submit the GL commands.
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);

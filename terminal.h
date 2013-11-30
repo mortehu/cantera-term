@@ -10,8 +10,6 @@
 
 #include <X11/X.h>
 
-#include "font.h"
-
 #define ATTR_BLINK 0x0008
 #define ATTR_HIGHLIGHT 0x0008
 #define ATTR_BOLD 0x0008
@@ -52,8 +50,10 @@ class Terminal {
 
   Terminal();
 
-  void Init(unsigned int width, unsigned int height, size_t scroll_extra);
-  void Resize(unsigned int width, unsigned int height);
+  void Init(unsigned int width, unsigned int height,
+                    unsigned int space_width, unsigned int line_height, size_t scroll_extra);
+  void Resize(unsigned int width, unsigned int height,
+                    unsigned int space_width, unsigned int line_height);
 
   void ProcessData(const unsigned char* buf, size_t count);
   void GetState(State* state) const;
@@ -120,9 +120,5 @@ class Terminal {
 
   int savedx_, savedy_;
 };
-
-extern FONT_Data* font;
-extern unsigned int palette[16];
-extern int home_fd;
 
 #endif /* !TERMINAL_H_ */
