@@ -282,7 +282,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
           case '\177':
 
-            if (cursory < size_.ws_row)
+            if (cursory < size_.ws_row && cursorx < size_.ws_col)
               curchars[(*cur_scroll_line + cursory) % history_size *
                            size_.ws_col + cursorx] = 0;
 
