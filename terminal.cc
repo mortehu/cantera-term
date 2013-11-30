@@ -934,16 +934,16 @@ void Terminal::InsertChars(size_t count) {
       (*cur_scroll_line + cursory) % history_size * size_.ws_col;
   size_t k = size_.ws_col;
 
-  // TODO(mortehu): Is this right?
-  while (--k > cursorx + count) {
+  while (k > cursorx + count) {
+    --k;
     curchars[line_offset + k] = curchars[line_offset + k - count];
     curattrs[line_offset + k] = curattrs[line_offset + k - count];
   }
 
   uint16_t attr = EffectiveAttribute();
 
-  for (; k >= static_cast<size_t>(cursorx); --k) {
-    curchars[line_offset + k] = 'X';
+  while (k-- > static_cast<size_t>(cursorx)) {
+    curchars[line_offset + k] = ' ';
     curattrs[line_offset + k] = attr;
   }
 }
