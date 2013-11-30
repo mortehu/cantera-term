@@ -182,13 +182,13 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   }
 }
 
-void Terminal::ProcessData(const unsigned char *buf, size_t count) {
-  const unsigned char *end;
+void Terminal::ProcessData(const void *buf, size_t count) {
   int k;
 
-  // TODO(mortehu): Make sure cursor does not leave screen.
-  end = buf + count;
+  const unsigned char *begin = reinterpret_cast<const unsigned char *>(buf);
+  const unsigned char *end = begin + count;
 
+  // TODO(mortehu): Make sure cursor does not leave screen.
   while (cursory >= size_.ws_row) {
     Scroll(false);
     --cursory;
@@ -200,8 +200,8 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
     size_t offset =
         (*cur_scroll_line + cursory) % history_size * size_.ws_col + cursorx;
 
-    for (; buf != end; ++buf) {
-      if (*buf >= ' ' && *buf <= '~') {
+    for (; begin != end; ++begin) {
+      if (*begin >= ' ' && *begin <= '~') {
         if (cursorx == size_.ws_col) {
           if (++cursory >= size_.ws_row) {
             Scroll(false);
@@ -213,14 +213,14 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
           offset = (*cur_scroll_line + cursory) % history_size * size_.ws_col;
         }
 
-        curchars[offset] = *buf;
+        curchars[offset] = *begin;
         curattrs[offset] = attr;
         ++cursorx;
         ++offset;
-      } else if (*buf == '\r') {
+      } else if (*begin == '\r') {
         cursorx = 0;
         offset = (*cur_scroll_line + cursory) % history_size * size_.ws_col;
-      } else if (*buf == '\n') {
+      } else if (*begin == '\n') {
         ++cursory;
 
         if (cursory == scrollbottom || cursory >= size_.ws_row) {
@@ -236,11 +236,11 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
     }
   }
 
-  for (; buf != end; ++buf) {
+  for (; begin != end; ++begin) {
     switch (escape) {
       case 0:
 
-        switch (*buf) {
+        switch (*begin) {
           case '\033':
 
             escape = 1;
@@ -312,31 +312,31 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
             }
 
             if (nch_) {
-              if ((*buf & 0xC0) != 0x80) {
+              if ((*begin & 0xC0) != 0x80) {
                 nch_ = 0;
-                AddChar(*buf);
+                AddChar(*begin);
               } else {
                 ch_ <<= 6;
-                ch_ |= *buf & 0x3F;
+                ch_ |= *begin & 0x3F;
 
                 if (0 == --nch_) {
                   AddChar(ch_);
                 }
               }
             } else {
-              if ((*buf & 0x80) == 0) {
-                AddChar(*buf);
-              } else if ((*buf & 0xE0) == 0xC0) {
-                ch_ = *buf & 0x1F;
+              if ((*begin & 0x80) == 0) {
+                AddChar(*begin);
+              } else if ((*begin & 0xE0) == 0xC0) {
+                ch_ = *begin & 0x1F;
                 nch_ = 1;
-              } else if ((*buf & 0xF0) == 0xE0) {
-                ch_ = *buf & 0x0F;
+              } else if ((*begin & 0xF0) == 0xE0) {
+                ch_ = *begin & 0x0F;
                 nch_ = 2;
-              } else if ((*buf & 0xF8) == 0xF0) {
-                ch_ = *buf & 0x03;
+              } else if ((*begin & 0xF8) == 0xF0) {
+                ch_ = *begin & 0x03;
                 nch_ = 3;
-              } else if ((*buf & 0xFC) == 0xF8) {
-                ch_ = *buf & 0x01;
+              } else if ((*begin & 0xFC) == 0xF8) {
+                ch_ = *begin & 0x01;
                 nch_ = 4;
               }
             }
@@ -346,7 +346,7 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
       case 1:
 
-        switch (*buf) {
+        switch (*begin) {
           case 'D':
 
             ++cursory;
@@ -431,19 +431,19 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
         else if (param[0] == -2) {
           /* Handle ESC ] Ps ; Pt BEL */
           if (escape == 2) {
-            if (*buf >= '0' && *buf <= '9') {
+            if (*begin >= '0' && *begin <= '9') {
               param[1] *= 10;
-              param[1] += *buf - '0';
+              param[1] += *begin - '0';
             } else
               ++escape;
           } else {
-            if (*buf != '\007') {
+            if (*begin != '\007') {
               /* XXX: Store text */
             } else
               escape = 0;
           }
         } else if (param[0] == -4) {
-          switch (*buf) {
+          switch (*begin) {
             case '0':
               use_alt_charset_[curscreen] = true;
               break;
@@ -455,22 +455,22 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
           escape = 0;
         } else if (param[0] == -5) {
           escape = 0;
-        } else if (escape == 2 && *buf == '?') {
+        } else if (escape == 2 && *begin == '?') {
           param[0] = -3;
           ++escape;
-        } else if (escape == 2 && *buf == '>') {
+        } else if (escape == 2 && *begin == '>') {
           param[0] = -4;
           ++escape;
-        } else if (*buf == ';') {
+        } else if (*begin == ';') {
           if (escape < (int) sizeof(param) + 1)
             param[++escape - 2] = 0;
           else
             param[(sizeof(param) / sizeof(param[0])) - 1] = 0;
-        } else if (*buf >= '0' && *buf <= '9') {
+        } else if (*begin >= '0' && *begin <= '9') {
           param[escape - 2] *= 10;
-          param[escape - 2] += *buf - '0';
+          param[escape - 2] += *begin - '0';
         } else if (param[0] == -3) {
-          if (*buf == 'h') {
+          if (*begin == 'h') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
                 case 1:
@@ -488,17 +488,17 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
                 case 1049:
 
                   if (curscreen != 1) {
-                    std::fill(chars[1], chars[1] + size_.ws_col * history_size,
-                              0);
-                    std::fill(attr[1], attr[1] + size_.ws_col * history_size,
-                              0x07);
+                    std::fill(&chars[1][0],
+                              &chars[1][size_.ws_col * history_size], 0);
+                    std::fill(&attr[1][0],
+                              &attr[1][size_.ws_col * history_size], 0x07);
                     SetScreen(1);
                   }
 
                   break;
               }
             }
-          } else if (*buf == 'l') {
+          } else if (*begin == 'l') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
                 case 1:
@@ -524,7 +524,7 @@ void Terminal::ProcessData(const unsigned char *buf, size_t count) {
 
           escape = 0;
         } else {
-          switch (*buf) {
+          switch (*begin) {
             case '@':
 
               if (!param[0]) param[0] = 1;

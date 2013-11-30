@@ -55,7 +55,7 @@ class Terminal {
   void Resize(unsigned int width, unsigned int height,
                     unsigned int space_width, unsigned int line_height);
 
-  void ProcessData(const unsigned char* buf, size_t count);
+  void ProcessData(const void* buf, size_t count);
   void GetState(State* state) const;
 
   void Select(RangeType range_type);
