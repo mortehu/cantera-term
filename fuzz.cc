@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
   srand(time(NULL));
 
   Terminal terminal;
-  terminal.Init(800, 500, 10, 20, 0);
+  terminal.Init(800, 500, 10, 20, 100);
 
   for (size_t i = 0; i < 100000; ++i) {
     switch (rand() & 3) {
