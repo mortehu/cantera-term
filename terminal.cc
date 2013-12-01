@@ -358,7 +358,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
             escape = 0;
             ++cursory;
 
-            while (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (cursory == scrollbottom || cursory >= size_.ws_row) {
               Scroll(false);
               --cursory;
             }
@@ -606,7 +606,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               cursorx = 0;
               ++cursory;
 
-              while (cursory == scrollbottom || cursory >= size_.ws_row) {
+              if (cursory == scrollbottom || cursory >= size_.ws_row) {
                 Scroll(false);
                 --cursory;
               }
