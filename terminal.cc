@@ -255,8 +255,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
             else
               cursorx = next_tab;
 
-            if (cursorx >= size_.ws_col)
-              cursorx = size_.ws_col - 1;
+            if (cursorx >= size_.ws_col) cursorx = size_.ws_col - 1;
           } break;
 
           case '\n':
@@ -476,7 +475,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           switch (*begin) {
             case '8':
               for (size_t i = 0; i < size_.ws_row; ++i)
-                ClearLineWithAttr((*cur_scroll_line + i) % history_size, 'E', 0x07);
+                ClearLineWithAttr((*cur_scroll_line + i) % history_size, 'E',
+                                  0x07);
               break;
           }
         } else if (escape == 2 && *begin == '?') {
@@ -497,8 +497,12 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           if (*begin == 'h') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
-                case 1: appcursor = true; break;
-                case 25: hide_cursor = false; break;
+                case 1:
+                  appcursor = true;
+                  break;
+                case 25:
+                  hide_cursor = false;
+                  break;
 
                 case 1049:
 
@@ -516,8 +520,12 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           } else if (*begin == 'l') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
-                case 1: appcursor = false; break;
-                case 25: hide_cursor = true; break;
+                case 1:
+                  appcursor = false;
+                  break;
+                case 25:
+                  hide_cursor = true;
+                  break;
 
                 case 1049:
 
@@ -629,17 +637,22 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               bool fall_through = true;
 
               switch (param[0]) {
-              case 0: begin = *cur_scroll_line + cursory + 1; break;
-              case 1: end = *cur_scroll_line + cursory; break;
-              default:
-              case 2: fall_through = false; break;
+                case 0:
+                  begin = *cur_scroll_line + cursory + 1;
+                  break;
+                case 1:
+                  end = *cur_scroll_line + cursory;
+                  break;
+                default:
+                case 2:
+                  fall_through = false;
+                  break;
               }
 
               for (size_t i = begin; i < end; ++i)
                 ClearLine(i % history_size);
 
-              if (!fall_through)
-                break;
+              if (!fall_through) break;
             }
 
             case 'K': {
@@ -759,7 +772,9 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 4: insertmode = true; break;
+                  case 4:
+                    insertmode = true;
+                    break;
                 }
               }
 
@@ -769,7 +784,9 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 4: insertmode = false; break;
+                  case 4:
+                    insertmode = false;
+                    break;
                 }
               }
 
@@ -779,13 +796,17 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 7: reverse = true; break;
-                  case 27: reverse = false; break;
+                  case 7:
+                    reverse = true;
+                    break;
+                  case 27:
+                    reverse = false;
+                    break;
 
                   case 0:
 
                     reverse = false;
-                    // Fall through.
+                  // Fall through.
 
                   default:
 
@@ -1044,13 +1065,11 @@ void Terminal::ReverseScroll(bool fromcursor) {
   size_t first, length;
 
   if (fromcursor) {
-    if (cursory + 1 >= scrollbottom)
-      return;
+    if (cursory + 1 >= scrollbottom) return;
     first = cursory;
     length = (scrollbottom - 1 - cursory);
   } else {
-    if (scrolltop + 1 >= scrollbottom)
-      return;
+    if (scrolltop + 1 >= scrollbottom) return;
     first = scrolltop;
     length = (scrollbottom - scrolltop - 1);
   }
@@ -1164,8 +1183,7 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   size_t history_buffer_size = size_.ws_col * history_size;
   size_t offset = *cur_scroll_line * size_.ws_col;
 
-  if (begin > end)
-    std::swap(begin, end);
+  if (begin > end) std::swap(begin, end);
 
   size_t last_graph = 0;
   size_t last_graph_col = 0;
