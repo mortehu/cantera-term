@@ -347,7 +347,7 @@ int x11_process_events() {
   key_callbacks[keysym] = [](XKeyEvent * event) {          \
     if (event->state & Mod1Mask) WriteStringToTTY("\033"); \
     WriteStringToTTY((string));                            \
-  };                                                       \
+  };
 
   MAP_KEY_TO_STRING(XK_F1, "\033OP");
   MAP_KEY_TO_STRING(XK_F2, "\033OQ");
