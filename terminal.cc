@@ -707,8 +707,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               NormalizeHistoryBuffer();
 
-              if (!param[0])
-                param[0] = 1;
+              if (!param[0]) param[0] = 1;
               if (cursorx + param[0] > size_.ws_col)
                 param[0] = size_.ws_col - cursorx;
 
@@ -907,10 +906,10 @@ void Terminal::GetState(State *state) const {
     selend = select_begin;
   }
 
-  state->selection_begin =
-      (selbegin + history_scroll * size_.ws_col) % history_size;
+  state->selection_begin = (selbegin + history_scroll * size_.ws_col) %
+                           (history_size * size_.ws_col);
   state->selection_end =
-      (selend + history_scroll * size_.ws_col) % history_size;
+      (selend + history_scroll * size_.ws_col) % (history_size * size_.ws_col);
 
   state->cursor_hidden = hide_cursor;
   state->focused = focused;
