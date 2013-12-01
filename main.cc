@@ -186,11 +186,7 @@ void run_command(int fd, const char *command, const char *arg) {
 
   sprintf(path, ".cantera/commands/%s", command);
 
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
-    sprintf(path, PKGDATADIR "/commands/%s", command);
-
-    if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
-  }
+  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
 
   if (!fork()) {
     char *args[3];
