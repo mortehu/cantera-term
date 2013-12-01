@@ -1032,14 +1032,17 @@ void Terminal::Scroll(bool fromcursor) {
     length = (scrollbottom - scrolltop - 1);
   }
 
-  memmove(curchars + first, curchars + first + size_.ws_col,
-          length * sizeof(wchar_t));
-  memset(curchars + first + length, 0, size_.ws_col * sizeof(wchar_t));
+  memmove(&curchars[first * size_.ws_col],
+          &curchars[(first + 1) * size_.ws_col],
+          length * size_.ws_col * sizeof(curchars[0]));
+  std::fill(&curchars[(first + length) * size_.ws_col],
+            &curchars[size_.ws_row * size_.ws_col], ' ');
 
-  memmove(curattrs + first, curattrs + first + size_.ws_col,
-          sizeof(uint16_t) * length);
-  std::fill(curattrs + first + length, curattrs + first + length + size_.ws_col,
-            EffectiveAttribute());
+  memmove(&curattrs[first * size_.ws_col],
+          &curattrs[(first + 1) * size_.ws_col],
+          length * size_.ws_col * sizeof(curattrs[0]));
+  std::fill(&curattrs[(first + length) * size_.ws_col],
+            &curattrs[size_.ws_row * size_.ws_col], EffectiveAttribute());
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
@@ -1047,24 +1050,31 @@ void Terminal::ReverseScroll(bool fromcursor) {
 
   NormalizeHistoryBuffer();
 
-  int first, length;
+  size_t first, length;
 
   if (fromcursor) {
-    first = cursory * size_.ws_col;
-    length = (scrollbottom - cursory - 1) * size_.ws_col;
+    if (cursory + 1 >= scrollbottom)
+      return;
+    first = cursory;
+    length = (scrollbottom - 1 - cursory);
   } else {
-    first = scrolltop * size_.ws_col;
-    length = (scrollbottom - scrolltop - 1) * size_.ws_col;
+    if (scrolltop + 1 >= scrollbottom)
+      return;
+    first = scrolltop;
+    length = (scrollbottom - scrolltop - 1);
   }
 
-  memmove(curchars + first + size_.ws_col, curchars + first,
-          length * sizeof(wchar_t));
-  memset(curchars + first, 0, size_.ws_col * sizeof(wchar_t));
+  memmove(&curchars[(first + 1) * size_.ws_col],
+          &curchars[first * size_.ws_col],
+          length * size_.ws_col * sizeof(curchars[0]));
+  std::fill(&curchars[first * size_.ws_col],
+            &curchars[(first + 1) * size_.ws_col], ' ');
 
-  memmove(curattrs + first + size_.ws_col, curattrs + first,
-          sizeof(uint16_t) * length);
-  std::fill(curattrs + first, curattrs + first + size_.ws_col,
-            EffectiveAttribute());
+  memmove(&curattrs[(first + 1) * size_.ws_col],
+          &curattrs[first * size_.ws_col],
+          length * size_.ws_col * sizeof(curattrs[0]));
+  std::fill(&curattrs[first * size_.ws_col],
+            &curattrs[(first + 1) * size_.ws_col], EffectiveAttribute());
 }
 
 void Terminal::Select(RangeType range_type) {
