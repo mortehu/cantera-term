@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
   terminal_scroll.Init(800, 500, 10, 20, 1001);
 
   for (size_t i = 0; i < 10000; ++i) {
-    char buffer[64];
+    char buffer[128];
     switch (rand() & 3) {
       case 0: {
         size_t index =
@@ -29,11 +29,13 @@ int main(int argc, char** argv) {
       } break;
       case 1: {
         strcpy(buffer, "\033[");
-        if (rand() & 1) {
-          sprintf(&buffer[2], "%u%c", rand() % 4096, rand());
-        } else {
-          sprintf(&buffer[2], "%c", rand());
+        size_t n = rand() % 10;
+        for (size_t j = 0; j < n; ++j) {
+          if (j)
+            strcat(buffer, ";");
+          sprintf(strchr(buffer, 0), "%u", rand() % 4096);
         }
+        sprintf(strchr(buffer, 0), "%c", rand());
       } break;
       case 2: {
         for (size_t j = 0; j < sizeof(buffer) - 1; ++j)
