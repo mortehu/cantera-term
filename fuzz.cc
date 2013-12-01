@@ -57,6 +57,10 @@ int main(int argc, char** argv) {
     assert(state_noscroll.cursor_y == state_scroll.cursor_y);
     assert(state_noscroll.cursor_hidden == state_scroll.cursor_hidden);
     assert(state_noscroll.focused == state_scroll.focused);
+    assert(state_noscroll.cursor_x >= 0);
+    assert(state_noscroll.cursor_x < state_scroll.width);
+    assert(state_noscroll.cursor_y >= 0);
+    assert(state_noscroll.cursor_y < state_scroll.height);
     assert(!memcmp(&state_noscroll.chars[0], &state_scroll.chars[0],
                    sizeof(state_noscroll.chars[0]) * state_noscroll.width *
                        state_noscroll.height));
