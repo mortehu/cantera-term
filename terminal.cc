@@ -867,7 +867,7 @@ void Terminal::GetState(State *state) const {
               &state->attrs[row * size_.ws_col]);
   }
 
-  state->cursor_x = cursorx;
+  state->cursor_x = std::min(cursorx, size_.ws_col - 1);
   state->cursor_y = cursory + history_scroll;
 
   size_t selbegin, selend;
