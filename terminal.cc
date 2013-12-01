@@ -1,5 +1,6 @@
 #include "terminal.h"
 
+#include <algorithm>
 #include <assert.h>
 #include <ctype.h>
 #include <memory>
@@ -262,7 +263,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             ++cursory;
 
-            while (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (cursory == scrollbottom || cursory >= size_.ws_row) {
               Scroll(false);
               --cursory;
             }
@@ -303,7 +304,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             // TODO(mortehu): Check if we need to test against scrollbottom as
             // well.
-            while (cursory >= size_.ws_row) {
+            if (cursory >= size_.ws_row) {
               Scroll(false);
               --cursory;
             }
@@ -708,7 +709,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             case 'S':
 
-              if (!param[0]) param[0] = 1;
+              param[0] = std::max(
+                  1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
               while (param[0]--)
                 Scroll(false);
@@ -717,7 +719,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             case 'T':
 
-              if (!param[0]) param[0] = 1;
+              param[0] = std::max(
+                  1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
               while (param[0]--)
                 ReverseScroll(false);
