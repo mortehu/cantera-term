@@ -185,12 +185,6 @@ void Terminal::ProcessData(const void *buf, size_t count) {
   const unsigned char *begin = reinterpret_cast<const unsigned char *>(buf);
   const unsigned char *end = begin + count;
 
-  // TODO(mortehu): Make sure cursor does not leave screen.
-  while (cursory >= size_.ws_row) {
-    Scroll(false);
-    --cursory;
-  }
-
   // Redundant, optimized character processing code for the typical case.
   if (!escape && !insertmode && !nch_ && !use_alt_charset_[curscreen]) {
     uint16_t attr = EffectiveAttribute();
