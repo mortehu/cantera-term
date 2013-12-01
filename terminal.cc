@@ -351,6 +351,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
         switch (*begin) {
           case 'D':
 
+            escape = 0;
             ++cursory;
 
             while (cursory == scrollbottom || cursory >= size_.ws_row) {
