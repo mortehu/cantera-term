@@ -523,7 +523,7 @@ int x11_process_events() {
       case MotionNotify:
 
         if (event.xbutton.state & Button1Mask) {
-          int x, y, new_select_end;
+          int x, y;
           unsigned int size;
 
           size = terminal.history_size * terminal.Size().ws_col;
@@ -531,7 +531,7 @@ int x11_process_events() {
           x = event.xbutton.x / FONT_SpaceWidth(font);
           y = event.xbutton.y / FONT_LineHeight(font);
 
-          new_select_end = y * terminal.Size().ws_col + x;
+          size_t new_select_end = y * terminal.Size().ws_col + x;
 
           if (terminal.history_scroll)
             new_select_end +=

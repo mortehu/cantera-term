@@ -58,11 +58,19 @@ class Terminal {
 
   void ProcessData(const void* buf, size_t count);
   void GetState(State* state) const;
+  std::string GetTextInRange(size_t begin, size_t end) const;
 
   void Select(RangeType range_type);
-  bool FindRange(RangeType range_type, int* begin, int* end) const;
-  void ClearSelection();
-  std::string GetSelection();
+  bool FindRange(RangeType range_type, size_t* begin, size_t* end) const;
+
+  void ClearSelection() {
+    select_begin = 0;
+    select_end = 0;
+  }
+
+  std::string GetSelection() const {
+    return GetTextInRange(select_begin, select_end);
+  }
 
   void SaveSession(const char* session_path);
   void RestoreSession(int fd);
@@ -91,8 +99,8 @@ class Terminal {
   bool hide_cursor;
   bool insertmode;
 
-  int select_begin;
-  int select_end;
+  size_t select_begin;
+  size_t select_end;
 
   bool focused;
 

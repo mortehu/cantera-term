@@ -1091,11 +1091,13 @@ void Terminal::Select(RangeType range_type) {
   FindRange(range_type, &select_begin, &select_end);
 }
 
-bool Terminal::FindRange(RangeType range_type, int *begin, int *end) const {
+bool Terminal::FindRange(RangeType range_type, size_t *begin,
+                         size_t *end) const {
   size_t history_buffer_size = size_.ws_col * history_size;
   size_t offset = *cur_scroll_line * size_.ws_col;
 
-  int i, ch;
+  size_t i;
+  int ch;
 
   switch (range_type) {
     case Terminal::kRangeWordOrURL:
@@ -1165,39 +1167,28 @@ bool Terminal::FindRange(RangeType range_type, int *begin, int *end) const {
   return false;
 }
 
-void Terminal::ClearSelection() {
-  select_begin = -1;
-  select_end = -1;
-}
-
-std::string Terminal::GetSelection() {
-  int i;
-  unsigned int offset;
-
-  if (select_begin == select_end) return std::string();
+std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
+  if (begin == end) return std::string();
 
   size_t history_buffer_size = size_.ws_col * history_size;
-  offset = *cur_scroll_line * size_.ws_col;
+  size_t offset = *cur_scroll_line * size_.ws_col;
 
-  if (select_begin > select_end) {
-    i = select_begin;
-    select_begin = select_end;
-    select_end = i;
-  }
+  if (begin > end)
+    std::swap(begin, end);
 
   size_t last_graph = 0;
   size_t last_graph_col = 0;
-  i = select_begin;
+  size_t i = begin;
 
   std::string result;
 
-  while (i != select_end) {
+  while (i != end) {
     int ch = curchars[(i + offset) % history_buffer_size];
     size_t width = size_.ws_col;
 
     if (ch == 0 || ch == 0xffff) ch = ' ';
 
-    if (i > select_begin && (i % width) == 0) {
+    if (i > begin && (i % width) == 0) {
       result.resize(last_graph);
       if (last_graph_col != (width - 1)) result.push_back('\n');
       last_graph = result.size();
