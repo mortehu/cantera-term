@@ -306,6 +306,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               cursorx = 0;
             }
 
+            // TODO(mortehu): Check if we need to test against scrollbottom as
+            // well.
             while (cursory >= size_.ws_row) {
               Scroll(false);
               --cursory;
@@ -846,6 +848,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
                 if (param[1] > size_.ws_row) param[1] = size_.ws_row;
 
                 if (param[0] < 0) param[0] = 0;
+
+                if (param[0] >= param[1]) break;
 
                 scrolltop = param[0];
                 scrollbottom = param[1];
