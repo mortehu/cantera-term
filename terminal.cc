@@ -195,7 +195,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
   }
 
   // Redundant, optimized character processing code for the typical case.
-  if (!escape && !insertmode && !nch_) {
+  if (!escape && !insertmode && !nch_ && !use_alt_charset_[curscreen]) {
     uint16_t attr = EffectiveAttribute();
     size_t offset =
         (*cur_scroll_line + cursory) % history_size * size_.ws_col + cursorx;
