@@ -213,9 +213,8 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font,
   unsigned int lineHeight = FONT_LineHeight(font);
   unsigned int spaceWidth = FONT_SpaceWidth(font);
 
-  // TODO(mortehu): Handle case when selection starts above top of screen.
-  bool in_selection = false;
-
+  bool in_selection = (state.selection_begin > state.width * state.height &&
+                       state.selection_end < state.width * state.height);
   int y = ascent;
 
   for (size_t row = 0; row < state.height; ++row) {
