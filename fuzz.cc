@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
 
   for (size_t i = 0; i < 10000; ++i) {
     char buffer[128];
-    switch (rand() & 3) {
+    switch (rand() % 3) {
       case 0: {
         size_t index =
             rand() % (sizeof(escape_codes) / sizeof(escape_codes[0]));
@@ -43,8 +43,9 @@ int main(int argc, char** argv) {
         buffer[sizeof(buffer) - 1] = 0;
       }
     }
-    terminal_noscroll.ProcessData(buffer, strlen(buffer));
-    terminal_scroll.ProcessData(buffer, strlen(buffer));
+    size_t buffer_length = strlen(buffer);
+    terminal_noscroll.ProcessData(buffer, buffer_length);
+    terminal_scroll.ProcessData(buffer, buffer_length);
 
     Terminal::State state_noscroll, state_scroll;
     terminal_noscroll.GetState(&state_noscroll);
