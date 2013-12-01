@@ -99,8 +99,6 @@ void Terminal::Init(unsigned int width, unsigned int height,
   scroll_line[0] = 0;
   scroll_line[1] = 0;
 
-  ClearSelection();
-
   SetScreen(0);
 }
 
@@ -1011,8 +1009,6 @@ void Terminal::ClearLineWithAttr(size_t line, int ch, uint16_t attr) {
 }
 
 void Terminal::Scroll(bool fromcursor) {
-  ClearSelection();
-
   if (!fromcursor && scrolltop == 0 && scrollbottom == size_.ws_row) {
     ClearLine((*cur_scroll_line + size_.ws_row) % history_size);
     *cur_scroll_line = (*cur_scroll_line + 1) % history_size;
@@ -1046,8 +1042,6 @@ void Terminal::Scroll(bool fromcursor) {
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
-  ClearSelection();
-
   NormalizeHistoryBuffer();
 
   size_t first, length;

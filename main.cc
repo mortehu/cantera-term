@@ -290,8 +290,6 @@ static void WriteToTTY(const void *data, size_t len) {
   size_t off = 0;
   ssize_t result;
 
-  terminal.ClearSelection();
-
   while (off < len) {
     result = write(fd, reinterpret_cast<const char *>(data) + off, len - off);
 
@@ -556,27 +554,32 @@ int x11_process_events() {
                        event.xkey.time);
 
         switch (event.xbutton.button) {
-          case 1: /* Left button */
-                  {
-            int x, y;
-            unsigned int size;
+          case 1: {
+            // Left button.
+            primary_selection.clear();
 
-            size = terminal.history_size * terminal.Size().ws_col;
+            size_t size = terminal.history_size * terminal.Size().ws_col;
 
-            x = event.xbutton.x / FONT_SpaceWidth(font);
-            y = event.xbutton.y / FONT_LineHeight(font);
+            int x =
+                std::min(static_cast<unsigned int>(terminal.Size().ws_col) - 1,
+                         std::max(0U, event.xbutton.x / FONT_SpaceWidth(font)));
+            int y =
+                std::min(static_cast<unsigned int>(terminal.Size().ws_row) - 1,
+                         std::max(0U, event.xbutton.y / FONT_LineHeight(font)));
 
             terminal.select_begin = y * terminal.Size().ws_col + x;
 
-            if (terminal.history_scroll)
+            if (terminal.history_scroll) {
               terminal.select_begin +=
                   size - (terminal.history_scroll * terminal.Size().ws_col);
+            }
 
             terminal.select_end = terminal.select_begin;
 
-            if (event.xbutton.state & ControlMask)
+            if (event.xbutton.state & ControlMask) {
               terminal.FindRange(Terminal::kRangeWordOrURL,
                                  &terminal.select_begin, &terminal.select_end);
+            }
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           } break;
@@ -709,6 +712,11 @@ int x11_process_events() {
         Terminal::State draw_state;
 
         pthread_mutex_lock(&buffer_lock);
+        {
+          if (!primary_selection.empty() &&
+              primary_selection != terminal.GetSelection())
+            terminal.ClearSelection();
+        }
         terminal.GetState(&draw_state);
         pthread_mutex_unlock(&buffer_lock);
 
