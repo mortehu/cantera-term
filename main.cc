@@ -87,13 +87,61 @@ pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 }
 
-static void term_LoadGlyph(wchar_t character) {
-  struct FONT_Glyph *glyph;
+static void LoadGlyph(wchar_t character) {
+  FONT_Glyph *glyph;
 
   if (!(glyph = FONT_GlyphForCharacter(font, character)))
     fprintf(stderr, "Failed to get glyph for '%d'", character);
 
   GLYPH_Add(character, glyph);
+
+  free(glyph);
+}
+
+static void CreateLineArtGlyphs(void) {
+  FONT_Glyph* glyph =
+      FONT_GlyphWithSize(FONT_SpaceWidth(font), FONT_LineHeight(font));
+  unsigned int ascent = FONT_Ascent(font);
+  glyph->x = 0;
+  glyph->y = ascent;
+  glyph->xOffset = glyph->width;
+  glyph->yOffset = 0;
+
+  unsigned int mid_x = glyph->width / 2;
+  unsigned int mid_y = glyph->height / 2;
+  unsigned int x, y;
+
+#define CREATE_GLYPH(code, expr)                             \
+  do {                                                       \
+    for (y = 0; y < glyph->height; ++y) {                    \
+      for (x = 0; x < glyph->width; ++x) {                   \
+        unsigned char color = (expr);                        \
+        glyph->data[(y * glyph->width + x) * 4 + 0] = color; \
+        glyph->data[(y * glyph->width + x) * 4 + 1] = color; \
+        glyph->data[(y * glyph->width + x) * 4 + 2] = color; \
+        glyph->data[(y * glyph->width + x) * 4 + 3] = 255;   \
+      }                                                      \
+    }                                                        \
+    GLYPH_Add(code, glyph);                                  \
+  } while (0)
+
+  CREATE_GLYPH(0x2500, (y == mid_y) * 255);                        // '─'
+  CREATE_GLYPH(0x2502, (x == mid_x) * 255);                        // '│'
+  CREATE_GLYPH(0x250c, ((y == mid_y && x >= mid_x) ||
+                        (x == mid_x && y >= mid_y)) * 255);        // '┌'
+  CREATE_GLYPH(0x2510, ((y == mid_y && x <= mid_x) ||
+                        (x == mid_x && y >= mid_y)) * 255);        // '┐'
+  CREATE_GLYPH(0x2514, ((y == mid_y && x >= mid_x) ||
+                        (x == mid_x && y <= mid_y)) * 255);        // '└'
+  CREATE_GLYPH(0x2518, ((y == mid_y && x <= mid_x) ||
+                        (x == mid_x && y <= mid_y)) * 255);        // '┘'
+  CREATE_GLYPH(0x251c,
+               ((y == mid_y && x >= mid_x) || x == mid_x) * 255);  // '├'
+  CREATE_GLYPH(0x2524,
+               ((y == mid_y && x <= mid_x) || x == mid_x) * 255);  // '┤'
+  CREATE_GLYPH(0x2592, 192);                                       // '▒'
+
+#undef CREATE_GLYPH
 
   free(glyph);
 }
@@ -861,16 +909,13 @@ int main(int argc, char **argv) {
     errx(EXIT_FAILURE, "Failed to load font `%s' of size %u, weight %u",
          font_name, font_size, font_weight);
 
-  /* Preload the most important glyphs, which will be uploaded to OpenGL in a
-   * single batch */
-
-  /* ASCII */
+  // Preload the most important glyphs, which will be uploaded to OpenGL in a
+  // single batch.
   for (i = '!'; i <= '~'; ++i)
-    term_LoadGlyph(i);
-
-  /* ISO-8859-1 */
+    LoadGlyph(i);
   for (i = 0xa1; i <= 0xff; ++i)
-    term_LoadGlyph(i);
+    LoadGlyph(i);
+  CreateLineArtGlyphs();
 
   if (optind < argc) {
     if (argc - optind + 1 > (int) ARRAY_SIZE(args))
