@@ -726,25 +726,11 @@ void Terminal::ProcessData(const void *buf, size_t count) {
             case 'P': {
 
               /* Delete character at cursor */
-
-              NormalizeHistoryBuffer();
-
               if (!param[0]) param[0] = 1;
               if (cursorx + param[0] > size_.ws_col)
                 param[0] = size_.ws_col - cursorx;
 
-              std::copy(&curchars[cursory * size_.ws_col + cursorx + param[0]],
-                        &curchars[(cursory + 1) * size_.ws_col],
-                        &curchars[cursory * size_.ws_col + cursorx]);
-              std::copy(&curattrs[cursory * size_.ws_col + cursorx + param[0]],
-                        &curattrs[(cursory + 1) * size_.ws_col],
-                        &curattrs[cursory * size_.ws_col + cursorx]);
-
-              std::fill(&curchars[(cursory + 1) * size_.ws_col - param[0]],
-                        &curchars[(cursory + 1) * size_.ws_col], ' ');
-              std::fill(&curattrs[(cursory + 1) * size_.ws_col - param[0]],
-                        &curattrs[(cursory + 1) * size_.ws_col],
-                        EffectiveAttribute());
+              DeleteChars(param[0]);
             } break;
 
             case 'S':
@@ -965,6 +951,24 @@ void Terminal::InsertChars(size_t count) {
   uint16_t attr = EffectiveAttribute();
 
   while (k-- > static_cast<size_t>(cursorx)) {
+    curchars[line_offset + k] = ' ';
+    curattrs[line_offset + k] = attr;
+  }
+}
+
+void Terminal::DeleteChars(size_t count) {
+  size_t line_offset =
+      (*cur_scroll_line + cursory) % history_size * size_.ws_col;
+  size_t k = cursorx;
+
+  for (; k + count < size_.ws_col; ++k) {
+    curchars[line_offset + k] = curchars[line_offset + k + count];
+    curattrs[line_offset + k] = curattrs[line_offset + k + count];
+  }
+
+  uint16_t attr = EffectiveAttribute();
+
+  for (; k < size_.ws_col; ++k) {
     curchars[line_offset + k] = ' ';
     curattrs[line_offset + k] = attr;
   }

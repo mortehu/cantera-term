@@ -107,6 +107,7 @@ class Terminal {
 
   void SetScreen(int screen);
   void InsertChars(size_t count);
+  void DeleteChars(size_t count);
   void AddChar(int ch);
   void ClearLineWithAttr(size_t line, int ch, uint16_t attr);
 
