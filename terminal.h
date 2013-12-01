@@ -69,7 +69,6 @@ class Terminal {
 
   const winsize& Size() const { return size_; }
 
-  char* buffer;
   std::unique_ptr<wchar_t[]> chars[2];
   std::unique_ptr<uint16_t[]> attr[2];
   wchar_t* curchars;
@@ -78,9 +77,8 @@ class Terminal {
   size_t* cur_scroll_line;
   int curscreen;
   int curattr;
-  int reverse;
+  bool reverse;
   size_t history_size;
-  int fontsize;
   int storedcursorx[2];
   int storedcursory[2];
   int scrolltop;
@@ -89,14 +87,14 @@ class Terminal {
   int cursory;
   int escape;
   int param[8];
-  int appcursor;
-  int hide_cursor;
-  int insertmode;
+  bool appcursor;
+  bool hide_cursor;
+  bool insertmode;
 
   int select_begin;
   int select_end;
 
-  int focused;
+  bool focused;
 
   unsigned int history_scroll;
 

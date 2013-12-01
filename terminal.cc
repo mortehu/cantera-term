@@ -56,7 +56,6 @@ Terminal::Terminal()
       curattr(),
       reverse(),
       history_size(),
-      fontsize(),
       storedcursorx(),
       storedcursory(),
       scrolltop(),
@@ -505,17 +504,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           if (*begin == 'h') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
-                case 1:
-
-                  appcursor = 1;
-
-                  break;
-
-                case 25:
-
-                  hide_cursor = 0;
-
-                  break;
+                case 1: appcursor = true; break;
+                case 25: hide_cursor = false; break;
 
                 case 1049:
 
@@ -533,17 +523,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           } else if (*begin == 'l') {
             for (k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
-                case 1:
-
-                  appcursor = 0;
-
-                  break;
-
-                case 25:
-
-                  hide_cursor = 1;
-
-                  break;
+                case 1: appcursor = false; break;
+                case 25: hide_cursor = true; break;
 
                 case 1049:
 
@@ -783,11 +764,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 4:
-
-                    insertmode = 1;
-
-                    break;
+                  case 4: insertmode = true; break;
                 }
               }
 
@@ -797,11 +774,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 4:
-
-                    insertmode = 0;
-
-                    break;
+                  case 4: insertmode = false; break;
                 }
               }
 
@@ -811,21 +784,13 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               for (k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
-                  case 7:
-
-                    reverse = 1;
-
-                    break;
-
-                  case 27:
-
-                    reverse = 0;
-
-                    break;
+                  case 7: reverse = true; break;
+                  case 27: reverse = false; break;
 
                   case 0:
 
-                    reverse = 0;
+                    reverse = false;
+                    // Fall through.
 
                   default:
 
