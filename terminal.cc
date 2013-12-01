@@ -675,7 +675,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               uint16_t attr = EffectiveAttribute();
 
               for (size_t x = begin; x < end; ++x) {
-                curchars[line_offset + x] = 0;
+                curchars[line_offset + x] = ' ';
                 curattrs[line_offset + x] = attr;
               }
             } break;
@@ -951,9 +951,8 @@ void Terminal::AddChar(int ch) {
     0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,
   };
 
-  if (use_alt_charset_[curscreen]) {
-    if (ch >= 0x41 && ch <= 0x7e) ch = kAltCharset[ch - 0x41];
-  }
+  if (use_alt_charset_[curscreen] && ch >= 0x41 && ch <= 0x7e)
+    ch = kAltCharset[ch - 0x41];
 
   if (ch < 32) return;
 
@@ -961,7 +960,7 @@ void Terminal::AddChar(int ch) {
       (*cur_scroll_line + cursory) % history_size * size_.ws_col + cursorx;
 
   if (ch == 0x7f || ch >= 65536) {
-    curchars[offset] = 0;
+    curchars[offset] = ' ';
     curattrs[offset] = EffectiveAttribute();
     return;
   }
