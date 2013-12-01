@@ -50,10 +50,10 @@ class Terminal {
 
   Terminal();
 
-  void Init(unsigned int width, unsigned int height,
-                    unsigned int space_width, unsigned int line_height, size_t scroll_extra);
-  void Resize(unsigned int width, unsigned int height,
-                    unsigned int space_width, unsigned int line_height);
+  void Init(unsigned int width, unsigned int height, unsigned int space_width,
+            unsigned int line_height, size_t scroll_extra);
+  void Resize(unsigned int width, unsigned int height, unsigned int space_width,
+              unsigned int line_height);
 
   void ProcessData(const void* buf, size_t count);
   void GetState(State* state) const;
@@ -107,7 +107,11 @@ class Terminal {
   void SetScreen(int screen);
   void InsertChars(size_t count);
   void AddChar(int ch);
-  void ClearLine(size_t line);
+  void ClearLineWithAttr(size_t line, int ch, uint16_t attr);
+
+  void ClearLine(size_t line) {
+    ClearLineWithAttr(line, ' ', EffectiveAttribute());
+  }
 
   uint16_t EffectiveAttribute() const {
     return reverse ? REVERSE(curattr) : curattr;

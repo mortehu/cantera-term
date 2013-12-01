@@ -457,6 +457,12 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           escape = 0;
         } else if (param[0] == -5) {
           escape = 0;
+          switch (*begin) {
+            case '8':
+              for (size_t i = 0; i < size_.ws_row; ++i)
+                ClearLineWithAttr((*cur_scroll_line + i) % history_size, 'E', 0x07);
+              break;
+          }
         } else if (escape == 2 && *begin == '?') {
           param[0] = -3;
           ++escape;
@@ -619,34 +625,24 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               break;
 
-            case 'J':
+            case 'J': {
+              size_t begin = *cur_scroll_line;
+              size_t end = *cur_scroll_line + size_.ws_row;
+              bool fall_through = true;
 
-              if (param[0] == 0) {
-                /* Clear from cursor to end */
-
-                NormalizeHistoryBuffer();
-
-                int count = size_.ws_col * (size_.ws_row - cursory - 1) +
-                            (size_.ws_col - cursorx);
-                memset(&curchars[cursory * size_.ws_col + cursorx], 0,
-                       count * sizeof(wchar_t));
-                std::fill(&curattrs[cursory * size_.ws_col + cursorx],
-                          &curattrs[cursory * size_.ws_col + cursorx + count],
-                          EffectiveAttribute());
-              } else if (param[0] == 1) {
-                /* Clear from start to cursor */
-
-                NormalizeHistoryBuffer();
-
-                int count = (size_.ws_col * cursory + cursorx);
-                memset(curchars, 0, count * sizeof(wchar_t));
-                std::fill(curchars, curchars + count, EffectiveAttribute());
-              } else if (param[0] == 2) {
-                for (size_t i = 0; i < size_.ws_row; ++i)
-                  ClearLine((i + size_.ws_row) % history_size);
+              switch (param[0]) {
+              case 0: begin = *cur_scroll_line + cursory + 1; break;
+              case 1: end = *cur_scroll_line + cursory; break;
+              default:
+              case 2: fall_through = false; break;
               }
 
-              break;
+              for (size_t i = begin; i < end; ++i)
+                ClearLine(i % history_size);
+
+              if (!fall_through)
+                break;
+            }
 
             case 'K': {
               size_t line_offset =
@@ -1015,12 +1011,11 @@ void Terminal::NormalizeHistoryBuffer() {
   }
 }
 
-void Terminal::ClearLine(size_t line) {
+void Terminal::ClearLineWithAttr(size_t line, int ch, uint16_t attr) {
   size_t offset = line * size_.ws_col;
 
-  std::fill(curchars + offset, curchars + offset + size_.ws_col, 0);
-  std::fill(curattrs + offset, curattrs + offset + size_.ws_col,
-            EffectiveAttribute());
+  std::fill(curchars + offset, curchars + offset + size_.ws_col, ch);
+  std::fill(curattrs + offset, curattrs + offset + size_.ws_col, attr);
 }
 
 void Terminal::Scroll(bool fromcursor) {
