@@ -2,6 +2,7 @@
 #define TERMINAL_H_ 1
 
 #include <memory>
+#include <set>
 #include <string.h>
 #include <string>
 
@@ -123,6 +124,8 @@ class Terminal {
   unsigned int ch_, nch_;
 
   int savedx_, savedy_;
+
+  std::set<unsigned int> tab_stops_;
 };
 
 #endif /* !TERMINAL_H_ */

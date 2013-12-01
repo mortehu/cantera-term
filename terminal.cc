@@ -254,14 +254,18 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             break;
 
-          case '\t':
+          case '\t': {
+            unsigned int next_tab = (cursorx + 8) & ~7;
+            auto tab_stop = tab_stops_.lower_bound(cursorx + 1);
 
-            if (cursorx < size_.ws_col - 8)
-              cursorx = (cursorx + 8) & ~7;
+            if (tab_stop != tab_stops_.end() && *tab_stop < next_tab)
+              cursorx = *tab_stop;
             else
-              cursorx = size_.ws_col - 1;
+              cursorx = next_tab;
 
-            break;
+            if (cursorx >= size_.ws_col)
+              cursorx = size_.ws_col - 1;
+          } break;
 
           case '\n':
 
@@ -367,10 +371,29 @@ void Terminal::ProcessData(const void *buf, size_t count) {
             cursorx = 0;
             ++cursory;
 
-            while (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (cursory == scrollbottom || cursory >= size_.ws_row) {
               Scroll(false);
               --cursory;
             }
+
+            break;
+
+          case 'H':
+
+            escape = 0;
+            tab_stops_.insert(cursorx);
+
+            break;
+
+          case 'c':
+
+            escape = 0;
+            tab_stops_.clear();
+            cursorx = 0;
+            cursory = 0;
+            for (size_t i = 0; i < size_.ws_row; ++i)
+              ClearLine((*cur_scroll_line + cursory + i) % history_size);
+            use_alt_charset_[curscreen] = false;
 
             break;
 
