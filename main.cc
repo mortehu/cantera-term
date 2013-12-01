@@ -12,8 +12,6 @@
 #include <locale.h>
 #include <pthread.h>
 #include <pty.h>
-#include <sched.h>
-#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
