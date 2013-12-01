@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 
 #include "terminal.h"
@@ -14,34 +15,51 @@ static const char* escape_codes[] = {
 int main(int argc, char** argv) {
   srand(time(NULL));
 
-  Terminal terminal;
-  terminal.Init(800, 500, 10, 20, 100);
+  Terminal terminal_noscroll, terminal_scroll;
+  terminal_noscroll.Init(800, 500, 10, 20, 0);
+  terminal_scroll.Init(800, 500, 10, 20, 1001);
 
-  for (size_t i = 0; i < 100000; ++i) {
+  for (size_t i = 0; i < 10000; ++i) {
+    char buffer[64];
     switch (rand() & 3) {
       case 0: {
         size_t index =
             rand() % (sizeof(escape_codes) / sizeof(escape_codes[0]));
-        terminal.ProcessData(escape_codes[index], strlen(escape_codes[index]));
+        strcpy(buffer, escape_codes[index]);
       } break;
       case 1: {
-        char buffer[64];
         strcpy(buffer, "\033[");
         if (rand() & 1) {
           sprintf(&buffer[2], "%u%c", rand() % 4096, rand());
         } else {
           sprintf(&buffer[2], "%c", rand());
         }
-        terminal.ProcessData(buffer, strlen(buffer));
       } break;
       case 2: {
-        char buffer[64];
-        for (size_t j = 0; j < sizeof(buffer); ++j)
+        for (size_t j = 0; j < sizeof(buffer) - 1; ++j)
           buffer[j] = rand();
-
-        terminal.ProcessData(buffer, sizeof(buffer));
+        buffer[sizeof(buffer) - 1] = 0;
       }
     }
+    terminal_noscroll.ProcessData(buffer, strlen(buffer));
+    terminal_scroll.ProcessData(buffer, strlen(buffer));
+
+    Terminal::State state_noscroll, state_scroll;
+    terminal_noscroll.GetState(&state_noscroll);
+    terminal_scroll.GetState(&state_scroll);
+
+    assert(state_noscroll.width == state_scroll.width);
+    assert(state_noscroll.height == state_scroll.height);
+    assert(state_noscroll.cursor_x == state_scroll.cursor_x);
+    assert(state_noscroll.cursor_y == state_scroll.cursor_y);
+    assert(state_noscroll.cursor_hidden == state_scroll.cursor_hidden);
+    assert(state_noscroll.focused == state_scroll.focused);
+    assert(!memcmp(&state_noscroll.chars[0], &state_scroll.chars[0],
+                   sizeof(state_noscroll.chars[0]) * state_noscroll.width *
+                       state_noscroll.height));
+    assert(!memcmp(&state_noscroll.attrs[0], &state_scroll.attrs[0],
+                   sizeof(state_noscroll.attrs[0]) * state_noscroll.width *
+                       state_noscroll.height));
   }
 
   return EXIT_SUCCESS;
