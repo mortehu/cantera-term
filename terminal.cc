@@ -979,9 +979,9 @@ void Terminal::NormalizeHistoryBuffer() {
     if (!scroll_line[i]) continue;
 
     assert(scroll_line[i] > 0);
-    assert(scroll_line[0] < history_size);
+    assert(scroll_line[i] < history_size);
 
-    size_t buffer_offset = cur_scroll_line[i] * size_.ws_col;
+    size_t buffer_offset = scroll_line[i] * size_.ws_col;
 
     std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[buffer_offset]);
     std::unique_ptr<uint16_t[]> tmpattrs(new uint16_t[buffer_offset]);
