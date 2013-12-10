@@ -1050,13 +1050,13 @@ void Terminal::Scroll(bool fromcursor) {
           &curchars[(first + 1) * size_.ws_col],
           length * size_.ws_col * sizeof(curchars[0]));
   std::fill(&curchars[(first + length) * size_.ws_col],
-            &curchars[size_.ws_row * size_.ws_col], ' ');
+            &curchars[(first + length + 1) * size_.ws_col], ' ');
 
   memmove(&curattrs[first * size_.ws_col],
           &curattrs[(first + 1) * size_.ws_col],
           length * size_.ws_col * sizeof(curattrs[0]));
   std::fill(&curattrs[(first + length) * size_.ws_col],
-            &curattrs[size_.ws_row * size_.ws_col], EffectiveAttribute());
+            &curattrs[(first + length + 1) * size_.ws_col], EffectiveAttribute());
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
