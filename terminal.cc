@@ -1039,6 +1039,8 @@ void Terminal::Scroll(bool fromcursor) {
   size_t first, length;
 
   if (fromcursor) {
+    // TODO(mortehu): See what other terminals do in this case.
+    if (cursory >= scrollbottom) return;
     first = cursory;
     length = (scrollbottom - cursory - 1);
   } else {
