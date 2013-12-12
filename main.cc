@@ -234,7 +234,7 @@ void run_command(int fd, const char *command, const char *arg) {
 
   sprintf(path, ".cantera/commands/%s", command);
 
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
+  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY | O_CLOEXEC))) return;
 
   if (!fork()) {
     char *args[3];
@@ -853,7 +853,7 @@ int main(int argc, char **argv) {
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "HOME environment variable missing");
 
-  if (-1 == (home_fd = open(home, O_RDONLY)))
+  if (-1 == (home_fd = open(home, O_RDONLY | O_CLOEXEC)))
     err(EXIT_FAILURE, "Failed to open HOME directory");
 
   mkdirat(home_fd, ".cantera", 0777);
@@ -887,7 +887,7 @@ int main(int argc, char **argv) {
   setenv("TERM", "xterm", 1);
 
   if (session_path) {
-    session_fd = open(session_path, O_RDONLY);
+    session_fd = open(session_path, O_RDONLY | O_CLOEXEC);
 
     if (session_fd != -1) {
       struct winsize ws;

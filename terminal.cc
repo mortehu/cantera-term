@@ -1232,7 +1232,7 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
 void Terminal::SaveSession(const char *session_path) {
   if (cursorx) ProcessData((const unsigned char *)"\r\n", 2);
 
-  int session_fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  int session_fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
 
   if (session_fd == -1) return;
 
