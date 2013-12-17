@@ -180,11 +180,11 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   }
 }
 
-void Terminal::ProcessData(const void *buf, size_t count) {
+void Terminal::ProcessData(const void* buf, size_t count) {
   int k;
 
-  const unsigned char *begin = reinterpret_cast<const unsigned char *>(buf);
-  const unsigned char *end = begin + count;
+  const unsigned char* begin = reinterpret_cast<const unsigned char*>(buf);
+  const unsigned char* end = begin + count;
 
   // Redundant, optimized character processing code for the typical case.
   if (!escape && !insertmode && !nch_ && !use_alt_charset_[curscreen]) {
@@ -868,7 +868,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
   }
 }
 
-void Terminal::GetState(State *state) const {
+void Terminal::GetState(State* state) const {
   state->width = size_.ws_col;
   state->height = size_.ws_row;
   state->chars.reset(new wchar_t[size_.ws_col * size_.ws_row]);
@@ -1058,7 +1058,8 @@ void Terminal::Scroll(bool fromcursor) {
           &curattrs[(first + 1) * size_.ws_col],
           length * size_.ws_col * sizeof(curattrs[0]));
   std::fill(&curattrs[(first + length) * size_.ws_col],
-            &curattrs[(first + length + 1) * size_.ws_col], EffectiveAttribute());
+            &curattrs[(first + length + 1) * size_.ws_col],
+            EffectiveAttribute());
 }
 
 void Terminal::ReverseScroll(bool fromcursor) {
@@ -1103,8 +1104,8 @@ void Terminal::Select(RangeType range_type) {
   FindRange(range_type, &select_begin, &select_end);
 }
 
-bool Terminal::FindRange(RangeType range_type, size_t *begin,
-                         size_t *end) const {
+bool Terminal::FindRange(RangeType range_type, size_t* begin,
+                         size_t* end) const {
   size_t history_buffer_size = size_.ws_col * history_size;
   size_t offset = *cur_scroll_line * size_.ws_col;
 
@@ -1229,8 +1230,8 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   return result;
 }
 
-void Terminal::SaveSession(const char *session_path) {
-  if (cursorx) ProcessData((const unsigned char *)"\r\n", 2);
+void Terminal::SaveSession(const char* session_path) {
+  if (cursorx) ProcessData((const unsigned char*)"\r\n", 2);
 
   int session_fd = open(session_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 

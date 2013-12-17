@@ -97,7 +97,7 @@ static void draw_FlushQuads(void) {
  * string: the shader source code
  * type: GL_VERTEX_SHADER or GL_FRAGMENT_SHADER
  */
-static GLuint load_shader(const char *error_context, const char *string,
+static GLuint load_shader(const char* error_context, const char* string,
                           GLenum type) {
   GLuint result;
   GLint string_length, compile_status;
@@ -122,8 +122,8 @@ static GLuint load_shader(const char *error_context, const char *string,
   return result;
 }
 
-static struct draw_Shader load_program(const char *vertex_shader_source,
-                                       const char *fragment_shader_source) {
+static struct draw_Shader load_program(const char* vertex_shader_source,
+                                       const char* fragment_shader_source) {
   GLuint vertex_shader, fragment_shader;
   struct draw_Shader result;
   GLint link_status;
@@ -159,7 +159,7 @@ static struct draw_Shader load_program(const char *vertex_shader_source,
 }
 
 void init_gl_30(void) {
-  static const char *vertex_shader_source =
+  static const char* vertex_shader_source =
       "attribute vec2 attr_VertexPosition;\n"
       "attribute vec2 attr_TextureCoord;\n"
       "attribute vec3 attr_Color;\n"
@@ -176,7 +176,7 @@ void init_gl_30(void) {
       "  var_Color = attr_Color;\n"
       "}";
 
-  static const char *fragment_shader_source =
+  static const char* fragment_shader_source =
       "varying vec2 var_TextureCoord;\n"
       "varying vec3 var_Color;\n"
       "uniform sampler2D uniform_Sampler;\n"
@@ -202,7 +202,7 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(const Terminal::State &state, const FONT_Data *font,
+void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
                 unsigned int palette[16]) {
   // Step 2: Submit the GL commands.
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
@@ -218,8 +218,8 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font,
   int y = ascent;
 
   for (size_t row = 0; row < state.height; ++row) {
-    const wchar_t *line = &state.chars[row * state.width];
-    const uint16_t *attrline = &state.attrs[row * state.width];
+    const wchar_t* line = &state.chars[row * state.width];
+    const uint16_t* attrline = &state.attrs[row * state.width];
     int x = 0;
 
     for (size_t col = 0; col < state.width; ++col) {
@@ -258,7 +258,7 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font,
         uint16_t u, v;
 
         if (!GLYPH_IsLoaded(character)) {
-          struct FONT_Glyph *glyph;
+          struct FONT_Glyph* glyph;
 
           if (!(glyph = FONT_GlyphForCharacter(font, character)))
             fprintf(stderr, "Failed to get glyph for '%d'", character);

@@ -45,7 +45,7 @@
 #include "tree.h"
 #include "x11.h"
 
-extern char **environ;
+extern char** environ;
 
 namespace {
 
@@ -61,15 +61,15 @@ bool hidden;
 
 unsigned int scroll_extra;
 
-const char *font_name;
+const char* font_name;
 unsigned int font_size, font_weight;
-FONT_Data *font;
+FONT_Data* font;
 
 unsigned int palette[16];
 
 int done;
 int home_fd;
-const char *session_path;
+const char* session_path;
 
 Terminal terminal;
 
@@ -88,7 +88,7 @@ pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
 }
 
 static void LoadGlyph(wchar_t character) {
-  FONT_Glyph *glyph;
+  FONT_Glyph* glyph;
 
   if (!(glyph = FONT_GlyphForCharacter(font, character)))
     fprintf(stderr, "Failed to get glyph for '%d'", character);
@@ -171,7 +171,7 @@ static void UpdateSelection(Time time) {
   }
 }
 
-static void send_selection(XSelectionRequestEvent *request, const char *text,
+static void send_selection(XSelectionRequestEvent* request, const char* text,
                            size_t length) {
   XSelectionEvent response;
   int ret;
@@ -189,13 +189,13 @@ static void send_selection(XSelectionRequestEvent *request, const char *text,
     const Atom targets[] = { XA_STRING, xa_utf8_string };
 
     XChangeProperty(X11_display, request->requestor, request->property, XA_ATOM,
-                    32, PropModeReplace, (const unsigned char *)targets,
+                    32, PropModeReplace, (const unsigned char*)targets,
                     ARRAY_SIZE(targets));
   } else if (request->target == XA_STRING ||
              request->target == xa_utf8_string) {
-    ret = XChangeProperty(
-        X11_display, request->requestor, request->property, request->target, 8,
-        PropModeReplace, reinterpret_cast<const unsigned char *>(text), length);
+    ret = XChangeProperty(X11_display, request->requestor, request->property,
+                          request->target, 8, PropModeReplace,
+                          reinterpret_cast<const unsigned char*>(text), length);
 
     if (ret != BadAlloc && ret != BadAtom && ret != BadValue &&
         ret != BadWindow)
@@ -206,7 +206,7 @@ static void send_selection(XSelectionRequestEvent *request, const char *text,
   }
 
   XSendEvent(request->display, request->requestor, False, NoEventMask,
-             (XEvent *)&response);
+             (XEvent*)&response);
 }
 
 static void paste(Atom selection, Time time) {
@@ -228,7 +228,7 @@ void X11_handle_configure(void) {
   ioctl(fd, TIOCSWINSZ, &terminal.Size());
 }
 
-void run_command(int fd, const char *command, const char *arg) {
+void run_command(int fd, const char* command, const char* arg) {
   char path[4096];
   int command_fd;
 
@@ -237,12 +237,12 @@ void run_command(int fd, const char *command, const char *arg) {
   if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
 
   if (!fork()) {
-    char *args[3];
+    char* args[3];
 
     if (fd != -1) dup2(fd, 1);
 
     args[0] = path;
-    args[1] = (char *)arg;
+    args[1] = (char*)arg;
     args[2] = 0;
 
     fexecve(command_fd, args, environ);
@@ -253,7 +253,7 @@ void run_command(int fd, const char *command, const char *arg) {
   close(command_fd);
 }
 
-static void *x11_clear_thread_entry(void *arg) {
+static void* x11_clear_thread_entry(void* arg) {
   for (;;) {
     pthread_mutex_lock(&clear_mutex);
     while (!clear)
@@ -277,7 +277,7 @@ static void x11_clear(void) {
   pthread_mutex_unlock(&clear_mutex);
 }
 
-static void *tty_read_thread_entry(void *arg) {
+static void* tty_read_thread_entry(void* arg) {
   unsigned char buf[4096];
   ssize_t result;
   size_t fill = 0;
@@ -328,12 +328,12 @@ static void *tty_read_thread_entry(void *arg) {
   return NULL;
 }
 
-static void WriteToTTY(const void *data, size_t len) {
+static void WriteToTTY(const void* data, size_t len) {
   size_t off = 0;
   ssize_t result;
 
   while (off < len) {
-    result = write(fd, reinterpret_cast<const char *>(data) + off, len - off);
+    result = write(fd, reinterpret_cast<const char*>(data) + off, len - off);
 
     if (result < 0) {
       done = 1;
@@ -345,7 +345,7 @@ static void WriteToTTY(const void *data, size_t len) {
   }
 }
 
-static void WriteStringToTTY(const char *string) {
+static void WriteStringToTTY(const char* string) {
   WriteToTTY(string, strlen(string));
 }
 
@@ -373,7 +373,7 @@ struct KeyInfo : std::pair<unsigned int, unsigned int> {
 
 namespace std {
 template <> struct hash<KeyInfo> {
-  size_t operator()(const KeyInfo &k) const {
+  size_t operator()(const KeyInfo& k) const {
     return (k.first << 16) | k.second;
   }
 };
@@ -386,7 +386,7 @@ int x11_process_events() {
   int result;
 
 #define MAP_KEY_TO_STRING(keysym, string)                  \
-  key_callbacks[keysym] = [](XKeyEvent * event) {          \
+  key_callbacks[keysym] = [](XKeyEvent* event) {           \
     if (event->state & Mod1Mask) WriteStringToTTY("\033"); \
     WriteStringToTTY((string));                            \
   };
@@ -421,21 +421,21 @@ int x11_process_events() {
   key_callbacks[KeyInfo(XK_Right, ControlMask)] = key_callbacks[XK_End];
 
   /* Inline calculator */
-  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent * event) {
+  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent* event) {
     terminal.Select(Terminal::kRangeParenthesis);
 
     UpdateSelection(event->time);
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
   };
-  key_callbacks[XK_Menu] = [](XKeyEvent * event) {
+  key_callbacks[XK_Menu] = [](XKeyEvent* event) {
     if (!primary_selection.empty())
       run_command(fd, "calculate", primary_selection.c_str());
   };
 
   /* Clipboard handling */
   key_callbacks[KeyInfo(XK_C, ControlMask | ShiftMask)] =
-      [](XKeyEvent * event) {
+      [](XKeyEvent* event) {
     if (!primary_selection.empty()) {
       clipboard_text = primary_selection;
 
@@ -444,17 +444,18 @@ int x11_process_events() {
   };
   key_callbacks[KeyInfo(XK_Insert, ControlMask | ShiftMask)] =
       key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] =
-          [](XKeyEvent * event) {
+          [](XKeyEvent* event) {
     paste(xa_clipboard, event->time);
   };
-  key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent * event) {
+  key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent* event) {
     paste(XA_PRIMARY, event->time);
   };
+
 
   /* Suppress output from some keys */
   key_callbacks[XK_Shift_L] = key_callbacks[XK_Shift_R] =
       key_callbacks[XK_ISO_Prev_Group] = key_callbacks[XK_ISO_Next_Group] =
-          [](XKeyEvent * event) {};
+          [](XKeyEvent* event) {};
 
   while (!done) {
     XNextEvent(X11_display, &event);
@@ -666,7 +667,7 @@ int x11_process_events() {
         break;
 
       case SelectionRequest: {
-        XSelectionRequestEvent *request = &event.xselectionrequest;
+        XSelectionRequestEvent* request = &event.xselectionrequest;
 
         if (request->property == None) request->property = request->target;
 
@@ -687,7 +688,7 @@ int x11_process_events() {
         int format;
         unsigned long nitems;
         unsigned long bytes_after;
-        unsigned char *prop;
+        unsigned char* prop;
 
         selection = event.xselection.selection;
 
@@ -766,9 +767,9 @@ int x11_process_events() {
       } break;
 
       case EnterNotify: {
-        const XEnterWindowEvent *ewe;
+        const XEnterWindowEvent* ewe;
 
-        ewe = (XEnterWindowEvent *)&event;
+        ewe = (XEnterWindowEvent*)&event;
 
         if (!ewe->focus || ewe->detail == NotifyInferior) break;
 
@@ -783,9 +784,9 @@ int x11_process_events() {
         break;
 
       case LeaveNotify: {
-        const XLeaveWindowEvent *lwe;
+        const XLeaveWindowEvent* lwe;
 
-        lwe = (XEnterWindowEvent *)&event;
+        lwe = (XEnterWindowEvent*)&event;
 
         if (!lwe->focus || lwe->detail == NotifyInferior) break;
 
@@ -806,12 +807,11 @@ int x11_process_events() {
   return 0;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   pthread_t tty_read_thread, x11_clear_thread;
-  char *args[16];
   int i, session_fd;
-  const char *home;
-  char *palette_str, *token;
+  const char* home;
+  char* palette_str, *token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -829,7 +829,7 @@ int main(int argc, char **argv) {
   }
 
   if (print_help) {
-    printf("Usage: %s [OPTION]...\n"
+    printf("Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
            "\n"
            "      --help     display this help and exit\n"
            "      --version  display version information\n"
@@ -917,18 +917,15 @@ int main(int argc, char **argv) {
     LoadGlyph(i);
   CreateLineArtGlyphs();
 
+  std::vector<const char*> command_line;
+
   if (optind < argc) {
-    if (argc - optind + 1 > (int) ARRAY_SIZE(args))
-      errx(EXIT_FAILURE, "Too many arguments");
-
     for (i = optind; i < argc; ++i)
-      args[i - optind] = argv[i];
-
-    args[i - optind] = 0;
+      command_line.push_back(argv[i]);
   } else {
-    args[0] = (char *)"/bin/bash";
-    args[1] = 0;
+    command_line.push_back("/bin/bash");
   }
+  command_line.push_back(nullptr);
 
   if (-1 == (pid = forkpty(&fd, 0, 0, &terminal.Size())))
     err(EX_OSERR, "forkpty() failed");
@@ -936,9 +933,10 @@ int main(int argc, char **argv) {
   if (!pid) {
     /* In child process */
 
-    execve(args[0], args, environ);
+    execve(command_line[0], const_cast<char* const*>(&command_line[0]),
+           environ);
 
-    fprintf(stderr, "Failed to execute '%s'", args[0]);
+    fprintf(stderr, "Failed to execute '%s'", command_line[0]);
 
     _exit(EXIT_FAILURE);
   }
