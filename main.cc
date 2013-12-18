@@ -231,23 +231,31 @@ void X11_handle_configure(void) {
 void run_command(int fd, const char* command, const char* arg) {
   char path[4096];
   int command_fd;
+  pid_t child;
 
   sprintf(path, ".cantera/commands/%s", command);
 
   if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
 
-  if (!fork()) {
+  if (-1 == (child = fork())) {
+    fprintf(stderr, "fork failed: %s\n", strerror(errno));
+    return;
+  }
+
+  if (!child) {
     char* args[3];
+    size_t argc = 0;
 
     if (fd != -1) dup2(fd, 1);
 
-    args[0] = path;
-    args[1] = (char*)arg;
-    args[2] = 0;
+    args[argc++] = path;
+    if (arg)
+      args[argc++] = const_cast<char*>(arg);
+    args[argc++] = nullptr;
 
     fexecve(command_fd, args, environ);
 
-    exit(EXIT_FAILURE);
+    _exit(EXIT_FAILURE);
   }
 
   close(command_fd);
