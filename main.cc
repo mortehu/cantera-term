@@ -81,7 +81,7 @@ pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
 
 pid_t pid;
-int fd;
+int terminal_fd;
 
 pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -225,7 +225,7 @@ void X11_handle_configure(void) {
   terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                   FONT_LineHeight(font));
 
-  ioctl(fd, TIOCSWINSZ, &terminal.Size());
+  ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
 void run_command(int fd, const char* command, const char* arg) {
@@ -291,7 +291,7 @@ static void* tty_read_thread_entry(void* arg) {
   size_t fill = 0;
   struct pollfd pfd;
 
-  pfd.fd = fd;
+  pfd.fd = terminal_fd;
   pfd.events = POLLIN | POLLRDHUP;
 
   for (;;) {
@@ -304,7 +304,7 @@ static void* tty_read_thread_entry(void* arg) {
     if (pfd.revents & POLLRDHUP) break;
 
     // Read until EAGAIN/EWOULDBLOCK.
-    while (0 < (result = read(fd, buf + fill, sizeof(buf) - fill))) {
+    while (0 < (result = read(terminal_fd, buf + fill, sizeof(buf) - fill))) {
       fill += result;
       if (fill == sizeof(buf)) break;
     }
@@ -341,7 +341,7 @@ static void WriteToTTY(const void* data, size_t len) {
   ssize_t result;
 
   while (off < len) {
-    result = write(fd, reinterpret_cast<const char*>(data) + off, len - off);
+    result = write(terminal_fd, reinterpret_cast<const char*>(data) + off, len - off);
 
     if (result < 0) {
       done = 1;
@@ -438,7 +438,7 @@ int x11_process_events() {
   };
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
     if (!primary_selection.empty())
-      run_command(fd, "calculate", primary_selection.c_str());
+      run_command(terminal_fd, "calculate", primary_selection.c_str());
   };
 
   /* Clipboard handling */
@@ -669,7 +669,7 @@ int x11_process_events() {
           UpdateSelection(event.xbutton.time);
 
           if (!primary_selection.empty() && (event.xkey.state & Mod1Mask))
-            run_command(fd, "open-url", primary_selection.c_str());
+            run_command(terminal_fd, "open-url", primary_selection.c_str());
         }
 
         break;
@@ -935,7 +935,7 @@ int main(int argc, char** argv) {
   }
   command_line.push_back(nullptr);
 
-  if (-1 == (pid = forkpty(&fd, 0, 0, &terminal.Size())))
+  if (-1 == (pid = forkpty(&terminal_fd, 0, 0, &terminal.Size())))
     err(EX_OSERR, "forkpty() failed");
 
   if (!pid) {
@@ -949,7 +949,7 @@ int main(int argc, char** argv) {
     _exit(EXIT_FAILURE);
   }
 
-  fcntl(fd, F_SETFL, O_NDELAY);
+  fcntl(terminal_fd, F_SETFL, O_NDELAY);
 
   terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                 FONT_LineHeight(font), scroll_extra);
