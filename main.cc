@@ -907,7 +907,7 @@ int main(int argc, char** argv) {
   }
   command_line.push_back(nullptr);
 
-  if (-1 == (pid = forkpty(&terminal_fd, 0, 0, &terminal.Size())))
+  if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal.Size())))
     err(EX_OSERR, "forkpty() failed");
 
   if (!pid) {
