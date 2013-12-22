@@ -37,7 +37,6 @@
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 
-#include "array.h"
 #include "command.h"
 #include "draw.h"
 #include "font.h"
@@ -190,8 +189,9 @@ static void send_selection(XSelectionRequestEvent* request, const char* text,
     const Atom targets[] = { XA_STRING, xa_utf8_string };
 
     XChangeProperty(X11_display, request->requestor, request->property, XA_ATOM,
-                    32, PropModeReplace, (const unsigned char*)targets,
-                    ARRAY_SIZE(targets));
+                    32, PropModeReplace,
+                    reinterpret_cast<const unsigned char*>(targets),
+                    sizeof(targets) / sizeof(targets[0]));
   } else if (request->target == XA_STRING ||
              request->target == xa_utf8_string) {
     ret = XChangeProperty(X11_display, request->requestor, request->property,

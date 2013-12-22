@@ -16,7 +16,8 @@ struct tree {
 
 tree* tree_create(const char* name);
 
-void tree_create_node(tree* t, const char* path, const char* value);
+void tree_create_node(tree* t, const std::string& path,
+                      const std::string& value);
 
 long long int tree_get_integer_default(const tree* t, const char* path,
                                        long long int def);

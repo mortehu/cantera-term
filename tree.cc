@@ -13,17 +13,16 @@
 #include <sysexits.h>
 #include <unistd.h>
 
-#include "array.h"
 #include "terminal.h"
 #include "tree.h"
 
-void tree_create_node(tree* t, const char* path, const char* value) {
-  tree::node new_node;
+void tree_create_node(tree* t, const std::string& path,
+                      const std::string& value) {
+  t->nodes.emplace_back();
+  tree::node& new_node = t->nodes.back();
 
   new_node.path = path;
   new_node.value = value;
-
-  t->nodes.push_back(new_node);
 }
 
 long long int tree_get_integer_default(const tree* t, const char* path,
@@ -87,11 +86,9 @@ tree* tree_load_cfg(int home_fd, const char* path) {
   off_t size;
   int fd;
 
-  char symbol[4096];
-  size_t symbol_len = 0;
+  std::string symbol;
 
-  size_t section_stack[32];
-  size_t section_stackp = 0;
+  std::vector<size_t> section_stack;
   int expecting_symbol = 1;
 
   char* c;
@@ -138,13 +135,14 @@ tree* tree_load_cfg(int home_fd, const char* path) {
     }
 
     if (*c == '}') {
-      if (!section_stackp)
+      if (section_stack.empty())
         errx(EX_DATAERR, "%s:%d: unexpected '}'", path, lineno);
 
-      if (!--section_stackp)
-        symbol_len = 0;
+      section_stack.pop_back();
+      if (!section_stack.empty())
+        symbol.clear();
       else
-        symbol_len = section_stack[section_stackp - 1];
+        symbol.resize(section_stack.back());
 
       ++c;
 
@@ -161,19 +159,10 @@ tree* tree_load_cfg(int home_fd, const char* path) {
                path, lineno, *c);
       }
 
-      if (symbol_len) {
-        if (symbol_len + 1 == ARRAY_SIZE(symbol))
-          errx(EX_DATAERR, "%s:%d: symbol stack overflow", path, lineno);
+      if (!symbol.empty()) symbol.push_back('.');
 
-        symbol[symbol_len++] = '.';
-      }
-
-      while (is_symbol_char(*c)) {
-        if (symbol_len + 1 == ARRAY_SIZE(symbol))
-          errx(EX_DATAERR, "%s:%d: symbol stack overflow", path, lineno);
-
-        symbol[symbol_len++] = *c++;
-      }
+      while (is_symbol_char(*c))
+        symbol.push_back(*c++);
 
       if (isspace(*c)) {
         *c++ = 0;
@@ -196,10 +185,7 @@ tree* tree_load_cfg(int home_fd, const char* path) {
 
         case '{':
 
-          if (section_stackp == ARRAY_SIZE(section_stack))
-            errx(EX_DATAERR, "%s:%d: too many nested sections", path, lineno);
-
-          section_stack[section_stackp++] = symbol_len;
+          section_stack.push_back(symbol.length());
           expecting_symbol = 1;
           *c++ = 0;
 
@@ -253,14 +239,12 @@ tree* tree_load_cfg(int home_fd, const char* path) {
         if (*c) *c++ = 0;
       }
 
-      symbol[symbol_len] = 0;
-
       tree_create_node(result.get(), symbol, value);
 
-      if (section_stackp)
-        symbol_len = section_stack[section_stackp - 1];
+      if (!section_stack.empty())
+        symbol.resize(section_stack.back());
       else
-        symbol_len = 0;
+        symbol.clear();
 
       expecting_symbol = 1;
     }
