@@ -10,7 +10,21 @@ AM_CFLAGS = -g -Wall -pthread $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
 
-cantera_term_SOURCES = main.cc terminal.h terminal.cc tree.cc tree.h x11.c x11.h font.c font.h glyph.c glyph.h draw-gl-30.cc
+cantera_term_SOURCES = \
+  draw-gl-30.cc \
+  command.cc \
+  command.h \
+  font.c \
+  font.h \
+  glyph.c \
+  glyph.h \
+  main.cc \
+  terminal.cc \
+  terminal.h \
+  tree.cc \
+  tree.h \
+  x11.c \
+  x11.h
 cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL
 
 fuzz_SOURCES = fuzz.cc terminal.h terminal.cc

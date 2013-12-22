@@ -38,6 +38,7 @@
 #include <X11/keysym.h>
 
 #include "array.h"
+#include "command.h"
 #include "draw.h"
 #include "font.h"
 #include "glyph.h"
@@ -228,39 +229,6 @@ void X11_handle_configure(void) {
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
-void run_command(int fd, const char* command, const char* arg) {
-  char path[4096];
-  int command_fd;
-  pid_t child;
-
-  sprintf(path, ".cantera/commands/%s", command);
-
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) return;
-
-  if (-1 == (child = fork())) {
-    fprintf(stderr, "fork failed: %s\n", strerror(errno));
-    return;
-  }
-
-  if (!child) {
-    char* args[3];
-    size_t argc = 0;
-
-    if (fd != -1) dup2(fd, 1);
-
-    args[argc++] = path;
-    if (arg)
-      args[argc++] = const_cast<char*>(arg);
-    args[argc++] = nullptr;
-
-    fexecve(command_fd, args, environ);
-
-    _exit(EXIT_FAILURE);
-  }
-
-  close(command_fd);
-}
-
 static void* x11_clear_thread_entry(void* arg) {
   for (;;) {
     pthread_mutex_lock(&clear_mutex);
@@ -437,8 +405,12 @@ int x11_process_events() {
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
   };
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
-    if (!primary_selection.empty())
-      run_command(terminal_fd, "calculate", primary_selection.c_str());
+    if (!primary_selection.empty()) {
+      Command(home_fd, "calculate")
+        .SetStdout(terminal_fd)
+        .AddArg(primary_selection)
+        .Run();
+    }
   };
 
   /* Clipboard handling */
@@ -669,7 +641,7 @@ int x11_process_events() {
           UpdateSelection(event.xbutton.time);
 
           if (!primary_selection.empty() && (event.xkey.state & Mod1Mask))
-            run_command(terminal_fd, "open-url", primary_selection.c_str());
+            Command(home_fd, "open-url").AddArg(primary_selection).Run();
         }
 
         break;
