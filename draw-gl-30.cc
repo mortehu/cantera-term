@@ -204,18 +204,20 @@ void init_gl_30(void) {
 
 void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
                 unsigned int palette[16]) {
-  // Step 2: Submit the GL commands.
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
 
   unsigned int ascent = FONT_Ascent(font);
-  unsigned int descent = FONT_Descent(font);
   unsigned int lineHeight = FONT_LineHeight(font);
   unsigned int spaceWidth = FONT_SpaceWidth(font);
 
   bool in_selection = (state.selection_begin > state.width * state.height &&
                        state.selection_end < state.width * state.height);
   int y = ascent;
+
+  FONT_Glyph underscore;
+  uint16_t underscore_u, underscore_v;
+  GLYPH_Get('_', &underscore, &underscore_u, &underscore_v);
 
   for (size_t row = 0; row < state.height; ++row) {
     const wchar_t* line = &state.chars[row * state.width];
@@ -254,21 +256,23 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
       int character = line[col];
 
       if (character > ' ') {
-        struct FONT_Glyph glyph;
+        FONT_Glyph glyph;
         uint16_t u, v;
 
         if (!GLYPH_IsLoaded(character)) {
-          struct FONT_Glyph* glyph;
+          FONT_Glyph* new_glyph;
 
-          if (!(glyph = FONT_GlyphForCharacter(font, character)))
+          if (!(new_glyph = FONT_GlyphForCharacter(font, character)))
             fprintf(stderr, "Failed to get glyph for '%d'", character);
 
-          GLYPH_Add(character, glyph);
+          GLYPH_Add(character, new_glyph);
 
-          free(glyph);
+          glyph = *new_glyph;
+
+          free(new_glyph);
+        } else {
+          GLYPH_Get(character, &glyph, &u, &v);
         }
-
-        GLYPH_Get(character, &glyph, &u, &v);
 
         if (glyph.xOffset > 0 &&
             static_cast<unsigned int>(glyph.xOffset) > spaceWidth)
@@ -276,16 +280,22 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
 
         draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
 
-        if (attr & ATTR_UNDERLINE)
-          draw_AddSolidQuad(x, y + descent, xOffset, 1, color);
+        if (attr & ATTR_UNDERLINE) {
+          draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
+                               underscore.width, underscore.height,
+                               underscore_u, underscore_v, color);
+        }
 
         draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width,
                              glyph.height, u, v, color);
       } else {
         draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
 
-        if (attr & ATTR_UNDERLINE)
-          draw_AddSolidQuad(x, y + descent, xOffset, 1, color);
+        if (attr & ATTR_UNDERLINE) {
+          draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
+                               underscore.width, underscore.height,
+                               underscore_u, underscore_v, color);
+        }
       }
 
       x += xOffset;
