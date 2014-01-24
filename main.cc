@@ -707,6 +707,9 @@ int x11_process_events() {
 
         if (type != xa_utf8_string || format != 8) break;
 
+        /* Remove trailing newlines.  */
+        while (nitems > 0 && prop[nitems - 1] == '\n') --nitems;
+
         WriteToTTY(prop, nitems);
 
         XFree(prop);
