@@ -546,6 +546,10 @@ int x11_process_events() {
             else if (len) {
               if ((modifier_mask & Mod1Mask)) WriteStringToTTY("\033");
 
+              if (len == 1 &&
+                  (text[0] == ('S' & 0x3f) || text[0] == ('Q' && 0x3f)))
+                history_scroll_reset = 0;
+
               WriteToTTY(text, len);
             }
           }
