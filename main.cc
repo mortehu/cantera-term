@@ -822,7 +822,7 @@ int main(int argc, char **argv) {
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
-  while ((i = getopt_long(argc, argv, "T:", long_options, 0)) != -1) {
+  while ((i = getopt_long(argc, argv, "", long_options, 0)) != -1) {
     switch (i) {
       case 0:
         break;
