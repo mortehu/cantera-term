@@ -769,7 +769,7 @@ int x11_process_events() {
         terminal.GetState(&draw_state);
         pthread_mutex_unlock(&buffer_lock);
 
-        draw_gl_30(draw_state, font, palette);
+        draw_gl_30(draw_state, font);
       } break;
 
       case EnterNotify: {
@@ -951,6 +951,11 @@ int main(int argc, char **argv) {
   }
 
   fcntl(fd, F_SETFL, O_NDELAY);
+
+  for (i = 0; i < 16; ++i) {
+    terminal.SetANSIColor(
+        i, Terminal::Color(palette[i] >> 16, palette[i] >> 8, palette[i]));
+  }
 
   terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                 FONT_LineHeight(font), scroll_extra);
