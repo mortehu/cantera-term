@@ -234,20 +234,31 @@ void run_command(int fd, const char *command, const char *arg) {
 
   sprintf(path, ".cantera/commands/%s", command);
 
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY | O_CLOEXEC))) return;
+  // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
+  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
+    fprintf(stderr, "Failed to open '%s' for reading: %s\n",
+            path, strerror(errno));
+    return;
+  }
 
-  if (!fork()) {
-    char *args[3];
+  pid_t child = fork();
 
+  if (child == -1) {
+    fprintf(stderr, "fork() failed: %s\n", strerror(errno));
+  } else if (!child) {
+    std::vector<char *> args;
+
+    // If requested, make the child process' standard output write to the
+    // specified file descriptor.
     if (fd != -1) dup2(fd, 1);
 
-    args[0] = path;
-    args[1] = (char *)arg;
-    args[2] = 0;
+    args.push_back(path);
+    args.push_back(const_cast<char*>(arg));
+    args.push_back(nullptr);
 
-    fexecve(command_fd, args, environ);
+    fexecve(command_fd, &args[0], environ);
 
-    exit(EXIT_FAILURE);
+    _exit(EXIT_FAILURE);
   }
 
   close(command_fd);
