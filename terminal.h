@@ -34,10 +34,35 @@
 
 class Terminal {
  public:
+  struct Color {
+    Color() {}
+
+    Color(uint8_t r, uint8_t g, uint8_t b) : r(r), g(g), b(b) {}
+
+    uint8_t r, g, b;
+  };
+
+  struct Attr {
+    Attr() {}
+    Attr(const Color& fg, const Color& bg, uint8_t extra = 0)
+        : fg(fg), bg(bg), extra(extra) {}
+
+    Attr Reverse() const {
+      Attr result;
+      result.fg = bg;
+      result.bg = fg;
+      result.extra = extra;
+      return result;
+    }
+
+    Color fg, bg;
+    uint8_t extra;
+  };
+
   struct State {
     size_t width, height;
     std::unique_ptr<wchar_t[]> chars;
-    std::unique_ptr<uint16_t[]> attrs;
+    std::unique_ptr<Attr[]> attrs;
     size_t cursor_x, cursor_y;
     size_t selection_begin, selection_end;
     bool cursor_hidden;
@@ -50,6 +75,10 @@ class Terminal {
   };
 
   Terminal();
+
+  void SetANSIColor(unsigned int index, const Color& color) {
+    ansi_colors_[index] = color;
+  }
 
   void Init(unsigned int width, unsigned int height, unsigned int space_width,
             unsigned int line_height, size_t scroll_extra);
@@ -78,13 +107,12 @@ class Terminal {
   const winsize& Size() const { return size_; }
 
   std::unique_ptr<wchar_t[]> chars[2];
-  std::unique_ptr<uint16_t[]> attr[2];
+  std::unique_ptr<Attr[]> attr[2];
   wchar_t* curchars;
-  uint16_t* curattrs;
+  Attr* curattrs;
   size_t scroll_line[2];
   size_t* cur_scroll_line;
   int curscreen;
-  int curattr;
   bool reverse;
   size_t history_size;
   int storedcursorx[2];
@@ -115,17 +143,21 @@ class Terminal {
   void InsertChars(size_t count);
   void DeleteChars(size_t count);
   void AddChar(int ch);
-  void ClearLineWithAttr(size_t line, int ch, uint16_t attr);
+  void ClearLineWithAttr(size_t line, int ch, const Attr& attr);
 
   void ClearLine(size_t line) {
     ClearLineWithAttr(line, ' ', EffectiveAttribute());
   }
 
-  uint16_t EffectiveAttribute() const {
-    return reverse ? REVERSE(curattr) : curattr;
+  Attr EffectiveAttribute() const {
+    return reverse ? attribute_.Reverse() : attribute_;
   }
 
   struct winsize size_;
+
+  Color ansi_colors_[16];
+  unsigned int ansi_attribute_ = 0;
+  Attr attribute_;
 
   bool use_alt_charset_[2];
   unsigned int ch_, nch_;
