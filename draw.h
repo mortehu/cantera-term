@@ -8,6 +8,6 @@
 
 void init_gl_30(void);
 
-void draw_gl_30(const Terminal::State& state, const FONT_Data* font, unsigned int palette[16]);
+void draw_gl_30(const Terminal::State& state, const FONT_Data* font);
 
 #endif /* !DRAW_H_ */

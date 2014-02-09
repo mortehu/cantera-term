@@ -15,19 +15,15 @@
 #include "terminal.h"
 #include "x11.h"
 
-struct draw_Color {
-  uint8_t r, g, b;
-};
-
 struct draw_TexturedVertex {
   draw_TexturedVertex() {}
 
-  draw_TexturedVertex(int x, int y, int u, int v, draw_Color color)
+  draw_TexturedVertex(int x, int y, int u, int v, const Terminal::Color &color)
       : x(x), y(y), u(u), v(v), color(color) {}
 
   int16_t x, y;
   uint16_t u, v;
-  draw_Color color;
+  Terminal::Color color;
 };
 
 struct draw_Shader {
@@ -43,14 +39,8 @@ static std::vector<draw_TexturedVertex> texturedVertices;
 
 static void draw_AddSolidQuad(unsigned int x, unsigned int y,
                               unsigned int width, unsigned int height,
-                              uint32_t uint_color) {
-  struct draw_Color color;
-
-  if (!(uint_color & 0xffffff)) return;
-
-  color.r = uint_color >> 16;
-  color.g = uint_color >> 8;
-  color.b = uint_color;
+                              const Terminal::Color &color) {
+  if (!color.r && !color.g && !color.b) return;
 
   texturedVertices.emplace_back(x, y, 0, 0, color);
   texturedVertices.emplace_back(x, y + height, 0, 0, color);
@@ -61,13 +51,7 @@ static void draw_AddSolidQuad(unsigned int x, unsigned int y,
 static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
                                  unsigned int width, unsigned int height,
                                  unsigned int u, unsigned int v,
-                                 uint32_t uint_color) {
-  struct draw_Color color;
-
-  color.r = uint_color >> 16;
-  color.g = uint_color >> 8;
-  color.b = uint_color;
-
+                                 const Terminal::Color &color) {
   texturedVertices.emplace_back(x, y, u, v, color);
   texturedVertices.emplace_back(x, y + height, u, v + height, color);
   texturedVertices.emplace_back(x + width, y + height, u + width, v + height,
@@ -116,7 +100,7 @@ static GLuint load_shader(const char* error_context, const char* string,
     glGetShaderInfoLog(result, sizeof(log), &logLength, log);
 
     errx(EXIT_FAILURE, "%s: glCompileShader failed: %.*s", error_context,
-         (int) logLength, log);
+         (int)logLength, log);
   }
 
   return result;
@@ -144,7 +128,7 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
     GLsizei logLength;
     glGetProgramInfoLog(result.handle, sizeof(log), &logLength, log);
 
-    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int) logLength, log);
+    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int)logLength, log);
   }
 
   glUseProgram(result.handle);
@@ -202,8 +186,7 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
-                unsigned int palette[16]) {
+void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
 
@@ -221,23 +204,20 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
 
   for (size_t row = 0; row < state.height; ++row) {
     const wchar_t* line = &state.chars[row * state.width];
-    const uint16_t* attrline = &state.attrs[row * state.width];
+    const Terminal::Attr* attrline = &state.attrs[row * state.width];
     int x = 0;
 
     for (size_t col = 0; col < state.width; ++col) {
-      unsigned int attr = attrline[col];
+      Terminal::Attr attr = attrline[col];
       int xOffset = spaceWidth;
-      unsigned int color = palette[attr & 0xF];
-      unsigned int background_color = palette[(attr >> 4) & 7];
 
       if (!state.cursor_hidden && row == state.cursor_y &&
           col == state.cursor_x) {
+        attr.fg = Terminal::Color(0, 0, 0);
         if (state.focused) {
-          color = 0xff000000;
-          background_color = 0xffffffff;
+          attr.bg = Terminal::Color(255, 255, 255);
         } else {
-          color = 0xff000000;
-          background_color = 0xff7f7f7f;
+          attr.bg = Terminal::Color(127, 127, 127);
         }
       }
 
@@ -246,12 +226,7 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
       if (row * state.width + col == state.selection_begin) in_selection = true;
       if (row * state.width + col == state.selection_end) in_selection = false;
 
-      if (in_selection) {
-        unsigned int tmp;
-        tmp = color;
-        color = background_color;
-        background_color = tmp;
-      }
+      if (in_selection) std::swap(attr.fg, attr.bg);
 
       int character = line[col];
 
@@ -278,23 +253,23 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font,
             static_cast<unsigned int>(glyph.xOffset) > spaceWidth)
           xOffset = glyph.xOffset;
 
-        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
+        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, attr.bg);
 
-        if (attr & ATTR_UNDERLINE) {
+        if (attr.extra & ATTR_UNDERLINE) {
           draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
                                underscore.width, underscore.height,
-                               underscore_u, underscore_v, color);
+                               underscore_u, underscore_v, attr.fg);
         }
 
         draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width,
-                             glyph.height, u, v, color);
+                             glyph.height, u, v, attr.fg);
       } else {
-        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, background_color);
+        draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, attr.bg);
 
-        if (attr & ATTR_UNDERLINE) {
+        if (attr.extra & ATTR_UNDERLINE) {
           draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
                                underscore.width, underscore.height,
-                               underscore_u, underscore_v, color);
+                               underscore_u, underscore_v, attr.fg);
         }
       }
 

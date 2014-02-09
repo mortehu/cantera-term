@@ -11,15 +11,15 @@
 
 #include <X11/X.h>
 
-#define ATTR_BLINK 0x0008
-#define ATTR_HIGHLIGHT 0x0008
-#define ATTR_BOLD 0x0008
+#define ATTR_BLINK 0x0001
+#define ATTR_HIGHLIGHT 0x0002
+#define ATTR_BOLD 0x0004
 #define ATTR_STANDOUT 0x0008
-#define ATTR_UNDERLINE 0x0800
+#define ATTR_UNDERLINE 0x0010
 #define ATTR_BLACK 0x0000
-#define ATTR_BLUE 0x0001
-#define ATTR_GREEN 0x0002
-#define ATTR_RED 0x0004
+#define ATTR_BLUE 0x0100
+#define ATTR_GREEN 0x0200
+#define ATTR_RED 0x0400
 #define ATTR_CYAN (ATTR_BLUE | ATTR_GREEN)
 #define ATTR_MAGENTA (ATTR_BLUE | ATTR_RED)
 #define ATTR_YELLOW (ATTR_GREEN | ATTR_RED)
@@ -29,15 +29,38 @@
 #define FG_DEFAULT FG(ATTR_WHITE)
 #define BG_DEFAULT BG(ATTR_BLACK)
 #define ATTR_DEFAULT (FG_DEFAULT | BG_DEFAULT)
-#define REVERSE(color) \
-  ((((color) & 0x70) >> 4) | (((color) & 0x07) << 4) | ((color) & 0x88))
 
 class Terminal {
  public:
+  struct Color {
+    Color() {}
+
+    Color(uint8_t r, uint8_t g, uint8_t b) : r(r), g(g), b(b) {}
+
+    uint8_t r, g, b;
+  };
+
+  struct Attr {
+    Attr() {}
+    Attr(const Color& fg, const Color& bg, uint8_t extra = 0)
+        : fg(fg), bg(bg), extra(extra) {}
+
+    Attr Reverse() const {
+      Attr result;
+      result.fg = bg;
+      result.bg = fg;
+      result.extra = extra;
+      return result;
+    }
+
+    Color fg, bg;
+    uint8_t extra;
+  };
+
   struct State {
     size_t width, height;
     std::unique_ptr<wchar_t[]> chars;
-    std::unique_ptr<uint16_t[]> attrs;
+    std::unique_ptr<Attr[]> attrs;
     size_t cursor_x, cursor_y;
     size_t selection_begin, selection_end;
     bool cursor_hidden;
@@ -50,6 +73,10 @@ class Terminal {
   };
 
   Terminal();
+
+  void SetANSIColor(unsigned int index, const Color& color) {
+    ansi_colors_[index] = color;
+  }
 
   void Init(unsigned int width, unsigned int height, unsigned int space_width,
             unsigned int line_height, size_t scroll_extra);
@@ -78,13 +105,12 @@ class Terminal {
   const winsize& Size() const { return size_; }
 
   std::unique_ptr<wchar_t[]> chars[2];
-  std::unique_ptr<uint16_t[]> attr[2];
+  std::unique_ptr<Attr[]> attr[2];
   wchar_t* curchars;
-  uint16_t* curattrs;
+  Attr* curattrs;
   size_t scroll_line[2];
   size_t* cur_scroll_line;
   int curscreen;
-  int curattr;
   bool reverse;
   size_t history_size;
   int storedcursorx[2];
@@ -115,17 +141,21 @@ class Terminal {
   void InsertChars(size_t count);
   void DeleteChars(size_t count);
   void AddChar(int ch);
-  void ClearLineWithAttr(size_t line, int ch, uint16_t attr);
+  void ClearLineWithAttr(size_t line, int ch, const Attr& attr);
 
   void ClearLine(size_t line) {
     ClearLineWithAttr(line, ' ', EffectiveAttribute());
   }
 
-  uint16_t EffectiveAttribute() const {
-    return reverse ? REVERSE(curattr) : curattr;
+  Attr EffectiveAttribute() const {
+    return reverse ? attribute_.Reverse() : attribute_;
   }
 
   struct winsize size_;
+
+  Color ansi_colors_[16];
+  unsigned int ansi_attribute_;
+  Attr attribute_;
 
   bool use_alt_charset_[2];
   unsigned int ch_, nch_;

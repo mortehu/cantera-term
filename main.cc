@@ -229,7 +229,43 @@ void X11_handle_configure(void) {
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
-static void* x11_clear_thread_entry(void* arg) {
+void run_command(int fd, const char *command, const char *arg) {
+  char path[4096];
+  int command_fd;
+
+  sprintf(path, ".cantera/commands/%s", command);
+
+  // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
+  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
+    fprintf(stderr, "Failed to open '%s' for reading: %s\n",
+            path, strerror(errno));
+    return;
+  }
+
+  pid_t child = fork();
+
+  if (child == -1) {
+    fprintf(stderr, "fork() failed: %s\n", strerror(errno));
+  } else if (!child) {
+    std::vector<char *> args;
+
+    // If requested, make the child process' standard output write to the
+    // specified file descriptor.
+    if (fd != -1) dup2(fd, 1);
+
+    args.push_back(path);
+    args.push_back(const_cast<char*>(arg));
+    args.push_back(nullptr);
+
+    fexecve(command_fd, &args[0], environ);
+
+    _exit(EXIT_FAILURE);
+  }
+
+  close(command_fd);
+}
+
+static void *x11_clear_thread_entry(void *arg) {
   for (;;) {
     pthread_mutex_lock(&clear_mutex);
     while (!clear)
@@ -527,6 +563,10 @@ int x11_process_events() {
             else if (len) {
               if ((modifier_mask & Mod1Mask)) WriteStringToTTY("\033");
 
+              if (len == 1 &&
+                  (text[0] == ('S' & 0x3f) || text[0] == ('Q' && 0x3f)))
+                history_scroll_reset = 0;
+
               WriteToTTY(text, len);
             }
           }
@@ -688,6 +728,9 @@ int x11_process_events() {
 
         if (type != xa_utf8_string || format != 8) break;
 
+        /* Remove trailing newlines.  */
+        while (nitems > 0 && prop[nitems - 1] == '\n') --nitems;
+
         WriteToTTY(prop, nitems);
 
         XFree(prop);
@@ -743,7 +786,7 @@ int x11_process_events() {
         terminal.GetState(&draw_state);
         pthread_mutex_unlock(&buffer_lock);
 
-        draw_gl_30(draw_state, font, palette);
+        draw_gl_30(draw_state, font);
       } break;
 
       case EnterNotify: {
@@ -833,7 +876,7 @@ int main(int argc, char** argv) {
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "HOME environment variable missing");
 
-  if (-1 == (home_fd = open(home, O_RDONLY)))
+  if (-1 == (home_fd = open(home, O_RDONLY | O_CLOEXEC)))
     err(EXIT_FAILURE, "Failed to open HOME directory");
 
   mkdirat(home_fd, ".cantera", 0777);
@@ -867,7 +910,7 @@ int main(int argc, char** argv) {
   setenv("TERM", "xterm", 1);
 
   if (session_path) {
-    session_fd = open(session_path, O_RDONLY);
+    session_fd = open(session_path, O_RDONLY | O_CLOEXEC);
 
     if (session_fd != -1) {
       struct winsize ws;
@@ -922,6 +965,11 @@ int main(int argc, char** argv) {
   }
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
+
+  for (i = 0; i < 16; ++i) {
+    terminal.SetANSIColor(
+        i, Terminal::Color(palette[i] >> 16, palette[i] >> 8, palette[i]));
+  }
 
   terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                 FONT_LineHeight(font), scroll_extra);
