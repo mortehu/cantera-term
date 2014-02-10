@@ -50,11 +50,13 @@ extern char** environ;
 
 namespace {
 
-int use_builtin_bash;
+int run_internal_bash;
+int use_builtin_bash;  // Re-execute self with --internal-bash.
 int print_version;
 int print_help;
 
 struct option long_options[] = {
+    {"internal-bash-exec", no_argument, &run_internal_bash, 1},
     {"builtin-bash", no_argument, &use_builtin_bash, 1},
     {"version", no_argument, &print_version, 1},
     {"help", no_argument, &print_help, 1},
@@ -88,6 +90,7 @@ pid_t pid;
 int terminal_fd;
 
 pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
+
 }
 
 static void LoadGlyph(wchar_t character) {
@@ -875,6 +878,11 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
+  if (run_internal_bash) {
+    char* bash_argv[] = {const_cast<char*>("bash"), nullptr};
+    return BASH_main(1, bash_argv, environ);
+  }
+
   session_path = getenv("SESSION_PATH");
 
   if (session_path) unsetenv("SESSION_PATH");
@@ -948,6 +956,9 @@ int main(int argc, char** argv) {
 
   if (optind < argc) {
     for (i = optind; i < argc; ++i) command_line.push_back(argv[i]);
+  } else if (use_builtin_bash) {
+    command_line.push_back("/proc/self/exe");
+    command_line.push_back("--internal-bash-exec");
   } else {
     command_line.push_back("/bin/bash");
   }
@@ -956,22 +967,15 @@ int main(int argc, char** argv) {
   if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal.Size())))
     err(EX_OSERR, "forkpty() failed");
 
-  if (use_builtin_bash) {
-    if (!pid) {
-      char* bash_argv[] = {const_cast<char*>("bash"), nullptr};
-      exit(BASH_main(1, bash_argv, environ));
-    }
-  } else {
-    if (!pid) {
-      /* In child process */
+  if (!pid) {
+    /* In child process */
 
-      execve(command_line[0], const_cast<char* const*>(&command_line[0]),
-            environ);
+    execve(command_line[0], const_cast<char* const*>(&command_line[0]),
+           environ);
 
-      fprintf(stderr, "Failed to execute '%s'", command_line[0]);
+    fprintf(stderr, "Failed to execute '%s'", command_line[0]);
 
-      _exit(EXIT_FAILURE);
-    }
+    _exit(EXIT_FAILURE);
   }
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
