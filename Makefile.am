@@ -27,6 +27,10 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
 
 cantera_term_SOURCES = \
+  base/string.cc \
+  base/string.h \
+  bash.cc \
+  bash.h \
   draw-gl-30.cc \
   command.cc \
   command.h \

@@ -959,6 +959,9 @@ void Terminal::GetState(State* state) const {
 
   state->cursor_hidden = hide_cursor;
   state->focused = focused;
+
+  if (!hide_cursor)
+    state->cursor_hint = cursor_hint_;
 }
 
 void Terminal::SetScreen(int screen) {

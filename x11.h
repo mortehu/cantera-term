@@ -24,6 +24,8 @@ extern Atom xa_targets;
 
 void X11_Setup(void);
 
+void X11_Clear(void);
+
 void X11_handle_configure(void);
 
 #ifdef __cplusplus

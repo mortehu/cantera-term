@@ -65,6 +65,7 @@ class Terminal {
     size_t selection_begin, selection_end;
     bool cursor_hidden;
     bool focused;
+    std::string cursor_hint;
   };
 
   enum RangeType {
@@ -101,6 +102,9 @@ class Terminal {
 
   void SaveSession(const char* session_path);
   void RestoreSession(int fd);
+
+  void SetCursorHint(const std::string& hint) { cursor_hint_ = hint; }
+  void ClearCursorHint() { cursor_hint_.clear(); }
 
   const winsize& Size() const { return size_; }
 
@@ -161,6 +165,8 @@ class Terminal {
   unsigned int ch_, nch_;
 
   int savedx_, savedy_;
+
+  std::string cursor_hint_;
 
   std::set<unsigned int> tab_stops_;
 };

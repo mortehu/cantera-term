@@ -18,7 +18,7 @@
 struct draw_TexturedVertex {
   draw_TexturedVertex() {}
 
-  draw_TexturedVertex(int x, int y, int u, int v, const Terminal::Color &color)
+  draw_TexturedVertex(int x, int y, int u, int v, const Terminal::Color& color)
       : x(x), y(y), u(u), v(v), color(color) {}
 
   int16_t x, y;
@@ -39,7 +39,7 @@ static std::vector<draw_TexturedVertex> texturedVertices;
 
 static void draw_AddSolidQuad(unsigned int x, unsigned int y,
                               unsigned int width, unsigned int height,
-                              const Terminal::Color &color) {
+                              const Terminal::Color& color) {
   if (!color.r && !color.g && !color.b) return;
 
   texturedVertices.emplace_back(x, y, 0, 0, color);
@@ -51,12 +51,40 @@ static void draw_AddSolidQuad(unsigned int x, unsigned int y,
 static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
                                  unsigned int width, unsigned int height,
                                  unsigned int u, unsigned int v,
-                                 const Terminal::Color &color) {
+                                 const Terminal::Color& color) {
   texturedVertices.emplace_back(x, y, u, v, color);
   texturedVertices.emplace_back(x, y + height, u, v + height, color);
   texturedVertices.emplace_back(x + width, y + height, u + width, v + height,
                                 color);
   texturedVertices.emplace_back(x + width, y, u + width, v, color);
+}
+
+static void draw_String(const char* string, unsigned int x, unsigned int y,
+                        const FONT_Data* font, const Terminal::Color& color) {
+  while (*string) {
+    FONT_Glyph glyph;
+    uint16_t u, v;
+    if (!GLYPH_IsLoaded(*string)) {
+      FONT_Glyph* new_glyph;
+
+      if (!(new_glyph = FONT_GlyphForCharacter(font, *string)))
+        fprintf(stderr, "Failed to get glyph for '%d'", *string);
+
+      GLYPH_Add(*string, new_glyph);
+
+      glyph = *new_glyph;
+
+      free(new_glyph);
+    } else {
+      GLYPH_Get(*string, &glyph, &u, &v);
+    }
+
+    draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width, glyph.height, u,
+                         v, color);
+
+    x += glyph.xOffset;
+    ++string;
+  }
 }
 
 static void draw_FlushQuads(void) {
@@ -140,6 +168,15 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
   result.color_attribute = glGetAttribLocation(result.handle, "attr_Color");
 
   return result;
+}
+
+static bool IsBlank(const Terminal::State& state, unsigned int x, unsigned int y, size_t length) {
+  if (y >= state.height || x + length > state.width) return false;
+  for (size_t i = 0; i < length; ++i) {
+    if (state.chars[y * state.width + x + i] > ' ') return false;
+    if (state.attrs[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
+  }
+  return true;
 }
 
 void init_gl_30(void) {
@@ -277,6 +314,18 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
     }
 
     y += lineHeight;
+  }
+
+  if (!state.cursor_hint.empty()) {
+    const std::string& hint = state.cursor_hint;
+    if (hint.length() < state.width) {
+      unsigned int hint_y = state.cursor_y;
+      unsigned int hint_x = state.width - hint.length();
+      if (IsBlank(state, hint_x, hint_y, hint.length())) {
+        draw_String(hint.c_str(), hint_x * spaceWidth, hint_y * lineHeight + ascent, font,
+                    Terminal::Color(255, 255, 255));
+      }
+    }
   }
 
   GLYPH_UpdateTexture();
