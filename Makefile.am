@@ -2,16 +2,50 @@ bin_PROGRAMS = cantera-term
 check_PROGRAMS = fuzz
 man1_MANS = doc/cantera-term.1
 
+SUBDIRS = bash .
+
 ACLOCAL_AMFLAGS = -I m4
 
 CONVERT = @CONVERT@
+BASH_LIBS = \
+  bash/builtins/libbuiltins.a \
+  bash/lib/glob/libglob.a \
+  bash/lib/sh/libsh.a \
+  bash/libbash.a \
+  bash/lib/tilde/libtilde.a \
+  bash/builtins/libbuiltins.a \
+  bash/lib/glob/libglob.a \
+  bash/lib/sh/libsh.a \
+  bash/libbash.a \
+  bash/lib/tilde/libtilde.a \
+  -lhistory \
+  -lreadline \
+  -ltermcap
 
 AM_CFLAGS = -g -Wall -pthread $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
 
-cantera_term_SOURCES = main.cc terminal.h terminal.cc tree.cc tree.h x11.c x11.h font.c font.h glyph.c glyph.h draw-gl-30.cc
-cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL
+cantera_term_SOURCES = \
+  base/string.cc \
+  base/string.h \
+  bash.cc \
+  bash.h \
+  draw-gl-30.cc \
+  command.cc \
+  command.h \
+  font.c \
+  font.h \
+  glyph.c \
+  glyph.h \
+  main.cc \
+  terminal.cc \
+  terminal.h \
+  tree.cc \
+  tree.h \
+  x11.c \
+  x11.h
+cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL -ldl $(BASH_LIBS)
 
 fuzz_SOURCES = fuzz.cc terminal.h terminal.cc
 

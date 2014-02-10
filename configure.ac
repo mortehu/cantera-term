@@ -3,7 +3,7 @@ AC_INIT(cantera-term,30)
 AC_CANONICAL_TARGET
 AC_USE_SYSTEM_EXTENSIONS
 
-AM_INIT_AUTOMAKE([-Wall -Werror foreign])
+AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
@@ -23,4 +23,5 @@ AC_LANG_PUSH([C++])
 AX_CXX_COMPILE_STDCXX_11([noext])
 AC_LANG_POP([C++])
 
+AC_CONFIG_SUBDIRS(bash)
 AC_OUTPUT(Makefile)

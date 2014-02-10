@@ -18,7 +18,7 @@
 struct draw_TexturedVertex {
   draw_TexturedVertex() {}
 
-  draw_TexturedVertex(int x, int y, int u, int v, const Terminal::Color &color)
+  draw_TexturedVertex(int x, int y, int u, int v, const Terminal::Color& color)
       : x(x), y(y), u(u), v(v), color(color) {}
 
   int16_t x, y;
@@ -39,7 +39,7 @@ static std::vector<draw_TexturedVertex> texturedVertices;
 
 static void draw_AddSolidQuad(unsigned int x, unsigned int y,
                               unsigned int width, unsigned int height,
-                              const Terminal::Color &color) {
+                              const Terminal::Color& color) {
   if (!color.r && !color.g && !color.b) return;
 
   texturedVertices.emplace_back(x, y, 0, 0, color);
@@ -51,12 +51,40 @@ static void draw_AddSolidQuad(unsigned int x, unsigned int y,
 static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
                                  unsigned int width, unsigned int height,
                                  unsigned int u, unsigned int v,
-                                 const Terminal::Color &color) {
+                                 const Terminal::Color& color) {
   texturedVertices.emplace_back(x, y, u, v, color);
   texturedVertices.emplace_back(x, y + height, u, v + height, color);
   texturedVertices.emplace_back(x + width, y + height, u + width, v + height,
                                 color);
   texturedVertices.emplace_back(x + width, y, u + width, v, color);
+}
+
+static void draw_String(const char* string, unsigned int x, unsigned int y,
+                        const FONT_Data* font, const Terminal::Color& color) {
+  while (*string) {
+    FONT_Glyph glyph;
+    uint16_t u, v;
+    if (!GLYPH_IsLoaded(*string)) {
+      FONT_Glyph* new_glyph;
+
+      if (!(new_glyph = FONT_GlyphForCharacter(font, *string)))
+        fprintf(stderr, "Failed to get glyph for '%d'", *string);
+
+      GLYPH_Add(*string, new_glyph);
+
+      glyph = *new_glyph;
+
+      free(new_glyph);
+    } else {
+      GLYPH_Get(*string, &glyph, &u, &v);
+    }
+
+    draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width, glyph.height, u,
+                         v, color);
+
+    x += glyph.xOffset;
+    ++string;
+  }
 }
 
 static void draw_FlushQuads(void) {
@@ -81,7 +109,7 @@ static void draw_FlushQuads(void) {
  * string: the shader source code
  * type: GL_VERTEX_SHADER or GL_FRAGMENT_SHADER
  */
-static GLuint load_shader(const char *error_context, const char *string,
+static GLuint load_shader(const char* error_context, const char* string,
                           GLenum type) {
   GLuint result;
   GLint string_length, compile_status;
@@ -106,8 +134,8 @@ static GLuint load_shader(const char *error_context, const char *string,
   return result;
 }
 
-static struct draw_Shader load_program(const char *vertex_shader_source,
-                                       const char *fragment_shader_source) {
+static struct draw_Shader load_program(const char* vertex_shader_source,
+                                       const char* fragment_shader_source) {
   GLuint vertex_shader, fragment_shader;
   struct draw_Shader result;
   GLint link_status;
@@ -142,8 +170,17 @@ static struct draw_Shader load_program(const char *vertex_shader_source,
   return result;
 }
 
+static bool IsBlank(const Terminal::State& state, unsigned int x, unsigned int y, size_t length) {
+  if (y >= state.height || x + length > state.width) return false;
+  for (size_t i = 0; i < length; ++i) {
+    if (state.chars[y * state.width + x + i] > ' ') return false;
+    if (state.attrs[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
+  }
+  return true;
+}
+
 void init_gl_30(void) {
-  static const char *vertex_shader_source =
+  static const char* vertex_shader_source =
       "attribute vec2 attr_VertexPosition;\n"
       "attribute vec2 attr_TextureCoord;\n"
       "attribute vec3 attr_Color;\n"
@@ -160,7 +197,7 @@ void init_gl_30(void) {
       "  var_Color = attr_Color;\n"
       "}";
 
-  static const char *fragment_shader_source =
+  static const char* fragment_shader_source =
       "varying vec2 var_TextureCoord;\n"
       "varying vec3 var_Color;\n"
       "uniform sampler2D uniform_Sampler;\n"
@@ -186,13 +223,11 @@ void init_gl_30(void) {
   glEnable(GL_TEXTURE_2D);
 }
 
-void draw_gl_30(const Terminal::State &state, const FONT_Data *font) {
-  // Step 2: Submit the GL commands.
+void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
 
   unsigned int ascent = FONT_Ascent(font);
-  unsigned int descent = FONT_Descent(font);
   unsigned int lineHeight = FONT_LineHeight(font);
   unsigned int spaceWidth = FONT_SpaceWidth(font);
 
@@ -200,9 +235,13 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font) {
                        state.selection_end < state.width * state.height);
   int y = ascent;
 
+  FONT_Glyph underscore;
+  uint16_t underscore_u, underscore_v;
+  GLYPH_Get('_', &underscore, &underscore_u, &underscore_v);
+
   for (size_t row = 0; row < state.height; ++row) {
-    const wchar_t *line = &state.chars[row * state.width];
-    const Terminal::Attr *attrline = &state.attrs[row * state.width];
+    const wchar_t* line = &state.chars[row * state.width];
+    const Terminal::Attr* attrline = &state.attrs[row * state.width];
     int x = 0;
 
     for (size_t col = 0; col < state.width; ++col) {
@@ -229,21 +268,23 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font) {
       int character = line[col];
 
       if (character > ' ') {
-        struct FONT_Glyph glyph;
+        FONT_Glyph glyph;
         uint16_t u, v;
 
         if (!GLYPH_IsLoaded(character)) {
-          struct FONT_Glyph *glyph;
+          FONT_Glyph* new_glyph;
 
-          if (!(glyph = FONT_GlyphForCharacter(font, character)))
+          if (!(new_glyph = FONT_GlyphForCharacter(font, character)))
             fprintf(stderr, "Failed to get glyph for '%d'", character);
 
-          GLYPH_Add(character, glyph);
+          GLYPH_Add(character, new_glyph);
 
-          free(glyph);
+          glyph = *new_glyph;
+
+          free(new_glyph);
+        } else {
+          GLYPH_Get(character, &glyph, &u, &v);
         }
-
-        GLYPH_Get(character, &glyph, &u, &v);
 
         if (glyph.xOffset > 0 &&
             static_cast<unsigned int>(glyph.xOffset) > spaceWidth)
@@ -251,22 +292,40 @@ void draw_gl_30(const Terminal::State &state, const FONT_Data *font) {
 
         draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, attr.bg);
 
-        if (attr.extra & ATTR_UNDERLINE)
-          draw_AddSolidQuad(x, y + descent, xOffset, 1, attr.fg);
+        if (attr.extra & ATTR_UNDERLINE) {
+          draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
+                               underscore.width, underscore.height,
+                               underscore_u, underscore_v, attr.fg);
+        }
 
         draw_AddTexturedQuad(x - glyph.x, y - glyph.y, glyph.width,
                              glyph.height, u, v, attr.fg);
       } else {
         draw_AddSolidQuad(x, y - ascent, xOffset, lineHeight, attr.bg);
 
-        if (attr.extra & ATTR_UNDERLINE)
-          draw_AddSolidQuad(x, y + descent, xOffset, 1, attr.fg);
+        if (attr.extra & ATTR_UNDERLINE) {
+          draw_AddTexturedQuad(x - underscore.x, y - underscore.y,
+                               underscore.width, underscore.height,
+                               underscore_u, underscore_v, attr.fg);
+        }
       }
 
       x += xOffset;
     }
 
     y += lineHeight;
+  }
+
+  if (!state.cursor_hint.empty()) {
+    const std::string& hint = state.cursor_hint;
+    if (hint.length() < state.width) {
+      unsigned int hint_y = state.cursor_y;
+      unsigned int hint_x = state.width - hint.length();
+      if (IsBlank(state, hint_x, hint_y, hint.length())) {
+        draw_String(hint.c_str(), hint_x * spaceWidth, hint_y * lineHeight + ascent, font,
+                    Terminal::Color(255, 255, 255));
+      }
+    }
   }
 
   GLYPH_UpdateTexture();

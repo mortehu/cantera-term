@@ -11,15 +11,15 @@
 
 #include <X11/X.h>
 
-#define ATTR_BLINK 0x0008
-#define ATTR_HIGHLIGHT 0x0008
-#define ATTR_BOLD 0x0008
+#define ATTR_BLINK 0x0001
+#define ATTR_HIGHLIGHT 0x0002
+#define ATTR_BOLD 0x0004
 #define ATTR_STANDOUT 0x0008
-#define ATTR_UNDERLINE 0x0800
+#define ATTR_UNDERLINE 0x0010
 #define ATTR_BLACK 0x0000
-#define ATTR_BLUE 0x0001
-#define ATTR_GREEN 0x0002
-#define ATTR_RED 0x0004
+#define ATTR_BLUE 0x0100
+#define ATTR_GREEN 0x0200
+#define ATTR_RED 0x0400
 #define ATTR_CYAN (ATTR_BLUE | ATTR_GREEN)
 #define ATTR_MAGENTA (ATTR_BLUE | ATTR_RED)
 #define ATTR_YELLOW (ATTR_GREEN | ATTR_RED)
@@ -29,8 +29,6 @@
 #define FG_DEFAULT FG(ATTR_WHITE)
 #define BG_DEFAULT BG(ATTR_BLACK)
 #define ATTR_DEFAULT (FG_DEFAULT | BG_DEFAULT)
-#define REVERSE(color) \
-  ((((color) & 0x70) >> 4) | (((color) & 0x07) << 4) | ((color) & 0x88))
 
 class Terminal {
  public:
@@ -67,6 +65,7 @@ class Terminal {
     size_t selection_begin, selection_end;
     bool cursor_hidden;
     bool focused;
+    std::string cursor_hint;
   };
 
   enum RangeType {
@@ -103,6 +102,9 @@ class Terminal {
 
   void SaveSession(const char* session_path);
   void RestoreSession(int fd);
+
+  void SetCursorHint(const std::string& hint) { cursor_hint_ = hint; }
+  void ClearCursorHint() { cursor_hint_.clear(); }
 
   const winsize& Size() const { return size_; }
 
@@ -156,13 +158,15 @@ class Terminal {
   struct winsize size_;
 
   Color ansi_colors_[16];
-  unsigned int ansi_attribute_ = 0;
+  unsigned int ansi_attribute_;
   Attr attribute_;
 
   bool use_alt_charset_[2];
   unsigned int ch_, nch_;
 
   int savedx_, savedy_;
+
+  std::string cursor_hint_;
 
   std::set<unsigned int> tab_stops_;
 };

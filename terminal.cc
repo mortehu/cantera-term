@@ -16,35 +16,33 @@ const struct {
   uint16_t and_mask;
   uint16_t or_mask;
 } ansi_helper[] = {
-      {0, 0, ATTR_DEFAULT},
-      {1, 0xffff ^ ATTR_BOLD, ATTR_BOLD},
-      {2, 0xffff ^ ATTR_BOLD, 0},
-      {3, 0xffff ^ ATTR_STANDOUT, ATTR_STANDOUT},
-      {4, 0xffff ^ ATTR_UNDERLINE, ATTR_UNDERLINE},
-      {5, 0xffff ^ ATTR_BLINK, ATTR_BLINK}, /* 7 = reverse video */
-      {8, 0, 0},
-      {22, (uint16_t)(~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE), 0},
-      {23, 0xffff ^ ATTR_STANDOUT, 0},
-      {24, 0xffff ^ ATTR_UNDERLINE, 0},
-      {25, 0xffff ^ ATTR_BLINK, 0}, /* 27 = no reverse */
-      {30, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLACK)},
-      {31, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_RED)},
-      {32, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_GREEN)},
-      {33, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_YELLOW)},
-      {34, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLUE)},
-      {35, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_MAGENTA)},
-      {36, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_CYAN)},
-      {37, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_WHITE)},
-      {39, 0xffff ^ FG(ATTR_WHITE), FG_DEFAULT},
-      {40, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLACK)},
-      {41, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_RED)},
-      {42, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_GREEN)},
-      {43, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_YELLOW)},
-      {44, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLUE)},
-      {45, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_MAGENTA)},
-      {46, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_CYAN)},
-      {47, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_WHITE)},
-      {49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT}};
+  { 0, 0, ATTR_DEFAULT }, { 1, 0xffff ^ ATTR_BOLD, ATTR_BOLD },
+  { 2, 0xffff ^ ATTR_BOLD, 0 }, { 3, 0xffff ^ ATTR_STANDOUT, ATTR_STANDOUT },
+  { 4, 0xffff ^ ATTR_UNDERLINE, ATTR_UNDERLINE },
+  { 5, 0xffff ^ ATTR_BLINK, ATTR_BLINK }, /* 7 = reverse video */
+  { 8, 0, 0 },
+  { 22, (uint16_t)(~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE), 0 },
+  { 23, 0xffff ^ ATTR_STANDOUT, 0 }, { 24, 0xffff ^ ATTR_UNDERLINE, 0 },
+  { 25, 0xffff ^ ATTR_BLINK, 0 },         /* 27 = no reverse */
+  { 30, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLACK) },
+  { 31, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_RED) },
+  { 32, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_GREEN) },
+  { 33, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_YELLOW) },
+  { 34, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLUE) },
+  { 35, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_MAGENTA) },
+  { 36, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_CYAN) },
+  { 37, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_WHITE) },
+  { 39, 0xffff ^ FG(ATTR_WHITE), FG_DEFAULT },
+  { 40, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLACK) },
+  { 41, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_RED) },
+  { 42, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_GREEN) },
+  { 43, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_YELLOW) },
+  { 44, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLUE) },
+  { 45, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_MAGENTA) },
+  { 46, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_CYAN) },
+  { 47, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_WHITE) },
+  { 49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT }
+};
 
 static const Terminal::Attr kDefaultAttr(Terminal::Color(127, 127, 127),
                                          Terminal::Color(0, 0, 0));
@@ -96,7 +94,7 @@ void Terminal::Init(unsigned int width, unsigned int height,
   attr[0].reset(new Attr[size_.ws_col * history_size]);
   attr[1].reset(new Attr[size_.ws_col * history_size]);
 
-  ansi_attribute_ = 7;
+  ansi_attribute_ = ATTR_WHITE;
   attribute_.fg = ansi_colors_[7];
   attribute_.bg = ansi_colors_[0];
   attribute_.extra = 0;
@@ -130,10 +128,10 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   history_size += rows - oldrows;
 
   if (cols != oldcols || rows != oldrows) {
-    std::unique_ptr<wchar_t[]> oldchars[2] = {std::move(chars[0]),
-                                              std::move(chars[1])};
-    std::unique_ptr<Attr[]> oldattr[2] = {std::move(attr[0]),
-                                          std::move(attr[1])};
+    std::unique_ptr<wchar_t[]> oldchars[2] = { std::move(chars[0]),
+                                               std::move(chars[1]) };
+    std::unique_ptr<Attr[]> oldattr[2] = { std::move(attr[0]),
+                                           std::move(attr[1]) };
 
     chars[0].reset(new wchar_t[size_.ws_col * history_size]);
     chars[1].reset(new wchar_t[size_.ws_col * history_size]);
@@ -188,11 +186,11 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   }
 }
 
-void Terminal::ProcessData(const void *buf, size_t count) {
+void Terminal::ProcessData(const void* buf, size_t count) {
   int k;
 
-  const unsigned char *begin = reinterpret_cast<const unsigned char *>(buf);
-  const unsigned char *end = begin + count;
+  const unsigned char* begin = reinterpret_cast<const unsigned char*>(buf);
+  const unsigned char* end = begin + count;
 
   // Redundant, optimized character processing code for the typical case.
   if (!escape && !insertmode && !nch_ && !use_alt_charset_[curscreen]) {
@@ -287,8 +285,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
             if (cursory < size_.ws_row && cursorx < size_.ws_col)
               curchars[(*cur_scroll_line + cursory) % history_size *
-                           size_.ws_col +
-                       cursorx] = 0;
+                           size_.ws_col + cursorx] = 0;
 
             break;
 
@@ -495,7 +492,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
           param[0] = -4;
           ++escape;
         } else if (*begin == ';') {
-          if (escape < (int)sizeof(param) + 1)
+          if (escape < (int) sizeof(param) + 1)
             param[++escape - 2] = 0;
           else
             param[(sizeof(param) / sizeof(param[0])) - 1] = 0;
@@ -569,9 +566,9 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursory = (param[0] + cursory < size_.ws_row)
-                            ? (param[0] + cursory)
-                            : (size_.ws_row - 1);
+              cursory =
+                  (param[0] + cursory < size_.ws_row) ? (param[0] + cursory)
+                                                      : (size_.ws_row - 1);
 
               break;
 
@@ -579,9 +576,9 @@ void Terminal::ProcessData(const void *buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursorx = (param[0] + cursorx < size_.ws_col)
-                            ? (param[0] + cursorx)
-                            : (size_.ws_col - 1);
+              cursorx =
+                  (param[0] + cursorx < size_.ws_col) ? (param[0] + cursorx)
+                                                      : (size_.ws_col - 1);
 
               break;
 
@@ -659,7 +656,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
                   break;
               }
 
-              for (size_t i = begin; i < end; ++i) ClearLine(i % history_size);
+              for (size_t i = begin; i < end; ++i)
+                ClearLine(i % history_size);
 
               if (!fall_through) break;
             }
@@ -702,7 +700,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               else if (param[0] > size_.ws_row)
                 param[0] = size_.ws_row;
 
-              while (param[0]--) ReverseScroll(true);
+              while (param[0]--)
+                ReverseScroll(true);
 
               break;
 
@@ -713,7 +712,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               else if (param[0] > size_.ws_row)
                 param[0] = size_.ws_row;
 
-              while (param[0]--) Scroll(true);
+              while (param[0]--)
+                Scroll(true);
 
               break;
 
@@ -732,7 +732,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               param[0] = std::max(
                   1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
-              while (param[0]--) Scroll(false);
+              while (param[0]--)
+                Scroll(false);
 
               break;
 
@@ -741,7 +742,8 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               param[0] = std::max(
                   1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
-              while (param[0]--) ReverseScroll(false);
+              while (param[0]--)
+                ReverseScroll(false);
 
               break;
 
@@ -754,11 +756,9 @@ void Terminal::ProcessData(const void *buf, size_t count) {
               for (k = cursorx; k < cursorx + param[0] && k < size_.ws_col;
                    ++k) {
                 curchars[(cursory + *cur_scroll_line) % history_size *
-                             size_.ws_col +
-                         k] = 0;
+                             size_.ws_col + k] = 0;
                 curattrs[(cursory + *cur_scroll_line) % history_size *
-                             size_.ws_col +
-                         k] = attr;
+                             size_.ws_col + k] = attr;
               }
 
             } break;
@@ -825,7 +825,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
                         k += 3;
                         break;
                       case 5:  // Indexed
-                        // TODO(mortehu): Add support for indexed colors.
+                               // TODO(mortehu): Add support for indexed colors.
                         ++k;
                         break;
                     }
@@ -845,7 +845,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
                         k += 3;
                         break;
                       case 5:  // Indexed
-                        // TODO(mortehu): Add support for indexed colors.
+                               // TODO(mortehu): Add support for indexed colors.
                         ++k;
                         break;
                     }
@@ -868,12 +868,15 @@ void Terminal::ProcessData(const void *buf, size_t count) {
                       }
                     }
 
-                    attribute_.fg = ansi_colors_[ansi_attribute_ & 15];
-                    attribute_.bg = ansi_colors_[(ansi_attribute_ >> 4) & 7];
+                    unsigned fg_color_index = (ansi_attribute_ >> 8) & 7;
+                    if (ansi_attribute_ &
+                        (ATTR_HIGHLIGHT | ATTR_STANDOUT | ATTR_BOLD))
+                      fg_color_index += 8;
+
+                    attribute_.fg = ansi_colors_[fg_color_index];
+                    attribute_.bg = ansi_colors_[(ansi_attribute_ >> 12) & 7];
                     attribute_.extra =
-                        ansi_attribute_ &
-                        (ATTR_BLINK | ATTR_HIGHLIGHT | ATTR_BOLD |
-                         ATTR_STANDOUT | ATTR_UNDERLINE);
+                        ansi_attribute_ & (ATTR_BLINK | ATTR_UNDERLINE);
                   } break;
                 }
               }
@@ -920,7 +923,7 @@ void Terminal::ProcessData(const void *buf, size_t count) {
   }
 }
 
-void Terminal::GetState(State *state) const {
+void Terminal::GetState(State* state) const {
   state->width = size_.ws_col;
   state->height = size_.ws_row;
   state->chars.reset(new wchar_t[size_.ws_col * size_.ws_row]);
@@ -956,6 +959,9 @@ void Terminal::GetState(State *state) const {
 
   state->cursor_hidden = hide_cursor;
   state->focused = focused;
+
+  if (!hide_cursor)
+    state->cursor_hint = cursor_hint_;
 }
 
 void Terminal::SetScreen(int screen) {
@@ -1010,13 +1016,14 @@ void Terminal::DeleteChars(size_t count) {
 void Terminal::AddChar(int ch) {
   // Alternate characters, from 0x41 to 0x7E, inclusive.
   static const int kAltCharset[62] = {
-      0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, 0x0000, 0x0000,
-      0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-      0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-      0x0000, 0x0000, 0x0000, 0x0020, 0x25c6, 0x2592, 0x2409, 0x240c, 0x240d,
-      0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514,
-      0x253c, 0x23ba, 0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534,
-      0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7, };
+    0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0000, 0x0000, 0x0000, 0x0020, 0x25c6, 0x2592, 0x2409, 0x240c, 0x240d,
+    0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514,
+    0x253c, 0x23ba, 0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534,
+    0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,
+  };
 
   if (use_alt_charset_[curscreen] && ch >= 0x41 && ch <= 0x7e)
     ch = kAltCharset[ch - 0x41];
@@ -1070,7 +1077,7 @@ void Terminal::NormalizeHistoryBuffer() {
   }
 }
 
-void Terminal::ClearLineWithAttr(size_t line, int ch, const Attr &attr) {
+void Terminal::ClearLineWithAttr(size_t line, int ch, const Attr& attr) {
   size_t offset = line * size_.ws_col;
 
   std::fill(curchars + offset, curchars + offset + size_.ws_col, ch);
@@ -1155,8 +1162,8 @@ void Terminal::Select(RangeType range_type) {
   FindRange(range_type, &select_begin, &select_end);
 }
 
-bool Terminal::FindRange(RangeType range_type, size_t *begin,
-                         size_t *end) const {
+bool Terminal::FindRange(RangeType range_type, size_t* begin,
+                         size_t* end) const {
   size_t history_buffer_size = size_.ws_col * history_size;
   size_t offset = *cur_scroll_line * size_.ws_col;
 
@@ -1281,8 +1288,8 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   return result;
 }
 
-void Terminal::SaveSession(const char *session_path) {
-  if (cursorx) ProcessData((const unsigned char *)"\r\n", 2);
+void Terminal::SaveSession(const char* session_path) {
+  if (cursorx) ProcessData((const unsigned char*)"\r\n", 2);
 
   int session_fd =
       open(session_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);

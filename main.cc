@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -37,7 +38,9 @@
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 
-#include "array.h"
+#include "base/string.h"
+#include "bash.h"
+#include "command.h"
 #include "draw.h"
 #include "font.h"
 #include "glyph.h"
@@ -45,31 +48,37 @@
 #include "tree.h"
 #include "x11.h"
 
-extern char **environ;
+extern "C" int BASH_main(int argc, char** argv, char** envp);
+extern char** environ;
 
 namespace {
 
+int bash_command_fd = -1;
+int use_builtin_bash;  // Re-execute self with --internal-bash.
 int print_version;
 int print_help;
 
-struct option long_options[] = { { "version", no_argument, &print_version, 1 },
-                                 { "help", no_argument, &print_help, 1 },
-                                 { 0, 0, 0, 0 } };
+struct option long_options[] = {
+    {"bash-command-fd", required_argument, nullptr, 'B'},
+    {"builtin-bash", no_argument, &use_builtin_bash, 1},
+    {"version", no_argument, &print_version, 1},
+    {"help", no_argument, &print_help, 1},
+    {0, 0, 0, 0}};
 
 std::unique_ptr<tree> config;
 bool hidden;
 
 unsigned int scroll_extra;
 
-const char *font_name;
+const char* font_name;
 unsigned int font_size, font_weight;
-FONT_Data *font;
+FONT_Data* font;
 
 unsigned int palette[16];
 
 int done;
 int home_fd;
-const char *session_path;
+const char* session_path;
 
 Terminal terminal;
 
@@ -81,14 +90,14 @@ pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
 
 pid_t pid;
-int fd;
+int terminal_fd;
 
 pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 }
 
 static void LoadGlyph(wchar_t character) {
-  FONT_Glyph *glyph;
+  FONT_Glyph* glyph;
 
   if (!(glyph = FONT_GlyphForCharacter(font, character)))
     fprintf(stderr, "Failed to get glyph for '%d'", character);
@@ -125,16 +134,20 @@ static void CreateLineArtGlyphs(void) {
     GLYPH_Add(code, glyph);                                  \
   } while (0)
 
-  CREATE_GLYPH(0x2500, (y == mid_y) * 255);                        // '─'
-  CREATE_GLYPH(0x2502, (x == mid_x) * 255);                        // '│'
-  CREATE_GLYPH(0x250c, ((y == mid_y && x >= mid_x) ||
-                        (x == mid_x && y >= mid_y)) * 255);        // '┌'
-  CREATE_GLYPH(0x2510, ((y == mid_y && x <= mid_x) ||
-                        (x == mid_x && y >= mid_y)) * 255);        // '┐'
-  CREATE_GLYPH(0x2514, ((y == mid_y && x >= mid_x) ||
-                        (x == mid_x && y <= mid_y)) * 255);        // '└'
-  CREATE_GLYPH(0x2518, ((y == mid_y && x <= mid_x) ||
-                        (x == mid_x && y <= mid_y)) * 255);        // '┘'
+  CREATE_GLYPH(0x2500, (y == mid_y) * 255);  // '─'
+  CREATE_GLYPH(0x2502, (x == mid_x) * 255);  // '│'
+  CREATE_GLYPH(
+      0x250c,
+      ((y == mid_y && x >= mid_x) || (x == mid_x && y >= mid_y)) * 255);  // '┌'
+  CREATE_GLYPH(
+      0x2510,
+      ((y == mid_y && x <= mid_x) || (x == mid_x && y >= mid_y)) * 255);  // '┐'
+  CREATE_GLYPH(
+      0x2514,
+      ((y == mid_y && x >= mid_x) || (x == mid_x && y <= mid_y)) * 255);  // '└'
+  CREATE_GLYPH(
+      0x2518,
+      ((y == mid_y && x <= mid_x) || (x == mid_x && y <= mid_y)) * 255);  // '┘'
   CREATE_GLYPH(0x251c,
                ((y == mid_y && x >= mid_x) || x == mid_x) * 255);  // '├'
   CREATE_GLYPH(0x2524,
@@ -171,7 +184,7 @@ static void UpdateSelection(Time time) {
   }
 }
 
-static void send_selection(XSelectionRequestEvent *request, const char *text,
+static void send_selection(XSelectionRequestEvent* request, const char* text,
                            size_t length) {
   XSelectionEvent response;
   int ret;
@@ -186,16 +199,17 @@ static void send_selection(XSelectionRequestEvent *request, const char *text,
   response.time = request->time;
 
   if (request->target == xa_targets) {
-    const Atom targets[] = { XA_STRING, xa_utf8_string };
+    const Atom targets[] = {XA_STRING, xa_utf8_string};
 
     XChangeProperty(X11_display, request->requestor, request->property, XA_ATOM,
-                    32, PropModeReplace, (const unsigned char *)targets,
-                    ARRAY_SIZE(targets));
+                    32, PropModeReplace,
+                    reinterpret_cast<const unsigned char*>(targets),
+                    sizeof(targets) / sizeof(targets[0]));
   } else if (request->target == XA_STRING ||
              request->target == xa_utf8_string) {
-    ret = XChangeProperty(
-        X11_display, request->requestor, request->property, request->target, 8,
-        PropModeReplace, reinterpret_cast<const unsigned char *>(text), length);
+    ret = XChangeProperty(X11_display, request->requestor, request->property,
+                          request->target, 8, PropModeReplace,
+                          reinterpret_cast<const unsigned char*>(text), length);
 
     if (ret != BadAlloc && ret != BadAtom && ret != BadValue &&
         ret != BadWindow)
@@ -206,7 +220,7 @@ static void send_selection(XSelectionRequestEvent *request, const char *text,
   }
 
   XSendEvent(request->display, request->requestor, False, NoEventMask,
-             (XEvent *)&response);
+             (XEvent*)&response);
 }
 
 static void paste(Atom selection, Time time) {
@@ -225,10 +239,10 @@ void X11_handle_configure(void) {
   terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                   FONT_LineHeight(font));
 
-  ioctl(fd, TIOCSWINSZ, &terminal.Size());
+  ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
-void run_command(int fd, const char *command, const char *arg) {
+void run_command(int fd, const char* command, const char* arg) {
   char path[4096];
   int command_fd;
 
@@ -236,8 +250,8 @@ void run_command(int fd, const char *command, const char *arg) {
 
   // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
   if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
-    fprintf(stderr, "Failed to open '%s' for reading: %s\n",
-            path, strerror(errno));
+    fprintf(stderr, "Failed to open '%s' for reading: %s\n", path,
+            strerror(errno));
     return;
   }
 
@@ -246,7 +260,7 @@ void run_command(int fd, const char *command, const char *arg) {
   if (child == -1) {
     fprintf(stderr, "fork() failed: %s\n", strerror(errno));
   } else if (!child) {
-    std::vector<char *> args;
+    std::vector<char*> args;
 
     // If requested, make the child process' standard output write to the
     // specified file descriptor.
@@ -264,11 +278,10 @@ void run_command(int fd, const char *command, const char *arg) {
   close(command_fd);
 }
 
-static void *x11_clear_thread_entry(void *arg) {
+static void* x11_clear_thread_entry(void* arg) {
   for (;;) {
     pthread_mutex_lock(&clear_mutex);
-    while (!clear)
-      pthread_cond_wait(&clear_cond, &clear_mutex);
+    while (!clear) pthread_cond_wait(&clear_cond, &clear_mutex);
     clear = false;
     pthread_mutex_unlock(&clear_mutex);
 
@@ -279,7 +292,7 @@ static void *x11_clear_thread_entry(void *arg) {
   return NULL;
 }
 
-static void x11_clear(void) {
+void X11_Clear(void) {
   if (hidden) return;
 
   pthread_mutex_lock(&clear_mutex);
@@ -288,13 +301,13 @@ static void x11_clear(void) {
   pthread_mutex_unlock(&clear_mutex);
 }
 
-static void *tty_read_thread_entry(void *arg) {
+static void* tty_read_thread_entry(void* arg) {
   unsigned char buf[4096];
   ssize_t result;
   size_t fill = 0;
   struct pollfd pfd;
 
-  pfd.fd = fd;
+  pfd.fd = terminal_fd;
   pfd.events = POLLIN | POLLRDHUP;
 
   for (;;) {
@@ -307,7 +320,7 @@ static void *tty_read_thread_entry(void *arg) {
     if (pfd.revents & POLLRDHUP) break;
 
     // Read until EAGAIN/EWOULDBLOCK.
-    while (0 < (result = read(fd, buf + fill, sizeof(buf) - fill))) {
+    while (0 < (result = read(terminal_fd, buf + fill, sizeof(buf) - fill))) {
       fill += result;
       if (fill == sizeof(buf)) break;
     }
@@ -327,24 +340,25 @@ static void *tty_read_thread_entry(void *arg) {
     fill = 0;
     pthread_mutex_unlock(&buffer_lock);
 
-    x11_clear();
+    X11_Clear();
   }
 
   if (session_path) terminal.SaveSession(session_path);
 
   done = 1;
 
-  x11_clear();
+  X11_Clear();
 
   return NULL;
 }
 
-static void WriteToTTY(const void *data, size_t len) {
+static void WriteToTTY(const void* data, size_t len) {
   size_t off = 0;
   ssize_t result;
 
   while (off < len) {
-    result = write(fd, reinterpret_cast<const char *>(data) + off, len - off);
+    result = write(terminal_fd, reinterpret_cast<const char*>(data) + off,
+                   len - off);
 
     if (result < 0) {
       done = 1;
@@ -356,7 +370,7 @@ static void WriteToTTY(const void *data, size_t len) {
   }
 }
 
-static void WriteStringToTTY(const char *string) {
+static void WriteStringToTTY(const char* string) {
   WriteToTTY(string, strlen(string));
 }
 
@@ -383,21 +397,22 @@ struct KeyInfo : std::pair<unsigned int, unsigned int> {
 };
 
 namespace std {
-template <> struct hash<KeyInfo> {
-  size_t operator()(const KeyInfo &k) const {
+template <>
+struct hash<KeyInfo> {
+  size_t operator()(const KeyInfo& k) const {
     return (k.first << 16) | k.second;
   }
 };
 }
 
 int x11_process_events() {
-  std::unordered_map<KeyInfo, void(*)(XKeyEvent * event)> key_callbacks;
+  std::unordered_map<KeyInfo, void (*)(XKeyEvent * event)> key_callbacks;
   KeySym prev_key_sym = 0;
   XEvent event;
   int result;
 
 #define MAP_KEY_TO_STRING(keysym, string)                  \
-  key_callbacks[keysym] = [](XKeyEvent * event) {          \
+  key_callbacks[keysym] = [](XKeyEvent* event) {           \
     if (event->state & Mod1Mask) WriteStringToTTY("\033"); \
     WriteStringToTTY((string));                            \
   };
@@ -432,21 +447,24 @@ int x11_process_events() {
   key_callbacks[KeyInfo(XK_Right, ControlMask)] = key_callbacks[XK_End];
 
   /* Inline calculator */
-  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent * event) {
+  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent* event) {
     terminal.Select(Terminal::kRangeParenthesis);
 
     UpdateSelection(event->time);
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
   };
-  key_callbacks[XK_Menu] = [](XKeyEvent * event) {
-    if (!primary_selection.empty())
-      run_command(fd, "calculate", primary_selection.c_str());
+  key_callbacks[XK_Menu] = [](XKeyEvent* event) {
+    if (!primary_selection.empty()) {
+      Command(home_fd, "calculate")
+          .SetStdout(terminal_fd)
+          .AddArg(primary_selection)
+          .Run();
+    }
   };
 
   /* Clipboard handling */
-  key_callbacks[KeyInfo(XK_C, ControlMask | ShiftMask)] =
-      [](XKeyEvent * event) {
+  key_callbacks[KeyInfo(XK_C, ControlMask | ShiftMask)] = [](XKeyEvent* event) {
     if (!primary_selection.empty()) {
       clipboard_text = primary_selection;
 
@@ -454,18 +472,16 @@ int x11_process_events() {
     }
   };
   key_callbacks[KeyInfo(XK_Insert, ControlMask | ShiftMask)] =
-      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] =
-          [](XKeyEvent * event) {
-    paste(xa_clipboard, event->time);
-  };
-  key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent * event) {
+      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] = [](
+          XKeyEvent* event) { paste(xa_clipboard, event->time); };
+  key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent* event) {
     paste(XA_PRIMARY, event->time);
   };
 
   /* Suppress output from some keys */
   key_callbacks[XK_Shift_L] = key_callbacks[XK_Shift_R] =
-      key_callbacks[XK_ISO_Prev_Group] = key_callbacks[XK_ISO_Next_Group] =
-          [](XKeyEvent * event) {};
+      key_callbacks[XK_ISO_Prev_Group] =
+          key_callbacks[XK_ISO_Next_Group] = [](XKeyEvent* event) {};
 
   while (!done) {
     XNextEvent(X11_display, &event);
@@ -675,13 +691,13 @@ int x11_process_events() {
           UpdateSelection(event.xbutton.time);
 
           if (!primary_selection.empty() && (event.xkey.state & Mod1Mask))
-            run_command(fd, "open-url", primary_selection.c_str());
+            Command(home_fd, "open-url").AddArg(primary_selection).Run();
         }
 
         break;
 
       case SelectionRequest: {
-        XSelectionRequestEvent *request = &event.xselectionrequest;
+        XSelectionRequestEvent* request = &event.xselectionrequest;
 
         if (request->property == None) request->property = request->target;
 
@@ -702,7 +718,7 @@ int x11_process_events() {
         int format;
         unsigned long nitems;
         unsigned long bytes_after;
-        unsigned char *prop;
+        unsigned char* prop;
 
         selection = event.xselection.selection;
 
@@ -784,9 +800,9 @@ int x11_process_events() {
       } break;
 
       case EnterNotify: {
-        const XEnterWindowEvent *ewe;
+        const XEnterWindowEvent* ewe;
 
-        ewe = (XEnterWindowEvent *)&event;
+        ewe = (XEnterWindowEvent*)&event;
 
         if (!ewe->focus || ewe->detail == NotifyInferior) break;
 
@@ -801,9 +817,9 @@ int x11_process_events() {
         break;
 
       case LeaveNotify: {
-        const XLeaveWindowEvent *lwe;
+        const XLeaveWindowEvent* lwe;
 
-        lwe = (XEnterWindowEvent *)&event;
+        lwe = (XEnterWindowEvent*)&event;
 
         if (!lwe->focus || lwe->detail == NotifyInferior) break;
 
@@ -824,18 +840,63 @@ int x11_process_events() {
   return 0;
 }
 
-int main(int argc, char **argv) {
+static void StartSubprocess(int argc, char** argv) {
+  std::vector<std::string> command_line;
+  int bash_sockets[2] = {-1, -1};
+
+  if (optind < argc) {
+    for (int i = optind; i < argc; ++i) command_line.push_back(argv[i]);
+  } else if (use_builtin_bash) {
+    if (-1 == socketpair(AF_LOCAL, SOCK_STREAM, 0, bash_sockets))
+      err(EX_OSERR, "socketpair() failed");
+    command_line.push_back("/proc/self/exe");
+    command_line.push_back(
+        StringPrintf("--bash-command-fd=%d", bash_sockets[1]));
+  } else {
+    command_line.push_back("/bin/bash");
+  }
+
+  std::vector<const char*> c_command_line;
+  for (const std::string& str : command_line)
+    c_command_line.push_back(str.c_str());
+  c_command_line.push_back(nullptr);
+
+  if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal.Size())))
+    err(EX_OSERR, "forkpty() failed");
+
+  if (!pid) {
+    /* In child process */
+    if (bash_sockets[0] != -1) close(bash_sockets[0]);
+
+    execve(c_command_line[0], const_cast<char* const*>(&c_command_line[0]),
+           environ);
+
+    fprintf(stderr, "Failed to execute '%s'", c_command_line[0]);
+
+    _exit(EXIT_FAILURE);
+  }
+
+  if (bash_sockets[1] != -1) {
+    close(bash_sockets[1]);
+    SetupBashClient(&terminal, bash_sockets[0]);
+  }
+}
+
+int main(int argc, char** argv) {
   pthread_t tty_read_thread, x11_clear_thread;
-  char *args[16];
   int i, session_fd;
-  const char *home;
-  char *palette_str, *token;
+  const char* home;
+  char* palette_str, *token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
   while ((i = getopt_long(argc, argv, "", long_options, 0)) != -1) {
     switch (i) {
       case 0:
+        break;
+
+      case 'B':
+        bash_command_fd = atoi(optarg);
         break;
 
       case '?':
@@ -847,13 +908,15 @@ int main(int argc, char **argv) {
   }
 
   if (print_help) {
-    printf("Usage: %s [OPTION]...\n"
-           "\n"
-           "      --help     display this help and exit\n"
-           "      --version  display version information\n"
-           "\n"
-           "Report bugs to <morten.hustveit@gmail.com>\n",
-           argv[0]);
+    printf(
+        "Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
+        "\n"
+        "      --builtin-bash         run built-in version of bash\n"
+        "      --help     display this help and exit\n"
+        "      --version  display version information\n"
+        "\n"
+        "Report bugs to <morten.hustveit@gmail.com>\n",
+        argv[0]);
 
     return EXIT_SUCCESS;
   }
@@ -862,6 +925,16 @@ int main(int argc, char **argv) {
     fprintf(stdout, "%s\n", PACKAGE_STRING);
 
     return EXIT_SUCCESS;
+  }
+
+  if (bash_command_fd != -1) {
+    if (bash_command_fd != 3) {
+      dup2(bash_command_fd, 3);
+      close(bash_command_fd);
+    }
+    SetupBashServer(3);
+    char* bash_argv[] = {const_cast<char*>("bash"), nullptr};
+    return BASH_main(1, bash_argv, environ);
   }
 
   session_path = getenv("SESSION_PATH");
@@ -929,39 +1002,13 @@ int main(int argc, char **argv) {
 
   // Preload the most important glyphs, which will be uploaded to OpenGL in a
   // single batch.
-  for (i = '!'; i <= '~'; ++i)
-    LoadGlyph(i);
-  for (i = 0xa1; i <= 0xff; ++i)
-    LoadGlyph(i);
+  for (i = '!'; i <= '~'; ++i) LoadGlyph(i);
+  for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
-  if (optind < argc) {
-    if (argc - optind + 1 > (int) ARRAY_SIZE(args))
-      errx(EXIT_FAILURE, "Too many arguments");
+  StartSubprocess(argc, argv);
 
-    for (i = optind; i < argc; ++i)
-      args[i - optind] = argv[i];
-
-    args[i - optind] = 0;
-  } else {
-    args[0] = (char *)"/bin/bash";
-    args[1] = 0;
-  }
-
-  if (-1 == (pid = forkpty(&fd, 0, 0, &terminal.Size())))
-    err(EX_OSERR, "forkpty() failed");
-
-  if (!pid) {
-    /* In child process */
-
-    execve(args[0], args, environ);
-
-    fprintf(stderr, "Failed to execute '%s'", args[0]);
-
-    _exit(EXIT_FAILURE);
-  }
-
-  fcntl(fd, F_SETFL, O_NDELAY);
+  fcntl(terminal_fd, F_SETFL, O_NDELAY);
 
   for (i = 0; i < 16; ++i) {
     terminal.SetANSIColor(
@@ -1013,5 +1060,3 @@ int main(int argc, char **argv) {
 
   return EXIT_SUCCESS;
 }
-
-// vim: ts=2 sw=2 et sts=2
