@@ -18,6 +18,7 @@ BASH_LIBS = \
   bash/lib/sh/libsh.a \
   bash/libbash.a \
   bash/lib/tilde/libtilde.a \
+  -ldl \
   -lhistory \
   -lreadline \
   -ltermcap
