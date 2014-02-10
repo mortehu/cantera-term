@@ -43,14 +43,15 @@ void X11_Setup(void) {
 
   XInitThreads();
 
-  X11_display = XOpenDisplay(0);
+  const char* display_name = getenv("DISPLAY");
 
-  if (!X11_display) {
-    const char* displayName = getenv("DISPLAY");
+  if (!display_name)
+    err(EXIT_FAILURE, "DISPLAY environment variable not set");
 
-    errx(EXIT_FAILURE, "Failed to open X11_display %s",
-         displayName ? displayName : ":0");
-  }
+  X11_display = XOpenDisplay(display_name);
+
+  if (!X11_display)
+    errx(EXIT_FAILURE, "Failed to open X11_display %s", display_name);
 
   XSynchronize(X11_display, True);
 
