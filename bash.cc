@@ -116,6 +116,7 @@ int ReadlineHook() {
   static std::string line_buffer;
   Message msg;
 
+  if (!rl_line_buffer) rl_line_buffer = const_cast<char*>("");
   if (line_buffer == rl_line_buffer) return 0;
   line_buffer = rl_line_buffer;
 
