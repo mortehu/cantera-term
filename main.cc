@@ -45,16 +45,20 @@
 #include "tree.h"
 #include "x11.h"
 
+extern "C" int BASH_main(int argc, char** argv, char** envp);
 extern char** environ;
 
 namespace {
 
+int use_builtin_bash;
 int print_version;
 int print_help;
 
-struct option long_options[] = { { "version", no_argument, &print_version, 1 },
-                                 { "help", no_argument, &print_help, 1 },
-                                 { 0, 0, 0, 0 } };
+struct option long_options[] = {
+    {"builtin-bash", no_argument, &use_builtin_bash, 1},
+    {"version", no_argument, &print_version, 1},
+    {"help", no_argument, &print_help, 1},
+    {0, 0, 0, 0}};
 
 std::unique_ptr<tree> config;
 bool hidden;
@@ -855,6 +859,7 @@ int main(int argc, char** argv) {
     printf(
         "Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
         "\n"
+        "      --builtin-bash         run built-in version of bash\n"
         "      --help     display this help and exit\n"
         "      --version  display version information\n"
         "\n"
@@ -951,15 +956,22 @@ int main(int argc, char** argv) {
   if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal.Size())))
     err(EX_OSERR, "forkpty() failed");
 
-  if (!pid) {
-    /* In child process */
+  if (use_builtin_bash) {
+    if (!pid) {
+      char* bash_argv[] = {const_cast<char*>("bash"), nullptr};
+      exit(BASH_main(1, bash_argv, environ));
+    }
+  } else {
+    if (!pid) {
+      /* In child process */
 
-    execve(command_line[0], const_cast<char* const*>(&command_line[0]),
-           environ);
+      execve(command_line[0], const_cast<char* const*>(&command_line[0]),
+            environ);
 
-    fprintf(stderr, "Failed to execute '%s'", command_line[0]);
+      fprintf(stderr, "Failed to execute '%s'", command_line[0]);
 
-    _exit(EXIT_FAILURE);
+      _exit(EXIT_FAILURE);
+    }
   }
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
