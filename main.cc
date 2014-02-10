@@ -84,7 +84,6 @@ pid_t pid;
 int terminal_fd;
 
 pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
-
 }
 
 static void LoadGlyph(wchar_t character) {
@@ -125,16 +124,20 @@ static void CreateLineArtGlyphs(void) {
     GLYPH_Add(code, glyph);                                  \
   } while (0)
 
-  CREATE_GLYPH(0x2500, (y == mid_y) * 255);                        // '─'
-  CREATE_GLYPH(0x2502, (x == mid_x) * 255);                        // '│'
-  CREATE_GLYPH(0x250c, ((y == mid_y && x >= mid_x) ||
-                        (x == mid_x && y >= mid_y)) * 255);        // '┌'
-  CREATE_GLYPH(0x2510, ((y == mid_y && x <= mid_x) ||
-                        (x == mid_x && y >= mid_y)) * 255);        // '┐'
-  CREATE_GLYPH(0x2514, ((y == mid_y && x >= mid_x) ||
-                        (x == mid_x && y <= mid_y)) * 255);        // '└'
-  CREATE_GLYPH(0x2518, ((y == mid_y && x <= mid_x) ||
-                        (x == mid_x && y <= mid_y)) * 255);        // '┘'
+  CREATE_GLYPH(0x2500, (y == mid_y) * 255);  // '─'
+  CREATE_GLYPH(0x2502, (x == mid_x) * 255);  // '│'
+  CREATE_GLYPH(
+      0x250c,
+      ((y == mid_y && x >= mid_x) || (x == mid_x && y >= mid_y)) * 255);  // '┌'
+  CREATE_GLYPH(
+      0x2510,
+      ((y == mid_y && x <= mid_x) || (x == mid_x && y >= mid_y)) * 255);  // '┐'
+  CREATE_GLYPH(
+      0x2514,
+      ((y == mid_y && x >= mid_x) || (x == mid_x && y <= mid_y)) * 255);  // '└'
+  CREATE_GLYPH(
+      0x2518,
+      ((y == mid_y && x <= mid_x) || (x == mid_x && y <= mid_y)) * 255);  // '┘'
   CREATE_GLYPH(0x251c,
                ((y == mid_y && x >= mid_x) || x == mid_x) * 255);  // '├'
   CREATE_GLYPH(0x2524,
@@ -186,7 +189,7 @@ static void send_selection(XSelectionRequestEvent* request, const char* text,
   response.time = request->time;
 
   if (request->target == xa_targets) {
-    const Atom targets[] = { XA_STRING, xa_utf8_string };
+    const Atom targets[] = {XA_STRING, xa_utf8_string};
 
     XChangeProperty(X11_display, request->requestor, request->property, XA_ATOM,
                     32, PropModeReplace,
@@ -229,7 +232,7 @@ void X11_handle_configure(void) {
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
-void run_command(int fd, const char *command, const char *arg) {
+void run_command(int fd, const char* command, const char* arg) {
   char path[4096];
   int command_fd;
 
@@ -237,8 +240,8 @@ void run_command(int fd, const char *command, const char *arg) {
 
   // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
   if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
-    fprintf(stderr, "Failed to open '%s' for reading: %s\n",
-            path, strerror(errno));
+    fprintf(stderr, "Failed to open '%s' for reading: %s\n", path,
+            strerror(errno));
     return;
   }
 
@@ -247,7 +250,7 @@ void run_command(int fd, const char *command, const char *arg) {
   if (child == -1) {
     fprintf(stderr, "fork() failed: %s\n", strerror(errno));
   } else if (!child) {
-    std::vector<char *> args;
+    std::vector<char*> args;
 
     // If requested, make the child process' standard output write to the
     // specified file descriptor.
@@ -265,11 +268,10 @@ void run_command(int fd, const char *command, const char *arg) {
   close(command_fd);
 }
 
-static void *x11_clear_thread_entry(void *arg) {
+static void* x11_clear_thread_entry(void* arg) {
   for (;;) {
     pthread_mutex_lock(&clear_mutex);
-    while (!clear)
-      pthread_cond_wait(&clear_cond, &clear_mutex);
+    while (!clear) pthread_cond_wait(&clear_cond, &clear_mutex);
     clear = false;
     pthread_mutex_unlock(&clear_mutex);
 
@@ -345,7 +347,8 @@ static void WriteToTTY(const void* data, size_t len) {
   ssize_t result;
 
   while (off < len) {
-    result = write(terminal_fd, reinterpret_cast<const char*>(data) + off, len - off);
+    result = write(terminal_fd, reinterpret_cast<const char*>(data) + off,
+                   len - off);
 
     if (result < 0) {
       done = 1;
@@ -384,7 +387,8 @@ struct KeyInfo : std::pair<unsigned int, unsigned int> {
 };
 
 namespace std {
-template <> struct hash<KeyInfo> {
+template <>
+struct hash<KeyInfo> {
   size_t operator()(const KeyInfo& k) const {
     return (k.first << 16) | k.second;
   }
@@ -392,7 +396,7 @@ template <> struct hash<KeyInfo> {
 }
 
 int x11_process_events() {
-  std::unordered_map<KeyInfo, void(*)(XKeyEvent * event)> key_callbacks;
+  std::unordered_map<KeyInfo, void (*)(XKeyEvent * event)> key_callbacks;
   KeySym prev_key_sym = 0;
   XEvent event;
   int result;
@@ -443,15 +447,14 @@ int x11_process_events() {
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
     if (!primary_selection.empty()) {
       Command(home_fd, "calculate")
-        .SetStdout(terminal_fd)
-        .AddArg(primary_selection)
-        .Run();
+          .SetStdout(terminal_fd)
+          .AddArg(primary_selection)
+          .Run();
     }
   };
 
   /* Clipboard handling */
-  key_callbacks[KeyInfo(XK_C, ControlMask | ShiftMask)] =
-      [](XKeyEvent* event) {
+  key_callbacks[KeyInfo(XK_C, ControlMask | ShiftMask)] = [](XKeyEvent* event) {
     if (!primary_selection.empty()) {
       clipboard_text = primary_selection;
 
@@ -459,19 +462,16 @@ int x11_process_events() {
     }
   };
   key_callbacks[KeyInfo(XK_Insert, ControlMask | ShiftMask)] =
-      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] =
-          [](XKeyEvent* event) {
-    paste(xa_clipboard, event->time);
-  };
+      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] = [](
+          XKeyEvent* event) { paste(xa_clipboard, event->time); };
   key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent* event) {
     paste(XA_PRIMARY, event->time);
   };
 
-
   /* Suppress output from some keys */
   key_callbacks[XK_Shift_L] = key_callbacks[XK_Shift_R] =
-      key_callbacks[XK_ISO_Prev_Group] = key_callbacks[XK_ISO_Next_Group] =
-          [](XKeyEvent* event) {};
+      key_callbacks[XK_ISO_Prev_Group] =
+          key_callbacks[XK_ISO_Next_Group] = [](XKeyEvent* event) {};
 
   while (!done) {
     XNextEvent(X11_display, &event);
@@ -852,13 +852,14 @@ int main(int argc, char** argv) {
   }
 
   if (print_help) {
-    printf("Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
-           "\n"
-           "      --help     display this help and exit\n"
-           "      --version  display version information\n"
-           "\n"
-           "Report bugs to <morten.hustveit@gmail.com>\n",
-           argv[0]);
+    printf(
+        "Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
+        "\n"
+        "      --help     display this help and exit\n"
+        "      --version  display version information\n"
+        "\n"
+        "Report bugs to <morten.hustveit@gmail.com>\n",
+        argv[0]);
 
     return EXIT_SUCCESS;
   }
@@ -934,17 +935,14 @@ int main(int argc, char** argv) {
 
   // Preload the most important glyphs, which will be uploaded to OpenGL in a
   // single batch.
-  for (i = '!'; i <= '~'; ++i)
-    LoadGlyph(i);
-  for (i = 0xa1; i <= 0xff; ++i)
-    LoadGlyph(i);
+  for (i = '!'; i <= '~'; ++i) LoadGlyph(i);
+  for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
   std::vector<const char*> command_line;
 
   if (optind < argc) {
-    for (i = optind; i < argc; ++i)
-      command_line.push_back(argv[i]);
+    for (i = optind; i < argc; ++i) command_line.push_back(argv[i]);
   } else {
     command_line.push_back("/bin/bash");
   }
