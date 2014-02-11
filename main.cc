@@ -1,5 +1,5 @@
 #ifdef HAVE_CONFIG_H
-#include "../config.h"
+#include "config.h"
 #endif
 
 #include <assert.h>
@@ -53,14 +53,10 @@ extern char** environ;
 
 namespace {
 
-int bash_command_fd = -1;
-int use_builtin_bash;  // Re-execute self with --internal-bash.
 int print_version;
 int print_help;
 
 struct option long_options[] = {
-    {"bash-command-fd", required_argument, nullptr, 'B'},
-    {"builtin-bash", no_argument, &use_builtin_bash, 1},
     {"version", no_argument, &print_version, 1},
     {"help", no_argument, &print_help, 1},
     {0, 0, 0, 0}};
@@ -842,16 +838,9 @@ int x11_process_events() {
 
 static void StartSubprocess(int argc, char** argv) {
   std::vector<std::string> command_line;
-  int bash_sockets[2] = {-1, -1};
 
   if (optind < argc) {
     for (int i = optind; i < argc; ++i) command_line.push_back(argv[i]);
-  } else if (use_builtin_bash) {
-    if (-1 == socketpair(AF_LOCAL, SOCK_STREAM, 0, bash_sockets))
-      err(EX_OSERR, "socketpair() failed");
-    command_line.push_back("/proc/self/exe");
-    command_line.push_back(
-        StringPrintf("--bash-command-fd=%d", bash_sockets[1]));
   } else {
     command_line.push_back("/bin/bash");
   }
@@ -866,19 +855,12 @@ static void StartSubprocess(int argc, char** argv) {
 
   if (!pid) {
     /* In child process */
-    if (bash_sockets[0] != -1) close(bash_sockets[0]);
-
     execve(c_command_line[0], const_cast<char* const*>(&c_command_line[0]),
            environ);
 
     fprintf(stderr, "Failed to execute '%s'", c_command_line[0]);
 
     _exit(EXIT_FAILURE);
-  }
-
-  if (bash_sockets[1] != -1) {
-    close(bash_sockets[1]);
-    SetupBashClient(&terminal, bash_sockets[0]);
   }
 }
 
@@ -895,10 +877,6 @@ int main(int argc, char** argv) {
       case 0:
         break;
 
-      case 'B':
-        bash_command_fd = atoi(optarg);
-        break;
-
       case '?':
 
         fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
@@ -911,7 +889,6 @@ int main(int argc, char** argv) {
     printf(
         "Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
         "\n"
-        "      --builtin-bash         run built-in version of bash\n"
         "      --help     display this help and exit\n"
         "      --version  display version information\n"
         "\n"
@@ -925,16 +902,6 @@ int main(int argc, char** argv) {
     fprintf(stdout, "%s\n", PACKAGE_STRING);
 
     return EXIT_SUCCESS;
-  }
-
-  if (bash_command_fd != -1) {
-    if (bash_command_fd != 3) {
-      dup2(bash_command_fd, 3);
-      close(bash_command_fd);
-    }
-    SetupBashServer(3);
-    char* bash_argv[] = {const_cast<char*>("bash"), nullptr};
-    return BASH_main(1, bash_argv, environ);
   }
 
   session_path = getenv("SESSION_PATH");
@@ -1006,7 +973,12 @@ int main(int argc, char** argv) {
   for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
+  Bash bash;
+  bash.Setup(&terminal);
+
   StartSubprocess(argc, argv);
+
+  bash.Start();
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
 

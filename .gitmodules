@@ -1,3 +1,0 @@
-[submodule "bash"]
-	path = bash
-	url = https://github.com/mortehu/cantera-bash.git

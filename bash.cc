@@ -4,6 +4,8 @@
 // Unix socket file descriptor for sending and receiving messages.  This allows
 // fast and robust inter-operation.
 
+#include "bash.h"
+
 #include <cassert>
 #include <cstdint>
 #include <map>
@@ -13,191 +15,131 @@
 #include <vector>
 
 #include <err.h>
-#include <readline/readline.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include "base/file.h"
 #include "base/string.h"
 #include "terminal.h"
+#include "message.h"
 #include "x11.h"
-
-extern "C" {
-
-// Declarations from within Bash.
-
-#define PATH_CHECKDOTDOT	0x0001
-#define PATH_CHECKEXISTS	0x0002
-#define PATH_HARDPATH		0x0004
-#define PATH_NOALLOC		0x0008
-
-extern char* get_string_value(const char*);
-extern char* bash_dequote_text(const char* text);
-extern char* sh_canonpath(char*, int);
-extern char* full_pathname(char*);
-extern char* polite_directory_format(char*);
-
-}  // extern "C"
 
 namespace {
 
 Terminal* terminal;
-int socket_fd;
-
-class Message : public std::map<std::string, std::string> {
- public:
-  void Serialize(std::vector<uint8_t>* output) {
-    output->clear();
-    output->push_back(0);
-    output->push_back(0);
-    output->push_back(0);
-    output->push_back(0);
-
-    for (const auto& kv : *this) {
-      WriteSize(kv.first.length(), output);
-      output->insert(output->end(), kv.first.begin(), kv.first.end());
-      WriteSize(kv.second.length(), output);
-      output->insert(output->end(), kv.second.begin(), kv.second.end());
-    }
-
-    uint32_t total_size = static_cast<uint32_t>(output->size());
-    (*output)[0] = total_size >> 16;
-    (*output)[1] = total_size >> 24;
-    (*output)[2] = total_size >> 8;
-    (*output)[3] = total_size;
-  }
-
-  void Send(int fd) {
-    std::vector<uint8_t> buffer;
-    Serialize(&buffer);
-
-    size_t offset = 0;
-
-    while (offset < buffer.size()) {
-      ssize_t ret = write(fd, &buffer[offset], buffer.size() - offset);
-      if (ret == -1) err(EXIT_FAILURE, "Writing to command socket failed");
-      offset += ret;
-    }
-  }
-
-  void Deserialize(const std::vector<uint8_t>& input, size_t size) {
-    size_t i = 4;
-
-    while (i < size) {
-      size_t key_size = ReadSize(&i, input);
-      std::string key(reinterpret_cast<const char*>(&input[i]), key_size);
-      i += key_size;
-
-      size_t value_size = ReadSize(&i, input);
-      std::string value(reinterpret_cast<const char*>(&input[i]), value_size);
-      i += value_size;
-
-      (*this)[key] = value;
-    }
-
-    assert(i == size);
-  }
-
- private:
-  void WriteSize(size_t size, std::vector<uint8_t>* output) {
-    if (size > 0x3fff) output->push_back(0x80 | (size >> 14));
-    if (size > 0x7f) output->push_back(0x80 | (size >> 7));
-    output->push_back(size & 0x7f);
-  }
-
-  size_t ReadSize(size_t* i, const std::vector<uint8_t>& input) {
-    size_t result = 0;
-    do {
-      result = (result << 7) | input[*i];
-    } while (input[(*i)++] & 0x80);
-    return result;
-  }
-};
-
-int ReadlineHook() {
-  static std::string line_buffer;
-  Message msg;
-
-  if (!rl_line_buffer) rl_line_buffer = const_cast<char*>("");
-  if (line_buffer == rl_line_buffer) return 0;
-  line_buffer = rl_line_buffer;
-
-  if (line_buffer == "cd" || HasPrefix(line_buffer, "cd ")) {
-    std::string path = line_buffer.substr(2);
-
-    while (!path.empty() && isspace(path[0]))
-      path.erase(path.begin());
-
-    char* dequoted_path = bash_dequote_text(path.c_str());
-    if (!dequoted_path) goto done;
-
-    char* expanded_path;
-    if (!*dequoted_path)
-      expanded_path = get_string_value("HOME");
-    else if (!strcmp(dequoted_path, "-"))
-      expanded_path = get_string_value("OLDPWD");
-    else
-      expanded_path = dequoted_path;
-    if (!expanded_path) { free(dequoted_path); goto done; }
-
-    char* canonical_path = sh_canonpath(full_pathname(expanded_path), PATH_CHECKDOTDOT | PATH_CHECKEXISTS);
-    free(dequoted_path);
-    if (!canonical_path) goto done;
-
-    char* polite_path = polite_directory_format(canonical_path);
-    if (polite_path)
-      msg["cursor-hint"] = polite_path;
-
-    free(canonical_path);
-  }
-
-done:
-  msg.Send(socket_fd);
-
-  return 0;
-}
-
-void ReaderThread(int fd) {
-  std::vector<uint8_t> buffer;
-  uint8_t tmp[4096];
-  ssize_t ret;
-
-  while (0 < (ret = read(fd, tmp, sizeof(tmp)))) {
-    buffer.insert(buffer.end(), tmp, tmp + ret);
-
-    if (buffer.size() < 4) continue;
-
-    size_t message_size =
-        (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
-    if (message_size > buffer.size()) continue;
-
-    Message message;
-    message.Deserialize(buffer, message_size);
-    buffer.erase(buffer.begin(), buffer.begin() + message_size);
-
-    auto cursor_hint = message.find("cursor-hint");
-    if (cursor_hint != message.end())
-      terminal->SetCursorHint(cursor_hint->second);
-    else
-      terminal->ClearCursorHint();
-
-    X11_Clear();
-#if 0
-    for (const auto& kv : message) {
-      fprintf(stderr, "%s -> %s\n", kv.first.c_str(), kv.second.c_str());
-    }
-#endif
-  }
-}
 
 }  // namespace
 
-void SetupBashServer(int fd) {
-  std::thread(ReaderThread, fd).detach();
-  socket_fd = fd;
-  rl_event_hook = ReadlineHook;
+void Bash::Setup(Terminal* arg_terminal) {
+  std::string path = TemporaryDirectory("cantera-term");
+  path += "/command_socket";
+
+  listen_fd_ = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (-1 == listen_fd_) err(EXIT_FAILURE, "Failed to create UNIX socket");
+
+  struct sockaddr_un unixaddr;
+  memset(&unixaddr, 0, sizeof(unixaddr));
+  unixaddr.sun_family = AF_UNIX;
+  strcpy(unixaddr.sun_path, path.c_str());
+
+  if (-1 == bind(listen_fd_, (struct sockaddr*)&unixaddr, sizeof(unixaddr)))
+    err(EXIT_FAILURE, "Failed to bind UNIX socket to address");
+
+  if (-1 == listen(listen_fd_, SOMAXCONN))
+    err(EXIT_FAILURE, "Failed to listen on UNIX socket");
+
+  epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
+
+  if (-1 == epoll_fd_) err(EXIT_FAILURE, "Failed to create epoll descriptor");
+
+  struct epoll_event ev;
+  memset(&ev, 0, sizeof(ev));
+  ev.events = EPOLLIN;
+  ev.data.fd = listen_fd_;
+
+  if (-1 == epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, listen_fd_, &ev))
+    err(EXIT_FAILURE, "Failed to add UNIX socket to epoll");
+
+  terminal = arg_terminal;
+
+  setenv("CANTERA_TERM_COMMAND_SOCKET", path.c_str(), 1);
 }
 
-void SetupBashClient(Terminal* arg_terminal, int fd) {
-  std::thread(ReaderThread, fd).detach();
-  terminal = arg_terminal;
-  socket_fd = fd;
+void Bash::Start() {
+  std::thread(&Bash::ReaderThread, this).detach();
+}
+
+void Bash::ReaderThread() {
+  for (;;) {
+    struct epoll_event ev;
+    int nfds;
+
+    if (-1 == (nfds = epoll_wait(epoll_fd_, &ev, 1, -1))) {
+      if (errno == EINTR) continue;
+
+      break;
+    }
+
+    if (!nfds) continue;
+
+    if (ev.data.fd == listen_fd_) {
+      int fd = accept(listen_fd_, NULL, NULL);
+
+      if (-1 == fd) continue;
+
+      ev.events = EPOLLIN;
+      ev.data.fd = fd;
+
+      if (-1 == epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev)) close(fd);
+    } else {
+      ProcessClient(ev.data.fd);
+    }
+  }
+}
+
+void Bash::ProcessClient(int fd) {
+  auto client_iterator = clients.find(fd);
+
+  char tmp[4096];
+  ssize_t ret = read(fd, tmp, sizeof(tmp));
+
+  if (ret <= 0) {
+    if (client_iterator != clients.end())
+      clients.erase(client_iterator);
+    close(fd);
+    return;
+  }
+
+  if (client_iterator == clients.end())
+    client_iterator = clients.insert(std::make_pair(fd, Client())).first;
+
+  Client* client = &client_iterator->second;
+
+  client->buffer.insert(client->buffer.end(), tmp, tmp + ret);
+
+  if (client->buffer.size() < 4) return;
+
+  size_t message_size = (client->buffer[0] << 24) | (client->buffer[1] << 16) |
+                        (client->buffer[2] << 8) | client->buffer[3];
+  if (message_size > client->buffer.size()) return;
+
+  Message message;
+  message.Deserialize(client->buffer, message_size);
+  client->buffer.erase(client->buffer.begin(),
+                       client->buffer.begin() + message_size);
+
+  for (const auto& kv : message)
+    fprintf(stderr, "%s: %s\n", kv.first.c_str(), kv.second.c_str());
+
+  auto cursor_hint = message.find("cursor-hint");
+  if (cursor_hint != message.end())
+    terminal->SetCursorHint(cursor_hint->second);
+  else
+    terminal->ClearCursorHint();
+
+  X11_Clear();
 }
