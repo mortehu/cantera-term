@@ -1,5 +1,6 @@
 bin_PROGRAMS = cantera-term
-lib_LTLIBRARIES = libcantera-bash.la libcantera-common.la
+lib_LTLIBRARIES = libcantera-bash.la
+noinst_LTLIBRARIES = libcantera-common.la
 check_PROGRAMS = fuzz
 man1_MANS = doc/cantera-term.1
 
