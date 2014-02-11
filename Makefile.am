@@ -8,11 +8,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 CONVERT = @CONVERT@
 BASH_LIBS = \
-  bash/builtins/libbuiltins.a \
-  bash/lib/glob/libglob.a \
-  bash/lib/sh/libsh.a \
   bash/libbash.a \
-  bash/lib/tilde/libtilde.a \
   bash/builtins/libbuiltins.a \
   bash/lib/glob/libglob.a \
   bash/lib/sh/libsh.a \
