@@ -51,9 +51,14 @@ int ReadlineHook() {
   Message msg;
   std::vector<std::string> command;
 
-  if (!rl_line_buffer) rl_line_buffer = const_cast<char*>("");
-  if (line_buffer == rl_line_buffer) return 0;
-  line_buffer = rl_line_buffer;
+  if (!rl_line_buffer) {
+    if (line_buffer.empty()) return 0;
+    line_buffer.clear();
+  } else if (line_buffer == rl_line_buffer) {
+    return 0;
+  } else {
+    line_buffer = rl_line_buffer;
+  }
 
   TokenizeCommand(line_buffer, &command);
 
