@@ -9,11 +9,14 @@ COPYRIGHT
 BASH INTEGRATION
 
   To make use of this program's integration with bash, add the following to
-  your .bashrc:
+  your ~/.bashrc:
 
-  if [ "$CANTERA_TERM_COMMAND_SOCKET" != "" -a \
-       -f "/usr/local/lib/libcantera-bash.so" ]; then
-    enable -f "/usr/local/lib/libcantera-bash.so" cantera
+  if [ "$CANTERA_TERM_COMMAND_SOCKET" ]; then
+    if [ "$PS1" -a \
+        -f "/usr/local/lib/libcantera-bash.so" ]; then
+      enable -f "/usr/local/lib/libcantera-bash.so" cantera
+    fi
+    unset CANTERA_TERM_COMMAND_SOCKET
   fi
 
 USE
