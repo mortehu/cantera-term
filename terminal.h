@@ -33,7 +33,7 @@
 class Terminal {
  public:
   struct Color {
-    Color() {}
+    Color() : r(), g(), b() {}
 
     Color(uint8_t r, uint8_t g, uint8_t b) : r(r), g(g), b(b) {}
 
@@ -41,7 +41,7 @@ class Terminal {
   };
 
   struct Attr {
-    Attr() {}
+    Attr() : fg(), bg(), extra() {}
     Attr(const Color& fg, const Color& bg, uint8_t extra = 0)
         : fg(fg), bg(bg), extra(extra) {}
 
