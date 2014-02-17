@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <err.h>
-#include <pthread.h>
 
 #include "font.h"
 #include "glyph.h"

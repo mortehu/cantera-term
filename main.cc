@@ -10,7 +10,6 @@
 #include <getopt.h>
 #include <limits.h>
 #include <locale.h>
-#include <pthread.h>
 #include <pty.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +28,10 @@
 #include <wchar.h>
 
 #include <algorithm>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 
 #include <X11/Xatom.h>
@@ -48,7 +50,6 @@
 #include "tree.h"
 #include "x11.h"
 
-extern "C" int BASH_main(int argc, char** argv, char** envp);
 extern char** environ;
 
 namespace {
@@ -82,13 +83,13 @@ std::string primary_selection;
 std::string clipboard_text;
 
 bool clear;
-pthread_mutex_t clear_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t clear_cond = PTHREAD_COND_INITIALIZER;
+std::mutex clear_mutex;
+std::condition_variable clear_cond;
 
 pid_t pid;
 int terminal_fd;
 
-pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
+std::mutex buffer_mutex;
 
 }
 
@@ -274,30 +275,26 @@ void run_command(int fd, const char* command, const char* arg) {
   close(command_fd);
 }
 
-static void* x11_clear_thread_entry(void* arg) {
+void X11ClearThread() {
   for (;;) {
-    pthread_mutex_lock(&clear_mutex);
-    while (!clear) pthread_cond_wait(&clear_cond, &clear_mutex);
+    std::unique_lock<std::mutex> lock(clear_mutex);
+    clear_cond.wait(lock, []{ return clear; });
     clear = false;
-    pthread_mutex_unlock(&clear_mutex);
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
     XFlush(X11_display);
   }
-
-  return NULL;
 }
 
 void X11_Clear(void) {
   if (hidden) return;
 
-  pthread_mutex_lock(&clear_mutex);
+  std::lock_guard<std::mutex> lock(clear_mutex);
   clear = true;
-  pthread_cond_signal(&clear_cond);
-  pthread_mutex_unlock(&clear_mutex);
+  clear_cond.notify_one();
 }
 
-static void* tty_read_thread_entry(void* arg) {
+static void TTYReadThread() {
   unsigned char buf[4096];
   ssize_t result;
   size_t fill = 0;
@@ -323,18 +320,19 @@ static void* tty_read_thread_entry(void* arg) {
 
     if (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK) break;
 
-    if (0 != pthread_mutex_trylock(&buffer_lock)) {
+    if (!buffer_mutex.try_lock()) {
       // We couldn't get the lock straight away.  If the buffer is not full,
       // and we can get more data within 1 ms, go ahead and read that.
-      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1)) continue;
+      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1))
+        continue;
 
       // No new data available, go ahead and paint.
-      pthread_mutex_lock(&buffer_lock);
+      buffer_mutex.lock();
     }
 
     terminal.ProcessData(buf, fill);
     fill = 0;
-    pthread_mutex_unlock(&buffer_lock);
+    buffer_mutex.unlock();
 
     X11_Clear();
   }
@@ -344,8 +342,6 @@ static void* tty_read_thread_entry(void* arg) {
   done = 1;
 
   X11_Clear();
-
-  return NULL;
 }
 
 static void WriteToTTY(const void* data, size_t len) {
@@ -783,14 +779,11 @@ int x11_process_events() {
 
         Terminal::State draw_state;
 
-        pthread_mutex_lock(&buffer_lock);
-        {
-          if (!primary_selection.empty() &&
-              primary_selection != terminal.GetSelection())
-            terminal.ClearSelection();
-        }
+        std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
+        if (!primary_selection.empty() &&
+            primary_selection != terminal.GetSelection())
+          terminal.ClearSelection();
         terminal.GetState(&draw_state);
-        pthread_mutex_unlock(&buffer_lock);
 
         draw_gl_30(draw_state, font);
       } break;
@@ -865,7 +858,6 @@ static void StartSubprocess(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
-  pthread_t tty_read_thread, x11_clear_thread;
   int i, session_fd;
   const char* home;
   char* palette_str, *token;
@@ -1022,11 +1014,8 @@ int main(int argc, char** argv) {
     unlink(session_path);
   }
 
-  pthread_create(&tty_read_thread, 0, tty_read_thread_entry, 0);
-  pthread_detach(tty_read_thread);
-
-  pthread_create(&x11_clear_thread, 0, x11_clear_thread_entry, 0);
-  pthread_detach(x11_clear_thread);
+  std::thread(TTYReadThread).detach();
+  std::thread(X11ClearThread).detach();
 
   if (-1 == x11_process_events()) return EXIT_FAILURE;
 
