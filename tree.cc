@@ -139,7 +139,7 @@ tree* tree_load_cfg(int home_fd, const char* path) {
         errx(EX_DATAERR, "%s:%d: unexpected '}'", path, lineno);
 
       section_stack.pop_back();
-      if (!section_stack.empty())
+      if (section_stack.empty())
         symbol.clear();
       else
         symbol.resize(section_stack.back());
@@ -166,7 +166,7 @@ tree* tree_load_cfg(int home_fd, const char* path) {
 
       if (isspace(*c)) {
         *c++ = 0;
-        while (isspace(*c))
+        while (*c && isspace(*c))
           ++c;
       }
 
@@ -217,12 +217,11 @@ tree* tree_load_cfg(int home_fd, const char* path) {
           }
 
           if (*c == '\\') {
-            if (!*(c + 1))
+            if (!*++c)
               errx(EX_DATAERR, "%s:%d: unexpected end-of-file in "
                                "string",
                    path, lineno);
 
-            ++c;
             *o++ = *c++;
           } else if (*c == '"')
             break;
