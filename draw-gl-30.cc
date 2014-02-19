@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <err.h>
-#include <pthread.h>
 
 #include "font.h"
 #include "glyph.h"
@@ -174,7 +173,7 @@ static bool IsBlank(const Terminal::State& state, unsigned int x, unsigned int y
   if (y >= state.height || x + length > state.width) return false;
   for (size_t i = 0; i < length; ++i) {
     if (state.chars[y * state.width + x + i] > ' ') return false;
-    if (state.attrs[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
+    if (state.attr[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
   }
   return true;
 }
@@ -241,7 +240,7 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
 
   for (size_t row = 0; row < state.height; ++row) {
     const wchar_t* line = &state.chars[row * state.width];
-    const Terminal::Attr* attrline = &state.attrs[row * state.width];
+    const Terminal::Attr* attrline = &state.attr[row * state.width];
     int x = 0;
 
     for (size_t col = 0; col < state.width; ++col) {

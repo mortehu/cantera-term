@@ -9,10 +9,14 @@ COPYRIGHT
 BASH INTEGRATION
 
   To make use of this program's integration with bash, add the following to
-  your .bashrc:
+  your ~/.bashrc:
 
-  if [ "$CANTERA_TERM_COMMAND_SOCKET" != "" -a -f "/usr/local/lib/libcantera-bash.so" ]; then
-    enable -f "/usr/local/lib/libcantera-bash.so" cantera
+  if [ "$CANTERA_TERM_COMMAND_SOCKET" ]; then
+    if [ "$PS1" -a \
+        -f "/usr/local/lib/libcantera-bash.so" ]; then
+      enable -f "/usr/local/lib/libcantera-bash.so" cantera
+    fi
+    unset CANTERA_TERM_COMMAND_SOCKET
   fi
 
 USE
@@ -42,14 +46,17 @@ CONFIGURATION
   Example Palettes
   ================
 
-    ANSI colors:
+  ANSI colors:
 
-      terminal.palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2 686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
+    terminal.palette "000000 1818c2 18c218 18c2c2 c21818 c218c2 c2c218 c2c2c2
+                      686868 7474ff 54ff54 54ffff ff5454 ff54ff ffff54 ffffff" 
 
-    Linux Console (according to gnome-terminal):
+  Linux Console (according to gnome-terminal):
 
-      terminal.palette "000000 0000aa 00aa00 00aaaa aa0000 aa00aa aaaa00 aaaaaa 555555 5555ff 55ff55 55ffff ff5555 ff55ff ffff55 ffffff"
+    terminal.palette "000000 0000aa 00aa00 00aaaa aa0000 aa00aa aaaa00 aaaaaa
+                      555555 5555ff 55ff55 55ffff ff5555 ff55ff ffff55 ffffff"
 
-    Tango (modified to gray on black):
+  Tango (modified to gray on black):
 
-      terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2 555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
+    terminal.palette "000000 3465a4 4e9a06 06989a cc0000 75507b c4a000 c2c2c2
+                      555753 729fcf 8ae234 34e2e2 ef2929 ad7fa8 fce94f eeeeec"
