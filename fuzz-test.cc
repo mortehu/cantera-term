@@ -4,14 +4,17 @@
 #include "terminal.h"
 
 static const char* escape_codes[] = {
-  "\033E", "\033D", "\033M", "\033H", "\033Z", "\0337", "\0338", "\033[s",
-  "\033[u", "\033c", "\033g", "\0336p", "\0337p", "\033=", "\033>", "\033#8",
-  "\033^", "\033!", "\033k", "\033P", "\033_", "\033]0;title\007",
-  "\033]83;cmd\007", "\016", "\017", "\033n", "\033o", "\033N", "\033O",
-  "\033(0", "\033(B", "\033)0", "\033)B", "\033*0", "\033*B", "\033+0",
-  "\033+B", "\033[?1049h", "\033[?1049l", "\033[1;10r", "\033[10;20r",
-  "\033[4h", "\033[4l",
-};
+    "\033E",       "\033D",            "\033M",           "\033H",
+    "\033Z",       "\0337",            "\0338",           "\033[s",
+    "\033[u",      "\033c",            "\033g",           "\0336p",
+    "\0337p",      "\033=",            "\033>",           "\033#8",
+    "\033^",       "\033!",            "\033k",           "\033P",
+    "\033_",       "\033]0;title\007", "\033]83;cmd\007", "\016",
+    "\017",        "\033n",            "\033o",           "\033N",
+    "\033O",       "\033(0",           "\033(B",          "\033)0",
+    "\033)B",      "\033*0",           "\033*B",          "\033+0",
+    "\033+B",      "\033[?1049h",      "\033[?1049l",     "\033[1;10r",
+    "\033[10;20r", "\033[4h",          "\033[4l", };
 
 int main(int argc, char** argv) {
   srand(time(NULL));
@@ -32,15 +35,13 @@ int main(int argc, char** argv) {
         strcpy(buffer, "\033[");
         size_t n = rand() % 10;
         for (size_t j = 0; j < n; ++j) {
-          if (j)
-            strcat(buffer, ";");
+          if (j) strcat(buffer, ";");
           sprintf(strchr(buffer, 0), "%u", rand() % 4096);
         }
         sprintf(strchr(buffer, 0), "%c", rand());
       } break;
       case 2: {
-        for (size_t j = 0; j < sizeof(buffer) - 1; ++j)
-          buffer[j] = rand();
+        for (size_t j = 0; j < sizeof(buffer) - 1; ++j) buffer[j] = rand();
         buffer[sizeof(buffer) - 1] = 0;
       }
     }
@@ -65,8 +66,8 @@ int main(int argc, char** argv) {
     assert(!memcmp(&state_noscroll.chars[0], &state_scroll.chars[0],
                    sizeof(state_noscroll.chars[0]) * state_noscroll.width *
                        state_noscroll.height));
-    assert(!memcmp(&state_noscroll.attrs[0], &state_scroll.attrs[0],
-                   sizeof(state_noscroll.attrs[0]) * state_noscroll.width *
+    assert(!memcmp(&state_noscroll.attr[0], &state_scroll.attr[0],
+                   sizeof(state_noscroll.attr[0]) * state_noscroll.width *
                        state_noscroll.height));
   }
 

@@ -32,6 +32,13 @@
 
 class Terminal {
  public:
+  enum RangeType {
+    kRangeWordOrURL,
+    kRangeParenthesis,
+  };
+
+  typedef wchar_t CharacterType;
+
   struct Color {
     Color() : r(), g(), b() {}
 
@@ -45,32 +52,31 @@ class Terminal {
     Attr(const Color& fg, const Color& bg, uint8_t extra = 0)
         : fg(fg), bg(bg), extra(extra) {}
 
-    Attr Reverse() const {
-      Attr result;
-      result.fg = bg;
-      result.bg = fg;
-      result.extra = extra;
-      return result;
-    }
+    Attr Reverse() const { return Attr(bg, fg, extra); }
 
     Color fg, bg;
     uint8_t extra;
   };
 
+  struct Screen {
+    Screen() : scroll_line(), cursor_x(), cursor_y(), use_alt_charset() {}
+
+    std::unique_ptr<CharacterType[]> chars;
+    std::unique_ptr<Attr[]> attr;
+    size_t scroll_line;
+    int cursor_x, cursor_y;
+    bool use_alt_charset;
+  };
+
   struct State {
     size_t width, height;
-    std::unique_ptr<wchar_t[]> chars;
-    std::unique_ptr<Attr[]> attrs;
+    std::unique_ptr<CharacterType[]> chars;
+    std::unique_ptr<Attr[]> attr;
     size_t cursor_x, cursor_y;
     size_t selection_begin, selection_end;
     bool cursor_hidden;
     bool focused;
     std::string cursor_hint;
-  };
-
-  enum RangeType {
-    kRangeWordOrURL,
-    kRangeParenthesis,
   };
 
   Terminal();
@@ -100,29 +106,15 @@ class Terminal {
     return GetTextInRange(select_begin, select_end);
   }
 
-  void SaveSession(const char* session_path);
-  void RestoreSession(int fd);
-
   void SetCursorHint(const std::string& hint) { cursor_hint_ = hint; }
   void ClearCursorHint() { cursor_hint_.clear(); }
 
   const winsize& Size() const { return size_; }
 
-  std::unique_ptr<wchar_t[]> chars[2];
-  std::unique_ptr<Attr[]> attr[2];
-  wchar_t* curchars;
-  Attr* curattrs;
-  size_t scroll_line[2];
-  size_t* cur_scroll_line;
-  int curscreen;
   bool reverse;
   size_t history_size;
-  int storedcursorx[2];
-  int storedcursory[2];
   int scrolltop;
   int scrollbottom;
-  int cursorx;
-  int cursory;
   int escape;
   int param[8];
   bool appcursor;
@@ -141,7 +133,8 @@ class Terminal {
   void Scroll(bool fromcursor);
   void ReverseScroll(bool fromcursor);
 
-  void SetScreen(int screen);
+  void SetScreen(int screen) { current_screen_ = &screens_[screen]; }
+
   void InsertChars(size_t count);
   void DeleteChars(size_t count);
   void AddChar(int ch);
@@ -157,11 +150,13 @@ class Terminal {
 
   struct winsize size_;
 
+  Screen screens_[2];
+  Screen* current_screen_;
+
   Color ansi_colors_[16];
   unsigned int ansi_attribute_;
   Attr attribute_;
 
-  bool use_alt_charset_[2];
   unsigned int ch_, nch_;
 
   int savedx_, savedy_;

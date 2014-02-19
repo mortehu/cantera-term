@@ -75,7 +75,6 @@ unsigned int palette[16];
 
 int done;
 int home_fd;
-const char* session_path;
 
 Terminal terminal;
 
@@ -154,19 +153,6 @@ static void CreateLineArtGlyphs(void) {
 #undef CREATE_GLYPH
 
   free(glyph);
-}
-
-static void sighandler(int signal) {
-  static int first = 1;
-
-  fprintf(stderr, "Got signal %d\n", signal);
-
-  if (first) {
-    first = 0;
-    if (session_path) terminal.SaveSession(session_path);
-  }
-
-  exit(EXIT_SUCCESS);
 }
 
 static void UpdateSelection(Time time) {
@@ -337,8 +323,6 @@ static void TTYReadThread() {
     X11_Clear();
   }
 
-  if (session_path) terminal.SaveSession(session_path);
-
   done = 1;
 
   X11_Clear();
@@ -372,7 +356,6 @@ static void WaitForDeadChildren(void) {
 
   while (0 < (child_pid = waitpid(-1, &status, WNOHANG))) {
     if (child_pid == pid) {
-      if (session_path) terminal.SaveSession(session_path);
 
       exit(EXIT_SUCCESS);
     }
@@ -858,7 +841,7 @@ static void StartSubprocess(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
-  int i, session_fd;
+  int i;
   const char* home;
   char* palette_str, *token;
 
@@ -896,10 +879,6 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
-  session_path = getenv("SESSION_PATH");
-
-  if (session_path) unsetenv("SESSION_PATH");
-
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "HOME environment variable missing");
 
@@ -929,26 +908,10 @@ int main(int argc, char** argv) {
   font_weight =
       tree_get_integer_default(config.get(), "terminal.font-weight", 200);
 
-  signal(SIGTERM, sighandler);
-  signal(SIGIO, sighandler);
   signal(SIGPIPE, SIG_IGN);
   signal(SIGALRM, SIG_IGN);
 
   setenv("TERM", "xterm", 1);
-
-  if (session_path) {
-    session_fd = open(session_path, O_RDONLY | O_CLOEXEC);
-
-    if (session_fd != -1) {
-      struct winsize ws;
-
-      if (sizeof(ws) == read(session_fd, &ws, sizeof(ws))) {
-        X11_window_width = ws.ws_xpixel;
-        X11_window_height = ws.ws_ypixel;
-      }
-    }
-  } else
-    session_fd = -1;
 
   X11_Setup();
 
@@ -985,34 +948,6 @@ int main(int argc, char** argv) {
   X11_handle_configure();
 
   init_gl_30();
-
-  if (session_fd != -1) {
-    size_t size;
-
-    size = terminal.Size().ws_col * terminal.history_size;
-
-    read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
-    read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
-
-    if (terminal.cursorx >= terminal.Size().ws_col ||
-        terminal.cursory >= terminal.Size().ws_row || terminal.cursorx < 0 ||
-        terminal.cursory < 0) {
-      terminal.cursorx = 0;
-      terminal.cursory = 0;
-    } else {
-      read(session_fd, &terminal.chars[0][0],
-           size * sizeof(terminal.chars[0][0]));
-      read(session_fd, &terminal.attr[0][0],
-           size * sizeof(terminal.attr[0][0]));
-
-      if (terminal.cursory >= terminal.Size().ws_row)
-        terminal.cursory = terminal.Size().ws_row - 1;
-      terminal.cursorx = 0;
-    }
-
-    close(session_fd);
-    unlink(session_path);
-  }
 
   std::thread(TTYReadThread).detach();
   std::thread(X11ClearThread).detach();

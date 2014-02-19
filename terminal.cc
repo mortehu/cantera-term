@@ -15,34 +15,36 @@ const struct {
   int index;
   uint16_t and_mask;
   uint16_t or_mask;
-} ansi_helper[] = {
-  { 0, 0, ATTR_DEFAULT }, { 1, 0xffff ^ ATTR_BOLD, ATTR_BOLD },
-  { 2, 0xffff ^ ATTR_BOLD, 0 }, { 3, 0xffff ^ ATTR_STANDOUT, ATTR_STANDOUT },
-  { 4, 0xffff ^ ATTR_UNDERLINE, ATTR_UNDERLINE },
-  { 5, 0xffff ^ ATTR_BLINK, ATTR_BLINK }, /* 7 = reverse video */
-  { 8, 0, 0 },
-  { 22, (uint16_t)(~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE), 0 },
-  { 23, 0xffff ^ ATTR_STANDOUT, 0 }, { 24, 0xffff ^ ATTR_UNDERLINE, 0 },
-  { 25, 0xffff ^ ATTR_BLINK, 0 },         /* 27 = no reverse */
-  { 30, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLACK) },
-  { 31, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_RED) },
-  { 32, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_GREEN) },
-  { 33, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_YELLOW) },
-  { 34, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLUE) },
-  { 35, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_MAGENTA) },
-  { 36, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_CYAN) },
-  { 37, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_WHITE) },
-  { 39, 0xffff ^ FG(ATTR_WHITE), FG_DEFAULT },
-  { 40, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLACK) },
-  { 41, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_RED) },
-  { 42, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_GREEN) },
-  { 43, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_YELLOW) },
-  { 44, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLUE) },
-  { 45, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_MAGENTA) },
-  { 46, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_CYAN) },
-  { 47, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_WHITE) },
-  { 49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT }
-};
+} kANSIHelper[] = {
+      {0, 0, ATTR_DEFAULT},
+      {1, 0xffff ^ ATTR_BOLD, ATTR_BOLD},
+      {2, 0xffff ^ ATTR_BOLD, 0},
+      {3, 0xffff ^ ATTR_STANDOUT, ATTR_STANDOUT},
+      {4, 0xffff ^ ATTR_UNDERLINE, ATTR_UNDERLINE},
+      {5, 0xffff ^ ATTR_BLINK, ATTR_BLINK}, /* 7 = reverse video */
+      {8, 0, 0},
+      {22, (uint16_t)(~ATTR_BOLD & ~ATTR_STANDOUT & ~ATTR_UNDERLINE), 0},
+      {23, 0xffff ^ ATTR_STANDOUT, 0},
+      {24, 0xffff ^ ATTR_UNDERLINE, 0},
+      {25, 0xffff ^ ATTR_BLINK, 0}, /* 27 = no reverse */
+      {30, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLACK)},
+      {31, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_RED)},
+      {32, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_GREEN)},
+      {33, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_YELLOW)},
+      {34, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_BLUE)},
+      {35, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_MAGENTA)},
+      {36, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_CYAN)},
+      {37, 0xffff ^ FG(ATTR_WHITE), FG(ATTR_WHITE)},
+      {39, 0xffff ^ FG(ATTR_WHITE), FG_DEFAULT},
+      {40, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLACK)},
+      {41, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_RED)},
+      {42, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_GREEN)},
+      {43, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_YELLOW)},
+      {44, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_BLUE)},
+      {45, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_MAGENTA)},
+      {46, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_CYAN)},
+      {47, 0xffff ^ BG(ATTR_WHITE), BG(ATTR_WHITE)},
+      {49, 0xffff ^ BG(ATTR_WHITE), BG_DEFAULT}};
 
 static const Terminal::Attr kDefaultAttr(Terminal::Color(127, 127, 127),
                                          Terminal::Color(0, 0, 0));
@@ -50,21 +52,10 @@ static const Terminal::Attr kDefaultAttr(Terminal::Color(127, 127, 127),
 }  // namespace
 
 Terminal::Terminal()
-    : chars(),
-      attr(),
-      curchars(),
-      curattrs(),
-      scroll_line(),
-      cur_scroll_line(),
-      curscreen(),
-      reverse(),
+    : reverse(),
       history_size(),
-      storedcursorx(),
-      storedcursory(),
       scrolltop(),
       scrollbottom(),
-      cursorx(),
-      cursory(),
       escape(),
       param(),
       appcursor(),
@@ -74,7 +65,6 @@ Terminal::Terminal()
       select_end(-1),
       focused(),
       history_scroll(),
-      use_alt_charset_(),
       nch_(),
       savedx_(),
       savedy_() {}
@@ -89,10 +79,10 @@ void Terminal::Init(unsigned int width, unsigned int height,
 
   history_size = size_.ws_row + scroll_extra;
 
-  chars[0].reset(new wchar_t[size_.ws_col * history_size]);
-  chars[1].reset(new wchar_t[size_.ws_col * history_size]);
-  attr[0].reset(new Attr[size_.ws_col * history_size]);
-  attr[1].reset(new Attr[size_.ws_col * history_size]);
+  for (size_t i = 0; i < 2; ++i) {
+    screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]);
+    screens_[i].attr.reset(new Attr[size_.ws_col * history_size]);
+  }
 
   ansi_attribute_ = ATTR_WHITE;
   attribute_.fg = ansi_colors_[7];
@@ -100,11 +90,11 @@ void Terminal::Init(unsigned int width, unsigned int height,
   attribute_.extra = 0;
 
   scrollbottom = size_.ws_row;
-  std::fill(&chars[0][0], &chars[0][size_.ws_col * history_size], ' ');
-  std::fill(&attr[0][0], &attr[0][size_.ws_col * history_size],
+  std::fill(&screens_[0].chars[0],
+            &screens_[0].chars[size_.ws_col * history_size], ' ');
+  std::fill(&screens_[0].attr[0],
+            &screens_[0].attr[size_.ws_col * history_size],
             EffectiveAttribute());
-  scroll_line[0] = 0;
-  scroll_line[1] = 0;
 
   SetScreen(0);
 }
@@ -128,106 +118,91 @@ void Terminal::Resize(unsigned int width, unsigned int height,
   history_size += rows - oldrows;
 
   if (cols != oldcols || rows != oldrows) {
-    std::unique_ptr<wchar_t[]> oldchars[2] = { std::move(chars[0]),
-                                               std::move(chars[1]) };
-    std::unique_ptr<Attr[]> oldattr[2] = { std::move(attr[0]),
-                                           std::move(attr[1]) };
+    for (size_t i = 0; i < 2; ++i) {
+      std::unique_ptr<wchar_t[]> oldchars = std::move(screens_[i].chars);
+      std::unique_ptr<Attr[]> oldattr = std::move(screens_[i].attr);
 
-    chars[0].reset(new wchar_t[size_.ws_col * history_size]);
-    chars[1].reset(new wchar_t[size_.ws_col * history_size]);
-    attr[0].reset(new Attr[size_.ws_col * history_size]);
-    attr[1].reset(new Attr[size_.ws_col * history_size]);
+      screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]);
+      screens_[i].attr.reset(new Attr[size_.ws_col * history_size]);
 
-    scrollbottom = rows;
+      scrollbottom = rows;
 
-    int srcoff = 0;
-    int minrows;
+      int srcoff = 0;
+      int minrows;
 
-    if (rows > oldrows) {
-      minrows = oldrows;
-    } else {
-      if (cursory >= rows) srcoff = cursory - rows + 1;
-      minrows = rows;
+      if (rows > oldrows) {
+        minrows = oldrows;
+      } else {
+        if (screens_[i].cursor_y >= rows)
+          srcoff = current_screen_->cursor_y - rows + 1;
+        minrows = rows;
+      }
+
+      int mincols = (cols < oldcols) ? cols : oldcols;
+
+      for (int row = 0; row < minrows; ++row) {
+        memcpy(&screens_[i].chars[row * cols],
+               &oldchars[(row + srcoff) * oldcols],
+               mincols * sizeof(CharacterType));
+        memcpy(&screens_[i].attr[row * cols],
+               &oldattr[(row + srcoff) * oldcols], mincols * sizeof(Attr));
+      }
+
+      screens_[i].cursor_y -= srcoff;
+
+      screens_[i].cursor_x =
+          std::max(std::min(screens_[i].cursor_x, rows - 1), 0);
+      screens_[i].cursor_y =
+          std::max(std::min(screens_[i].cursor_y, cols - 1), 0);
     }
-
-    int mincols = (cols < oldcols) ? cols : oldcols;
-
-    for (int i = 0; i < minrows; ++i) {
-      memcpy(&chars[0][i * cols], &oldchars[0][(i + srcoff) * oldcols],
-             mincols * sizeof(wchar_t));
-      memcpy(&attr[0][i * cols], &oldattr[0][(i + srcoff) * oldcols],
-             mincols * sizeof(attr[0][0]));
-    }
-
-    for (int i = 0; i < minrows; ++i) {
-      memcpy(&chars[1][i * cols], &oldchars[1][(i + srcoff) * oldcols],
-             mincols * sizeof(wchar_t));
-      memcpy(&attr[1][i * cols], &oldattr[1][(i + srcoff) * oldcols],
-             mincols * sizeof(attr[1][0]));
-    }
-
-    curchars = chars[curscreen].get();
-    curattrs = attr[curscreen].get();
-
-    cursory = cursory - srcoff;
-    storedcursory[1 - curscreen] += rows - oldrows;
-#define CLIP_CURSOR(val, max) \
-  {                           \
-    if (val < 0)              \
-      val = 0;                \
-    else if (val >= max)      \
-      val = max - 1;          \
-  }
-    CLIP_CURSOR(cursorx, cols);
-    CLIP_CURSOR(cursory, rows);
-    CLIP_CURSOR(storedcursorx[1 - curscreen], cols);
-    CLIP_CURSOR(storedcursory[1 - curscreen], rows);
-#undef CLIP_CURSOR
   }
 }
 
 void Terminal::ProcessData(const void* buf, size_t count) {
-  int k;
-
   const unsigned char* begin = reinterpret_cast<const unsigned char*>(buf);
   const unsigned char* end = begin + count;
 
   // Redundant, optimized character processing code for the typical case.
-  if (!escape && !insertmode && !nch_ && !use_alt_charset_[curscreen]) {
+  if (!escape && !insertmode && !nch_ && !current_screen_->use_alt_charset) {
     Attr attr = EffectiveAttribute();
-    size_t offset =
-        (*cur_scroll_line + cursory) % history_size * size_.ws_col + cursorx;
+    size_t offset = (current_screen_->scroll_line + current_screen_->cursor_y) %
+                        history_size * size_.ws_col +
+                    current_screen_->cursor_x;
 
     for (; begin != end; ++begin) {
       if (*begin >= ' ' && *begin <= '~') {
-        if (cursorx == size_.ws_col) {
-          if (++cursory >= size_.ws_row) {
+        if (current_screen_->cursor_x == size_.ws_col) {
+          if (++current_screen_->cursor_y >= size_.ws_row) {
             Scroll(false);
-            --cursory;
+            --current_screen_->cursor_y;
           }
 
-          cursorx = 0;
+          current_screen_->cursor_x = 0;
 
-          offset = (*cur_scroll_line + cursory) % history_size * size_.ws_col;
+          offset = (current_screen_->scroll_line + current_screen_->cursor_y) %
+                   history_size * size_.ws_col;
         }
 
-        curchars[offset] = *begin;
-        curattrs[offset] = attr;
-        ++cursorx;
+        current_screen_->chars[offset] = *begin;
+        current_screen_->attr[offset] = attr;
+        ++current_screen_->cursor_x;
         ++offset;
       } else if (*begin == '\r') {
-        cursorx = 0;
-        offset = (*cur_scroll_line + cursory) % history_size * size_.ws_col;
+        current_screen_->cursor_x = 0;
+        offset = (current_screen_->scroll_line + current_screen_->cursor_y) %
+                 history_size * size_.ws_col;
       } else if (*begin == '\n') {
-        ++cursory;
+        ++current_screen_->cursor_y;
 
-        if (cursory == scrollbottom || cursory >= size_.ws_row) {
+        if (current_screen_->cursor_y == scrollbottom ||
+            current_screen_->cursor_y >= size_.ws_row) {
           Scroll(false);
-          --cursory;
+          --current_screen_->cursor_y;
         }
 
-        offset = (*cur_scroll_line + cursory) % history_size * size_.ws_col +
-                 cursorx;
+        offset = (current_screen_->scroll_line + current_screen_->cursor_y) %
+                     history_size * size_.ws_col +
+                 current_screen_->cursor_x;
       } else {
         break;
       }
@@ -248,44 +223,50 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
           case '\b':
 
-            if (cursorx > 0) --cursorx;
+            if (current_screen_->cursor_x > 0) --current_screen_->cursor_x;
 
             break;
 
           case '\t': {
-            unsigned int next_tab = (cursorx + 8) & ~7;
-            auto tab_stop = tab_stops_.lower_bound(cursorx + 1);
+            unsigned int next_tab = (current_screen_->cursor_x + 8) & ~7;
+            auto tab_stop =
+                tab_stops_.lower_bound(current_screen_->cursor_x + 1);
 
             if (tab_stop != tab_stops_.end() && *tab_stop < next_tab)
-              cursorx = *tab_stop;
+              current_screen_->cursor_x = *tab_stop;
             else
-              cursorx = next_tab;
+              current_screen_->cursor_x = next_tab;
 
-            if (cursorx >= size_.ws_col) cursorx = size_.ws_col - 1;
+            if (current_screen_->cursor_x >= size_.ws_col)
+              current_screen_->cursor_x = size_.ws_col - 1;
           } break;
 
           case '\n':
 
-            ++cursory;
+            ++current_screen_->cursor_y;
 
-            if (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (current_screen_->cursor_y == scrollbottom ||
+                current_screen_->cursor_y >= size_.ws_row) {
               Scroll(false);
-              --cursory;
+              --current_screen_->cursor_y;
             }
 
             break;
 
           case '\r':
 
-            cursorx = 0;
+            current_screen_->cursor_x = 0;
 
             break;
 
           case '\177':
 
-            if (cursory < size_.ws_row && cursorx < size_.ws_col)
-              curchars[(*cur_scroll_line + cursory) % history_size *
-                           size_.ws_col + cursorx] = 0;
+            if (current_screen_->cursor_y < size_.ws_row &&
+                current_screen_->cursor_x < size_.ws_col)
+              current_screen_->chars[(current_screen_->scroll_line +
+                                      current_screen_->cursor_y) %
+                                         history_size * size_.ws_col +
+                                     current_screen_->cursor_x] = 0;
 
             break;
 
@@ -299,19 +280,21 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
           default:
 
-            assert(cursorx >= 0 && cursorx <= size_.ws_col);
-            assert(cursory >= 0 && cursory < size_.ws_row);
+            assert(current_screen_->cursor_x >= 0 &&
+                   current_screen_->cursor_x <= size_.ws_col);
+            assert(current_screen_->cursor_y >= 0 &&
+                   current_screen_->cursor_y < size_.ws_row);
 
-            if (cursorx == size_.ws_col) {
-              ++cursory;
-              cursorx = 0;
+            if (current_screen_->cursor_x == size_.ws_col) {
+              ++current_screen_->cursor_y;
+              current_screen_->cursor_x = 0;
             }
 
             // TODO(mortehu): Check if we need to test against scrollbottom as
             // well.
-            if (cursory >= size_.ws_row) {
+            if (current_screen_->cursor_y >= size_.ws_row) {
               Scroll(false);
-              --cursory;
+              --current_screen_->cursor_y;
             }
 
             if (nch_) {
@@ -353,11 +336,12 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           case 'D':
 
             escape = 0;
-            ++cursory;
+            ++current_screen_->cursor_y;
 
-            if (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (current_screen_->cursor_y == scrollbottom ||
+                current_screen_->cursor_y >= size_.ws_row) {
               Scroll(false);
-              --cursory;
+              --current_screen_->cursor_y;
             }
 
             break;
@@ -365,12 +349,13 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           case 'E':
 
             escape = 0;
-            cursorx = 0;
-            ++cursory;
+            current_screen_->cursor_x = 0;
+            ++current_screen_->cursor_y;
 
-            if (cursory == scrollbottom || cursory >= size_.ws_row) {
+            if (current_screen_->cursor_y == scrollbottom ||
+                current_screen_->cursor_y >= size_.ws_row) {
               Scroll(false);
-              --cursory;
+              --current_screen_->cursor_y;
             }
 
             break;
@@ -378,7 +363,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           case 'H':
 
             escape = 0;
-            tab_stops_.insert(cursorx);
+            tab_stops_.insert(current_screen_->cursor_x);
 
             break;
 
@@ -386,11 +371,13 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
             escape = 0;
             tab_stops_.clear();
-            cursorx = 0;
-            cursory = 0;
+            current_screen_->cursor_x = 0;
+            current_screen_->cursor_y = 0;
             for (size_t i = 0; i < size_.ws_row; ++i)
-              ClearLine((*cur_scroll_line + cursory + i) % history_size);
-            use_alt_charset_[curscreen] = false;
+              ClearLine((current_screen_->scroll_line +
+                         current_screen_->cursor_y + i) %
+                        history_size);
+            current_screen_->use_alt_charset = false;
 
             break;
 
@@ -431,10 +418,11 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
           case 'M':
 
-            if (cursorx == 0 && cursory == scrolltop)
+            if (current_screen_->cursor_x == 0 &&
+                current_screen_->cursor_y == scrolltop)
               ReverseScroll(false);
-            else if (cursory)
-              --cursory;
+            else if (current_screen_->cursor_y)
+              --current_screen_->cursor_y;
 
             escape = 0;
 
@@ -468,10 +456,10 @@ void Terminal::ProcessData(const void* buf, size_t count) {
         } else if (param[0] == -4) {
           switch (*begin) {
             case '0':
-              use_alt_charset_[curscreen] = true;
+              current_screen_->use_alt_charset = true;
               break;
             case 'B':
-              use_alt_charset_[curscreen] = false;
+              current_screen_->use_alt_charset = false;
               break;
           }
 
@@ -481,8 +469,9 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           switch (*begin) {
             case '8':
               for (size_t i = 0; i < size_.ws_row; ++i)
-                ClearLineWithAttr((*cur_scroll_line + i) % history_size, 'E',
-                                  kDefaultAttr);
+                ClearLineWithAttr(
+                    (current_screen_->scroll_line + i) % history_size, 'E',
+                    kDefaultAttr);
               break;
           }
         } else if (escape == 2 && *begin == '?') {
@@ -492,7 +481,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           param[0] = -4;
           ++escape;
         } else if (*begin == ';') {
-          if (escape < (int) sizeof(param) + 1)
+          if (escape < (int)sizeof(param) + 1)
             param[++escape - 2] = 0;
           else
             param[(sizeof(param) / sizeof(param[0])) - 1] = 0;
@@ -501,7 +490,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           param[escape - 2] += *begin - '0';
         } else if (param[0] == -3) {
           if (*begin == 'h') {
-            for (k = 1; k < escape - 1; ++k) {
+            for (int k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
                 case 1:
                   appcursor = true;
@@ -509,23 +498,21 @@ void Terminal::ProcessData(const void* buf, size_t count) {
                 case 25:
                   hide_cursor = false;
                   break;
-
                 case 1049:
-
-                  if (curscreen != 1) {
-                    std::fill(&chars[1][0],
-                              &chars[1][size_.ws_col * history_size], 0);
-                    std::fill(&attr[1][0],
-                              &attr[1][size_.ws_col * history_size],
+                  if (current_screen_ != &screens_[1]) {
+                    std::fill(&screens_[1].chars[0],
+                              &screens_[1].chars[size_.ws_col * history_size],
+                              0);
+                    std::fill(&screens_[1].attr[0],
+                              &screens_[1].attr[size_.ws_col * history_size],
                               kDefaultAttr);
                     SetScreen(1);
                   }
-
                   break;
               }
             }
           } else if (*begin == 'l') {
-            for (k = 1; k < escape - 1; ++k) {
+            for (int k = 1; k < escape - 1; ++k) {
               switch (param[k]) {
                 case 1:
                   appcursor = false;
@@ -533,11 +520,8 @@ void Terminal::ProcessData(const void* buf, size_t count) {
                 case 25:
                   hide_cursor = true;
                   break;
-
                 case 1049:
-
-                  if (curscreen != 0) SetScreen(0);
-
+                  SetScreen(0);
                   break;
               }
             }
@@ -558,7 +542,10 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursory -= (param[0] < cursory) ? param[0] : cursory;
+              current_screen_->cursor_y -=
+                  (param[0] < current_screen_->cursor_y)
+                      ? param[0]
+                      : current_screen_->cursor_y;
 
               break;
 
@@ -566,9 +553,10 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursory =
-                  (param[0] + cursory < size_.ws_row) ? (param[0] + cursory)
-                                                      : (size_.ws_row - 1);
+              current_screen_->cursor_y =
+                  (param[0] + current_screen_->cursor_y < size_.ws_row)
+                      ? (param[0] + current_screen_->cursor_y)
+                      : (size_.ws_row - 1);
 
               break;
 
@@ -576,9 +564,10 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursorx =
-                  (param[0] + cursorx < size_.ws_col) ? (param[0] + cursorx)
-                                                      : (size_.ws_col - 1);
+              current_screen_->cursor_x =
+                  (param[0] + current_screen_->cursor_x < size_.ws_col)
+                      ? (param[0] + current_screen_->cursor_x)
+                      : (size_.ws_col - 1);
 
               break;
 
@@ -586,30 +575,34 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (!param[0]) param[0] = 1;
 
-              cursorx -= (param[0] < cursorx) ? param[0] : cursorx;
+              current_screen_->cursor_x -=
+                  (param[0] < current_screen_->cursor_x)
+                      ? param[0]
+                      : current_screen_->cursor_x;
 
               break;
 
             case 'E':
 
-              cursorx = 0;
-              ++cursory;
+              current_screen_->cursor_x = 0;
+              ++current_screen_->cursor_y;
 
-              if (cursory == scrollbottom || cursory >= size_.ws_row) {
+              if (current_screen_->cursor_y == scrollbottom ||
+                  current_screen_->cursor_y >= size_.ws_row) {
                 Scroll(false);
-                --cursory;
+                --current_screen_->cursor_y;
               }
 
               break;
 
             case 'F':
 
-              cursorx = 0;
+              current_screen_->cursor_x = 0;
 
-              if (cursory == scrolltop)
+              if (current_screen_->cursor_y == scrolltop)
                 ReverseScroll(false);
-              else if (cursory)
-                --cursory;
+              else if (current_screen_->cursor_y)
+                --current_screen_->cursor_y;
 
               escape = 0;
 
@@ -619,7 +612,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (param[0] > 0) --param[0];
 
-              cursorx =
+              current_screen_->cursor_x =
                   (param[0] < size_.ws_col) ? param[0] : (size_.ws_col - 1);
 
               break;
@@ -631,24 +624,26 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               if (param[1] > 0) --param[1];
 
-              cursory =
+              current_screen_->cursor_y =
                   (param[0] < size_.ws_row) ? param[0] : (size_.ws_row - 1);
-              cursorx =
+              current_screen_->cursor_x =
                   (param[1] < size_.ws_col) ? param[1] : (size_.ws_col - 1);
 
               break;
 
             case 'J': {
-              size_t begin = *cur_scroll_line;
-              size_t end = *cur_scroll_line + size_.ws_row;
+              size_t begin = current_screen_->scroll_line;
+              size_t end = current_screen_->scroll_line + size_.ws_row;
               bool fall_through = true;
 
               switch (param[0]) {
                 case 0:
-                  begin = *cur_scroll_line + cursory + 1;
+                  begin = current_screen_->scroll_line +
+                          current_screen_->cursor_y + 1;
                   break;
                 case 1:
-                  end = *cur_scroll_line + cursory;
+                  end =
+                      current_screen_->scroll_line + current_screen_->cursor_y;
                   break;
                 default:
                 case 2:
@@ -656,27 +651,27 @@ void Terminal::ProcessData(const void* buf, size_t count) {
                   break;
               }
 
-              for (size_t i = begin; i < end; ++i)
-                ClearLine(i % history_size);
+              for (size_t i = begin; i < end; ++i) ClearLine(i % history_size);
 
               if (!fall_through) break;
             }
 
             case 'K': {
               size_t line_offset =
-                  (*cur_scroll_line + cursory) % history_size * size_.ws_col;
+                  (current_screen_->scroll_line + current_screen_->cursor_y) %
+                  history_size * size_.ws_col;
               size_t begin, end;
 
               switch (param[0]) {
                 case 0:
                   /* Clear from cursor to end */
-                  begin = cursorx;
+                  begin = current_screen_->cursor_x;
                   end = size_.ws_col;
                   break;
                 case 1:
                   /* Clear from start to cursor */
                   begin = 0;
-                  end = cursorx + 1;
+                  end = current_screen_->cursor_x + 1;
                   break;
                 default:
                 case 2:
@@ -688,8 +683,8 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               Attr attr = EffectiveAttribute();
 
               for (size_t x = begin; x < end; ++x) {
-                curchars[line_offset + x] = ' ';
-                curattrs[line_offset + x] = attr;
+                current_screen_->chars[line_offset + x] = ' ';
+                current_screen_->attr[line_offset + x] = attr;
               }
             } break;
 
@@ -700,8 +695,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               else if (param[0] > size_.ws_row)
                 param[0] = size_.ws_row;
 
-              while (param[0]--)
-                ReverseScroll(true);
+              while (param[0]--) ReverseScroll(true);
 
               break;
 
@@ -712,8 +706,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               else if (param[0] > size_.ws_row)
                 param[0] = size_.ws_row;
 
-              while (param[0]--)
-                Scroll(true);
+              while (param[0]--) Scroll(true);
 
               break;
 
@@ -721,8 +714,8 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               /* Delete character at cursor */
               if (!param[0]) param[0] = 1;
-              if (cursorx + param[0] > size_.ws_col)
-                param[0] = size_.ws_col - cursorx;
+              if (current_screen_->cursor_x + param[0] > size_.ws_col)
+                param[0] = size_.ws_col - current_screen_->cursor_x;
 
               DeleteChars(param[0]);
             } break;
@@ -732,8 +725,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               param[0] = std::max(
                   1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
-              while (param[0]--)
-                Scroll(false);
+              while (param[0]--) Scroll(false);
 
               break;
 
@@ -742,8 +734,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               param[0] = std::max(
                   1, std::min(static_cast<int>(size_.ws_row), param[0]));
 
-              while (param[0]--)
-                ReverseScroll(false);
+              while (param[0]--) ReverseScroll(false);
 
               break;
 
@@ -753,12 +744,17 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
               Attr attr = EffectiveAttribute();
 
-              for (k = cursorx; k < cursorx + param[0] && k < size_.ws_col;
+              for (int k = current_screen_->cursor_x;
+                   k < current_screen_->cursor_x + param[0] && k < size_.ws_col;
                    ++k) {
-                curchars[(cursory + *cur_scroll_line) % history_size *
-                             size_.ws_col + k] = 0;
-                curattrs[(cursory + *cur_scroll_line) % history_size *
-                             size_.ws_col + k] = attr;
+                current_screen_->chars[(current_screen_->cursor_y +
+                                        current_screen_->scroll_line) %
+                                           history_size * size_.ws_col +
+                                       k] = 0;
+                current_screen_->attr[(current_screen_->cursor_y +
+                                       current_screen_->scroll_line) %
+                                          history_size * size_.ws_col +
+                                      k] = attr;
               }
 
             } break;
@@ -770,14 +766,14 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               else
                 param[0] = 0;
 
-              cursory =
+              current_screen_->cursor_y =
                   (param[0] < size_.ws_row) ? param[0] : (size_.ws_row - 1);
 
               break;
 
             case 'h':
 
-              for (k = 0; k < escape - 1; ++k) {
+              for (int k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
                   case 4:
                     insertmode = true;
@@ -789,7 +785,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
             case 'l':
 
-              for (k = 0; k < escape - 1; ++k) {
+              for (int k = 0; k < escape - 1; ++k) {
                 switch (param[k]) {
                   case 4:
                     insertmode = false;
@@ -801,7 +797,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
             case 'm': {
 
-              for (k = 0; k + 1 < escape;) {
+              for (int k = 0; k + 1 < escape;) {
                 int code = param[k++];
 
                 switch (code) {
@@ -859,11 +855,11 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
                   default: {
                     for (size_t l = 0;
-                         l < sizeof(ansi_helper) / sizeof(ansi_helper[0]);
+                         l < sizeof(kANSIHelper) / sizeof(kANSIHelper[0]);
                          ++l) {
-                      if (ansi_helper[l].index == code) {
-                        ansi_attribute_ &= ansi_helper[l].and_mask;
-                        ansi_attribute_ |= ansi_helper[l].or_mask;
+                      if (kANSIHelper[l].index == code) {
+                        ansi_attribute_ &= kANSIHelper[l].and_mask;
+                        ansi_attribute_ |= kANSIHelper[l].or_mask;
                         break;
                       }
                     }
@@ -904,15 +900,15 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
             case 's':
 
-              savedx_ = cursorx;
-              savedy_ = cursory;
+              savedx_ = current_screen_->cursor_x;
+              savedy_ = current_screen_->cursor_y;
 
               break;
 
             case 'u':
 
-              cursorx = savedx_;
-              cursory = savedy_;
+              current_screen_->cursor_x = savedx_;
+              current_screen_->cursor_y = savedy_;
 
               break;
           }
@@ -927,21 +923,23 @@ void Terminal::GetState(State* state) const {
   state->width = size_.ws_col;
   state->height = size_.ws_row;
   state->chars.reset(new wchar_t[size_.ws_col * size_.ws_row]);
-  state->attrs.reset(new Attr[size_.ws_col * size_.ws_row]);
+  state->attr.reset(new Attr[size_.ws_col * size_.ws_row]);
 
-  for (size_t row = 0,
-              offset = (history_size - history_scroll + *cur_scroll_line) *
-                       size_.ws_col;
+  for (size_t row = 0, offset = (history_size - history_scroll +
+                                 current_screen_->scroll_line) *
+                                size_.ws_col;
        row < size_.ws_row; ++row, offset += size_.ws_col) {
     offset %= history_size * size_.ws_col;
-    std::copy(&curchars[offset], &curchars[offset + size_.ws_col],
+    std::copy(&current_screen_->chars[offset],
+              &current_screen_->chars[offset + size_.ws_col],
               &state->chars[row * size_.ws_col]);
-    std::copy(&curattrs[offset], &curattrs[offset + size_.ws_col],
-              &state->attrs[row * size_.ws_col]);
+    std::copy(&current_screen_->attr[offset],
+              &current_screen_->attr[offset + size_.ws_col],
+              &state->attr[row * size_.ws_col]);
   }
 
-  state->cursor_x = std::min(cursorx, size_.ws_col - 1);
-  state->cursor_y = cursory + history_scroll;
+  state->cursor_x = std::min(current_screen_->cursor_x, size_.ws_col - 1);
+  state->cursor_y = current_screen_->cursor_y + history_scroll;
 
   size_t selbegin, selend;
   if (select_begin < select_end) {
@@ -960,134 +958,131 @@ void Terminal::GetState(State* state) const {
   state->cursor_hidden = hide_cursor;
   state->focused = focused;
 
-  if (!hide_cursor)
-    state->cursor_hint = cursor_hint_;
-}
-
-void Terminal::SetScreen(int screen) {
-  storedcursorx[curscreen] = cursorx;
-  storedcursory[curscreen] = cursory;
-
-  curscreen = screen;
-  curchars = chars[screen].get();
-  curattrs = attr[screen].get();
-  cursorx = storedcursorx[screen];
-  cursory = storedcursory[screen];
-  cur_scroll_line = &scroll_line[screen];
+  if (!hide_cursor) state->cursor_hint = cursor_hint_;
 }
 
 void Terminal::InsertChars(size_t count) {
   size_t line_offset =
-      (*cur_scroll_line + cursory) % history_size * size_.ws_col;
+      (current_screen_->scroll_line + current_screen_->cursor_y) %
+      history_size * size_.ws_col;
   size_t k = size_.ws_col;
 
-  while (k > cursorx + count) {
+  while (k > current_screen_->cursor_x + count) {
     --k;
-    curchars[line_offset + k] = curchars[line_offset + k - count];
-    curattrs[line_offset + k] = curattrs[line_offset + k - count];
+    current_screen_->chars[line_offset + k] =
+        current_screen_->chars[line_offset + k - count];
+    current_screen_->attr[line_offset + k] =
+        current_screen_->attr[line_offset + k - count];
   }
 
   Attr attr = EffectiveAttribute();
 
-  while (k-- > static_cast<size_t>(cursorx)) {
-    curchars[line_offset + k] = ' ';
-    curattrs[line_offset + k] = attr;
+  while (k-- > static_cast<size_t>(current_screen_->cursor_x)) {
+    current_screen_->chars[line_offset + k] = ' ';
+    current_screen_->attr[line_offset + k] = attr;
   }
 }
 
 void Terminal::DeleteChars(size_t count) {
   size_t line_offset =
-      (*cur_scroll_line + cursory) % history_size * size_.ws_col;
-  size_t k = cursorx;
+      (current_screen_->scroll_line + current_screen_->cursor_y) %
+      history_size * size_.ws_col;
+  size_t k = current_screen_->cursor_x;
 
   for (; k + count < size_.ws_col; ++k) {
-    curchars[line_offset + k] = curchars[line_offset + k + count];
-    curattrs[line_offset + k] = curattrs[line_offset + k + count];
+    current_screen_->chars[line_offset + k] =
+        current_screen_->chars[line_offset + k + count];
+    current_screen_->attr[line_offset + k] =
+        current_screen_->attr[line_offset + k + count];
   }
 
   Attr attr = EffectiveAttribute();
 
   for (; k < size_.ws_col; ++k) {
-    curchars[line_offset + k] = ' ';
-    curattrs[line_offset + k] = attr;
+    current_screen_->chars[line_offset + k] = ' ';
+    current_screen_->attr[line_offset + k] = attr;
   }
 }
 
 void Terminal::AddChar(int ch) {
   // Alternate characters, from 0x41 to 0x7E, inclusive.
   static const int kAltCharset[62] = {
-    0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0020, 0x25c6, 0x2592, 0x2409, 0x240c, 0x240d,
-    0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514,
-    0x253c, 0x23ba, 0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534,
-    0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7,
-  };
+      0x2191, 0x2193, 0x2192, 0x2190, 0x2588, 0x259a, 0x2603, 0x0000, 0x0000,
+      0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+      0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+      0x0000, 0x0000, 0x0000, 0x0020, 0x25c6, 0x2592, 0x2409, 0x240c, 0x240d,
+      0x240a, 0x00b0, 0x00b1, 0x2424, 0x240b, 0x2518, 0x2510, 0x250c, 0x2514,
+      0x253c, 0x23ba, 0x23bb, 0x2500, 0x23bc, 0x23bd, 0x251c, 0x2524, 0x2534,
+      0x252c, 0x2502, 0x2264, 0x2265, 0x03c0, 0x2260, 0x00a3, 0x00b7, };
 
-  if (use_alt_charset_[curscreen] && ch >= 0x41 && ch <= 0x7e)
+  if (current_screen_->use_alt_charset && ch >= 0x41 && ch <= 0x7e)
     ch = kAltCharset[ch - 0x41];
 
   if (ch < 32) return;
 
-  size_t offset =
-      (*cur_scroll_line + cursory) % history_size * size_.ws_col + cursorx;
+  size_t offset = (current_screen_->scroll_line + current_screen_->cursor_y) %
+                      history_size * size_.ws_col +
+                  current_screen_->cursor_x;
 
   if (ch == 0x7f || ch >= 65536) {
-    curchars[offset] = ' ';
-    curattrs[offset] = EffectiveAttribute();
+    current_screen_->chars[offset] = ' ';
+    current_screen_->attr[offset] = EffectiveAttribute();
     return;
   }
 
   if (insertmode) InsertChars(1);
 
-  curchars[offset] = ch;
-  curattrs[offset] = EffectiveAttribute();
-  ++cursorx;
+  current_screen_->chars[offset] = ch;
+  current_screen_->attr[offset] = EffectiveAttribute();
+  ++current_screen_->cursor_x;
 }
 
 void Terminal::NormalizeHistoryBuffer() {
   size_t history_buffer_size = size_.ws_col * history_size;
 
   for (size_t i = 0; i < 2; ++i) {
-    if (!scroll_line[i]) continue;
+    if (!screens_[i].scroll_line) continue;
 
-    assert(scroll_line[i] > 0);
-    assert(scroll_line[i] < history_size);
+    assert(screens_[i].scroll_line > 0);
+    assert(screens_[i].scroll_line < history_size);
 
-    size_t buffer_offset = scroll_line[i] * size_.ws_col;
+    size_t buffer_offset = screens_[i].scroll_line * size_.ws_col;
 
     std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[buffer_offset]);
     std::unique_ptr<Attr[]> tmpattrs(new Attr[buffer_offset]);
 
-    memcpy(&tmpchars[0], &chars[i][0], sizeof(tmpchars[0]) * buffer_offset);
-    memcpy(&tmpattrs[0], &attr[i][0], sizeof(tmpattrs[0]) * buffer_offset);
+    memcpy(&tmpchars[0], &screens_[i].chars[0],
+           sizeof(CharacterType) * buffer_offset);
+    memcpy(&tmpattrs[0], &screens_[i].attr[0], sizeof(Attr) * buffer_offset);
 
-    memmove(&chars[i][0], &chars[i][buffer_offset],
-            sizeof(tmpchars[0]) * (history_buffer_size - buffer_offset));
-    memmove(&attr[i][0], &attr[i][buffer_offset],
-            sizeof(tmpattrs[0]) * (history_buffer_size - buffer_offset));
+    memmove(&screens_[i].chars[0], &screens_[i].chars[buffer_offset],
+            sizeof(CharacterType) * (history_buffer_size - buffer_offset));
+    memmove(&screens_[i].attr[0], &screens_[i].attr[buffer_offset],
+            sizeof(Attr) * (history_buffer_size - buffer_offset));
 
-    memcpy(&chars[i][history_buffer_size - buffer_offset], &tmpchars[0],
-           sizeof(tmpchars[0]) * buffer_offset);
-    memcpy(&attr[i][history_buffer_size - buffer_offset], &tmpattrs[0],
-           sizeof(tmpattrs[0]) * buffer_offset);
+    memcpy(&screens_[i].chars[history_buffer_size - buffer_offset],
+           &tmpchars[0], sizeof(CharacterType) * buffer_offset);
+    memcpy(&screens_[i].attr[history_buffer_size - buffer_offset], &tmpattrs[0],
+           sizeof(Attr) * buffer_offset);
 
-    scroll_line[i] = 0;
+    screens_[i].scroll_line = 0;
   }
 }
 
 void Terminal::ClearLineWithAttr(size_t line, int ch, const Attr& attr) {
   size_t offset = line * size_.ws_col;
 
-  std::fill(curchars + offset, curchars + offset + size_.ws_col, ch);
-  std::fill(curattrs + offset, curattrs + offset + size_.ws_col, attr);
+  std::fill(&current_screen_->chars[offset],
+            &current_screen_->chars[offset + size_.ws_col], ch);
+  std::fill(&current_screen_->attr[offset],
+            &current_screen_->attr[offset + size_.ws_col], attr);
 }
 
 void Terminal::Scroll(bool fromcursor) {
   if (!fromcursor && scrolltop == 0 && scrollbottom == size_.ws_row) {
-    ClearLine((*cur_scroll_line + size_.ws_row) % history_size);
-    *cur_scroll_line = (*cur_scroll_line + 1) % history_size;
+    ClearLine((current_screen_->scroll_line + size_.ws_row) % history_size);
+    current_screen_->scroll_line =
+        (current_screen_->scroll_line + 1) % history_size;
 
     return;
   }
@@ -1098,25 +1093,25 @@ void Terminal::Scroll(bool fromcursor) {
 
   if (fromcursor) {
     // TODO(mortehu): See what other terminals do in this case.
-    if (cursory >= scrollbottom) return;
-    first = cursory;
-    length = (scrollbottom - cursory - 1);
+    if (current_screen_->cursor_y >= scrollbottom) return;
+    first = current_screen_->cursor_y;
+    length = (scrollbottom - current_screen_->cursor_y - 1);
   } else {
     first = scrolltop;
     length = (scrollbottom - scrolltop - 1);
   }
 
-  memmove(&curchars[first * size_.ws_col],
-          &curchars[(first + 1) * size_.ws_col],
-          length * size_.ws_col * sizeof(curchars[0]));
-  std::fill(&curchars[(first + length) * size_.ws_col],
-            &curchars[(first + length + 1) * size_.ws_col], ' ');
+  memmove(&current_screen_->chars[first * size_.ws_col],
+          &current_screen_->chars[(first + 1) * size_.ws_col],
+          length * size_.ws_col * sizeof(CharacterType));
+  std::fill(&current_screen_->chars[(first + length) * size_.ws_col],
+            &current_screen_->chars[(first + length + 1) * size_.ws_col], ' ');
 
-  memmove(&curattrs[first * size_.ws_col],
-          &curattrs[(first + 1) * size_.ws_col],
-          length * size_.ws_col * sizeof(curattrs[0]));
-  std::fill(&curattrs[(first + length) * size_.ws_col],
-            &curattrs[(first + length + 1) * size_.ws_col],
+  memmove(&current_screen_->attr[first * size_.ws_col],
+          &current_screen_->attr[(first + 1) * size_.ws_col],
+          length * size_.ws_col * sizeof(Attr));
+  std::fill(&current_screen_->attr[(first + length) * size_.ws_col],
+            &current_screen_->attr[(first + length + 1) * size_.ws_col],
             EffectiveAttribute());
 }
 
@@ -1126,32 +1121,34 @@ void Terminal::ReverseScroll(bool fromcursor) {
   size_t first, length;
 
   if (fromcursor) {
-    if (cursory + 1 >= scrollbottom) return;
-    first = cursory;
-    length = (scrollbottom - 1 - cursory);
+    if (current_screen_->cursor_y + 1 >= scrollbottom) return;
+    first = current_screen_->cursor_y;
+    length = (scrollbottom - 1 - current_screen_->cursor_y);
   } else {
     if (scrolltop + 1 >= scrollbottom) return;
     first = scrolltop;
     length = (scrollbottom - scrolltop - 1);
   }
 
-  memmove(&curchars[(first + 1) * size_.ws_col],
-          &curchars[first * size_.ws_col],
-          length * size_.ws_col * sizeof(curchars[0]));
-  std::fill(&curchars[first * size_.ws_col],
-            &curchars[(first + 1) * size_.ws_col], ' ');
+  memmove(&current_screen_->chars[(first + 1) * size_.ws_col],
+          &current_screen_->chars[first * size_.ws_col],
+          length * size_.ws_col * sizeof(CharacterType));
+  std::fill(&current_screen_->chars[first * size_.ws_col],
+            &current_screen_->chars[(first + 1) * size_.ws_col], ' ');
 
-  memmove(&curattrs[(first + 1) * size_.ws_col],
-          &curattrs[first * size_.ws_col],
-          length * size_.ws_col * sizeof(curattrs[0]));
-  std::fill(&curattrs[first * size_.ws_col],
-            &curattrs[(first + 1) * size_.ws_col], EffectiveAttribute());
+  memmove(&current_screen_->attr[(first + 1) * size_.ws_col],
+          &current_screen_->attr[first * size_.ws_col],
+          length * size_.ws_col * sizeof(Attr));
+  std::fill(&current_screen_->attr[first * size_.ws_col],
+            &current_screen_->attr[(first + 1) * size_.ws_col],
+            EffectiveAttribute());
 }
 
 void Terminal::Select(RangeType range_type) {
   NormalizeHistoryBuffer();
 
-  select_end = cursory * size_.ws_col + cursorx;
+  select_end =
+      current_screen_->cursor_y * size_.ws_col + current_screen_->cursor_x;
 
   if (select_end == 0) {
     select_begin = 0;
@@ -1165,7 +1162,7 @@ void Terminal::Select(RangeType range_type) {
 bool Terminal::FindRange(RangeType range_type, size_t* begin,
                          size_t* end) const {
   size_t history_buffer_size = size_.ws_col * history_size;
-  size_t offset = *cur_scroll_line * size_.ws_col;
+  size_t offset = current_screen_->scroll_line * size_.ws_col;
 
   size_t i;
   int ch;
@@ -1177,7 +1174,7 @@ bool Terminal::FindRange(RangeType range_type, size_t* begin,
       while (i) {
         if (!(i % size_.ws_col)) break;
 
-        ch = curchars[(offset + i - 1) % history_buffer_size];
+        ch = current_screen_->chars[(offset + i - 1) % history_buffer_size];
 
         if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
 
@@ -1189,7 +1186,7 @@ bool Terminal::FindRange(RangeType range_type, size_t* begin,
       i = *end;
 
       while ((i % size_.ws_col) < size_.ws_col) {
-        ch = curchars[(offset + i) % history_buffer_size];
+        ch = current_screen_->chars[(offset + i) % history_buffer_size];
 
         if (ch <= 32 || ch == 0x7f || strchr("\'\"()[]{}<>,`", ch)) break;
 
@@ -1205,7 +1202,7 @@ bool Terminal::FindRange(RangeType range_type, size_t* begin,
       i = *begin;
 
       while (i > 0) {
-        ch = curchars[(offset + i) % history_buffer_size];
+        ch = current_screen_->chars[(offset + i) % history_buffer_size];
 
         if ((!ch || ((i + 1) % size_.ws_col == 0) || isspace(ch)) &&
             !paren_level) {
@@ -1228,7 +1225,8 @@ bool Terminal::FindRange(RangeType range_type, size_t* begin,
       *begin = i;
 
       if (*end > i + 1 &&
-          curchars[(offset + *end - 1) % history_buffer_size] == '=')
+          current_screen_->chars[(offset + *end - 1) % history_buffer_size] ==
+              '=')
         --*end;
 
       return true;
@@ -1242,7 +1240,7 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   if (begin == end) return std::string();
 
   size_t history_buffer_size = size_.ws_col * history_size;
-  size_t offset = *cur_scroll_line * size_.ws_col;
+  size_t offset = current_screen_->scroll_line * size_.ws_col;
 
   if (begin > end) std::swap(begin, end);
 
@@ -1253,7 +1251,7 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   std::string result;
 
   while (i != end) {
-    int ch = curchars[(i + offset) % history_buffer_size];
+    int ch = current_screen_->chars[(i + offset) % history_buffer_size];
     size_t width = size_.ws_col;
 
     if (ch == 0 || ch == 0xffff) ch = ' ';
@@ -1286,25 +1284,4 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
   if (last_graph < result.size()) result.resize(last_graph);
 
   return result;
-}
-
-void Terminal::SaveSession(const char* session_path) {
-  if (cursorx) ProcessData((const unsigned char*)"\r\n", 2);
-
-  int session_fd =
-      open(session_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-
-  if (session_fd == -1) return;
-
-  NormalizeHistoryBuffer();
-
-  size_t history_buffer_size = size_.ws_col * history_size;
-
-  write(session_fd, &size_, sizeof(size_));
-  write(session_fd, &cursorx, sizeof(cursorx));
-  write(session_fd, &cursory, sizeof(cursory));
-  write(session_fd, chars[0].get(), history_buffer_size * sizeof(chars[0][0]));
-  write(session_fd, attr[0].get(), history_buffer_size * sizeof(attr[0][0]));
-
-  close(session_fd);
 }
