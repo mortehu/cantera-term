@@ -80,8 +80,8 @@ void Terminal::Init(unsigned int width, unsigned int height,
   history_size = size_.ws_row + scroll_extra;
 
   for (size_t i = 0; i < 2; ++i) {
-    screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]);
-    screens_[i].attr.reset(new Attr[size_.ws_col * history_size]);
+    screens_[i].chars.reset(new CharacterType[size_.ws_col * history_size]());
+    screens_[i].attr.reset(new Attr[size_.ws_col * history_size]());
   }
 
   ansi_attribute_ = ATTR_WHITE;
@@ -90,11 +90,6 @@ void Terminal::Init(unsigned int width, unsigned int height,
   attribute_.extra = 0;
 
   scrollbottom = size_.ws_row;
-  std::fill(&screens_[0].chars[0],
-            &screens_[0].chars[size_.ws_col * history_size], ' ');
-  std::fill(&screens_[0].attr[0],
-            &screens_[0].attr[size_.ws_col * history_size],
-            EffectiveAttribute());
 
   SetScreen(0);
 }
@@ -122,8 +117,8 @@ void Terminal::Resize(unsigned int width, unsigned int height,
       std::unique_ptr<wchar_t[]> oldchars = std::move(screens_[i].chars);
       std::unique_ptr<Attr[]> oldattr = std::move(screens_[i].attr);
 
-      screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]);
-      screens_[i].attr.reset(new Attr[size_.ws_col * history_size]);
+      screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]());
+      screens_[i].attr.reset(new Attr[size_.ws_col * history_size]());
 
       scrollbottom = rows;
 
@@ -922,7 +917,7 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 void Terminal::GetState(State* state) const {
   state->width = size_.ws_col;
   state->height = size_.ws_row;
-  state->chars.reset(new wchar_t[size_.ws_col * size_.ws_row]);
+  state->chars.reset(new CharacterType[size_.ws_col * size_.ws_row]);
   state->attr.reset(new Attr[size_.ws_col * size_.ws_row]);
 
   for (size_t row = 0, offset = (history_size - history_scroll +
@@ -1048,7 +1043,7 @@ void Terminal::NormalizeHistoryBuffer() {
 
     size_t buffer_offset = screens_[i].scroll_line * size_.ws_col;
 
-    std::unique_ptr<wchar_t[]> tmpchars(new wchar_t[buffer_offset]);
+    std::unique_ptr<CharacterType[]> tmpchars(new CharacterType[buffer_offset]);
     std::unique_ptr<Attr[]> tmpattrs(new Attr[buffer_offset]);
 
     memcpy(&tmpchars[0], &screens_[i].chars[0],

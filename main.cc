@@ -219,8 +219,11 @@ void X11_handle_configure(void) {
   glLoadIdentity();
   glOrtho(0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
-  terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-                  FONT_LineHeight(font));
+  {
+    std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
+    terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+        FONT_LineHeight(font));
+  }
 
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
