@@ -17,41 +17,78 @@ Expression* Expression::CreateNumeric(const std::string& v) {
   else if (v == "e")
     result->numeric_ = "2.71828182845904523536028747135";
   else
-    result->numeric_ = v;
+    result->numeric_ = mpfr::mpreal(v, 160);  // 160 bits precision.
   return result;
 }
 
 bool Expression::ToString(std::string* result) const {
-  mpfr::mpreal value = Eval();
+  Value value = Eval();
 
-  if (!mpfr::isfinite(value)) return false;
+  switch (value.type) {
+    case kNumeric:
+      if (!mpfr::isfinite(value.numeric)) return false;
+      *result = value.numeric.toString();
+      break;
 
-  *result = value.toString();
+    case kString:
+      *result = value.string;
+      break;
+
+    default:
+      return false;
+  }
 
   return true;
 }
 
-mpfr::mpreal Expression::Eval() const {
+Expression::Value Expression::Eval() const {
+  Value lhs, rhs;
+  if (lhs_) lhs = lhs_->Eval();
+  if (rhs_) rhs = rhs_->Eval();
+
   switch (type_) {
+    case kInvalid:
+      return Value();
     case kNumeric:
       return numeric_;
+    case kString:
+      return string_;
     case kMinus:
-      return -lhs_->Eval();
+      if (lhs.type != kNumeric) return Value();
+      return -lhs.numeric;
     case kAdd:
-      return lhs_->Eval() + rhs_->Eval();
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return lhs.numeric + rhs.numeric;
     case kSubtract:
-      return lhs_->Eval() - rhs_->Eval();
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return lhs.numeric - rhs.numeric;
     case kMultiply:
-      return lhs_->Eval() * rhs_->Eval();
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return lhs.numeric * rhs.numeric;
     case kDivide:
-      return lhs_->Eval() / rhs_->Eval();
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return lhs.numeric / rhs.numeric;
     case kModulus:
-      return mpfr::fmod(lhs_->Eval(), rhs_->Eval());
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return mpfr::fmod(lhs.numeric, rhs.numeric);
     case kExponentiate:
-      return mpfr::pow(lhs_->Eval(), rhs_->Eval());
+      if (lhs.type != kNumeric || rhs.type != kNumeric) return Value();
+      return mpfr::pow(lhs.numeric, rhs.numeric);
+    case kCos:
+      if (lhs.type != kNumeric) return Value();
+      return mpfr::cos(lhs.numeric);
+    case kSin:
+      if (lhs.type != kNumeric) return Value();
+      return mpfr::sin(lhs.numeric);
+    case kLog:
+      if (lhs.type != kNumeric) return Value();
+      return mpfr::log(lhs.numeric);
+    case kHex:
+      if (lhs.type != kNumeric) return Value();
+      return StringPrintf("0x%lx", lhs.numeric.toULong());
   }
 
-  return mpfr::mpreal();
+  return Value();
 }
 
 }  // namespace expression

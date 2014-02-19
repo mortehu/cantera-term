@@ -29,9 +29,14 @@ loc.step();
 "%" return yy::ExpressionParser::make_PERCENT(loc);
 "^" return yy::ExpressionParser::make_CIRCUMFLEX(loc);
 
-e return yy::ExpressionParser::make_Numeric(yytext, loc);
-pi return yy::ExpressionParser::make_Numeric(yytext, loc);
-[0-9]+ return yy::ExpressionParser::make_Numeric(yytext, loc);
+e      return yy::ExpressionParser::make_Numeric(yytext, loc);
+pi     return yy::ExpressionParser::make_Numeric(yytext, loc);
+[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)? return yy::ExpressionParser::make_Numeric(yytext, loc);
+
+cos    return yy::ExpressionParser::make_COS(loc);
+sin    return yy::ExpressionParser::make_SIN(loc);
+log    return yy::ExpressionParser::make_LOG(loc);
+hex    return yy::ExpressionParser::make_HEX(loc);
 
 [A-Za-z_][A-Za-z0-9_.]*  return yy::ExpressionParser::make_Identifier(yytext, loc);
 {blank}+                 loc.step();

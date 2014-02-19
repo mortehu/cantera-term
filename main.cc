@@ -389,9 +389,10 @@ int x11_process_events() {
   key_callbacks[KeyInfo(XK_Right, ControlMask)] = key_callbacks[XK_End];
 
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
-    if (!expression_result.empty()) {
+    if (!expression_result.empty() && expression_result != last_expression) {
       std::string text(last_expression.size(), '\b');
-      text.insert(text.end(), expression_result.begin(), expression_result.end());
+      text.insert(text.end(), expression_result.begin(),
+                  expression_result.end());
       WriteToTTY(text.data(), text.length());
     }
   };

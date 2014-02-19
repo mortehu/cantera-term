@@ -13,7 +13,13 @@ namespace expression {
 class Expression {
  public:
   enum ExpressionType {
+    kInvalid,
+
+    // Constants
     kNumeric,
+    kString,
+
+    // Operators
     kMinus,
     kAdd,
     kSubtract,
@@ -21,12 +27,18 @@ class Expression {
     kDivide,
     kModulus,
     kExponentiate,
+
+    // Other functions
+    kCos,
+    kSin,
+    kLog,
+    kHex,
   };
 
   typedef std::forward_list<Expression*> List;
 
   Expression(ExpressionType type) : type_(type) {}
-  Expression(ExpressionType type, Expression* lhs, Expression* rhs)
+  Expression(ExpressionType type, Expression* lhs, Expression* rhs = nullptr)
       : type_(type), lhs_(lhs), rhs_(rhs) {}
 
   static Expression* CreateNumeric(const std::string& v);
@@ -36,12 +48,25 @@ class Expression {
   bool ToString(std::string* result) const;
 
  private:
-  mpfr::mpreal Eval() const;
+  struct Value {
+    Value() : type(kInvalid) {}
+    Value(const std::string& v) : type(kString), string(v) {}
+    Value(const mpfr::mpreal& v) : type(kNumeric), numeric(v) {}
+
+    enum ExpressionType type;
+    std::string string;
+    mpfr::mpreal numeric;
+  };
+
+  Value Eval() const;
 
   ExpressionType type_;
 
   // For kNumeric.
   mpfr::mpreal numeric_;
+
+  // For kString.
+  std::string string_;
 
   // First argument.
   std::unique_ptr<Expression> lhs_;

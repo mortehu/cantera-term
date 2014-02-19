@@ -44,6 +44,10 @@ class ParseContext;
   SLASH      "/"
   PERCENT    "%"
   CIRCUMFLEX "^"
+  COS        "COS"
+  SIN        "SIN"
+  LOG        "LOG"
+  HEX        "HEX"
   ;
 %token INVALID
 
@@ -76,7 +80,7 @@ expression
       }
     | "-" expression %prec UMINUS
       {
-        $$ = new expression::Expression(expression::Expression::kMinus, $2, nullptr);
+        $$ = new expression::Expression(expression::Expression::kMinus, $2);
       }
     | expression "+" expression
       {
@@ -105,6 +109,22 @@ expression
     | expression "*" "*" expression
       {
         $$ = new expression::Expression(expression::Expression::kExponentiate, $1, $4);
+      }
+    | "COS" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kCos, $3);
+      }
+    | "SIN" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kSin, $3);
+      }
+    | "LOG" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kLog, $3);
+      }
+    | "HEX" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kHex, $3);
       }
     ;
 %%
