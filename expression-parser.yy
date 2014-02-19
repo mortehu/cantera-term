@@ -21,10 +21,6 @@ class ParseContext;
 %param { expression::ParseContext *context }
 
 %locations
-%initial-action
-{
-}
-
 %code
 {
 #ifdef HAVE_CONFIG_H
@@ -37,8 +33,6 @@ class ParseContext;
 #include "expr-parse.h"
 }
 
-%define api.token.prefix {TOK_}
-
 %token
   END  0     "end of file"
   LPAREN     "("
@@ -50,7 +44,6 @@ class ParseContext;
   SLASH      "/"
   CIRCUMFLEX "^"
   ;
-%token AND OR
 
 %token <std::string> Identifier "Identifier"
 %token <std::string> Numeric "Numeric"
