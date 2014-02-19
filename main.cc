@@ -758,18 +758,19 @@ int x11_process_events() {
       } break;
 
       case Expose: {
-
         /* Skip to last Expose event */
         while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
           ; /* Do nothing */
 
         Terminal::State draw_state;
 
-        std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
-        if (!primary_selection.empty() &&
-            primary_selection != terminal.GetSelection())
-          terminal.ClearSelection();
-        terminal.GetState(&draw_state);
+        {
+          std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
+          if (!primary_selection.empty() &&
+              primary_selection != terminal.GetSelection())
+            terminal.ClearSelection();
+          terminal.GetState(&draw_state);
+        }
 
         draw_gl_30(draw_state, font);
       } break;
