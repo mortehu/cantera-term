@@ -42,8 +42,10 @@ class ParseContext;
   COMMA      ","
   MINUS      "-"
   SLASH      "/"
+  PERCENT    "%"
   CIRCUMFLEX "^"
   ;
+%token INVALID
 
 %token <std::string> Identifier "Identifier"
 %token <std::string> Numeric "Numeric"
@@ -60,7 +62,7 @@ document
     ;
 
 %left "+" "-";
-%left "*" "/";
+%left "*" "/" "%";
 %left UMINUS;
 
 expression
@@ -91,6 +93,10 @@ expression
     | expression "/" expression
       {
         $$ = new expression::Expression(expression::Expression::kDivide, $1, $3);
+      }
+    | expression "%" expression
+      {
+        $$ = new expression::Expression(expression::Expression::kModulus, $1, $3);
       }
     | expression "^" expression
       {

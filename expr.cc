@@ -45,6 +45,8 @@ mpfr::mpreal Expression::Eval() const {
       return lhs_->Eval() * rhs_->Eval();
     case kDivide:
       return lhs_->Eval() / rhs_->Eval();
+    case kModulus:
+      return mpfr::fmod(lhs_->Eval(), rhs_->Eval());
     case kExponentiate:
       return mpfr::pow(lhs_->Eval(), rhs_->Eval());
   }

@@ -34,7 +34,7 @@ cantera_term_SOURCES = \
   tree.h \
   x11.c \
   x11.h
-cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libcommon.la
+cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libexpression.la libcommon.la
 
 libexpression_la_SOURCES = \
   expression-lexer.ll \

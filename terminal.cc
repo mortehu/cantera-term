@@ -1280,3 +1280,10 @@ std::string Terminal::GetTextInRange(size_t begin, size_t end) const {
 
   return result;
 }
+
+std::string Terminal::GetCurrentLine(bool to_cursor) const {
+  size_t begin = current_screen_->cursor_y * size_.ws_col;
+  size_t end = begin + (to_cursor ? current_screen_->cursor_x : size_.ws_col);
+
+  return GetTextInRange(begin, end);
+}

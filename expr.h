@@ -19,6 +19,7 @@ class Expression {
     kSubtract,
     kMultiply,
     kDivide,
+    kModulus,
     kExponentiate,
   };
 

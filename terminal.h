@@ -94,16 +94,18 @@ class Terminal {
   void GetState(State* state) const;
   std::string GetTextInRange(size_t begin, size_t end) const;
 
+  std::string GetSelection() const {
+    return GetTextInRange(select_begin, select_end);
+  }
+
+  std::string GetCurrentLine(bool to_cursor = false) const;
+
   void Select(RangeType range_type);
   bool FindRange(RangeType range_type, size_t* begin, size_t* end) const;
 
   void ClearSelection() {
     select_begin = 0;
     select_end = 0;
-  }
-
-  std::string GetSelection() const {
-    return GetTextInRange(select_begin, select_end);
   }
 
   void SetCursorHint(const std::string& hint) { cursor_hint_ = hint; }

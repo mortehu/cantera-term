@@ -44,6 +44,7 @@
 #include "bash.h"
 #include "command.h"
 #include "draw.h"
+#include "expr-parse.h"
 #include "font.h"
 #include "glyph.h"
 #include "terminal.h"
@@ -57,10 +58,9 @@ namespace {
 int print_version;
 int print_help;
 
-struct option long_options[] = {
-    {"version", no_argument, &print_version, 1},
-    {"help", no_argument, &print_help, 1},
-    {0, 0, 0, 0}};
+struct option long_options[] = {{"version", no_argument, &print_version, 1},
+                                {"help", no_argument, &print_help, 1},
+                                {0, 0, 0, 0}};
 
 std::unique_ptr<tree> config;
 bool hidden;
@@ -81,6 +81,8 @@ Terminal terminal;
 std::string primary_selection;
 std::string clipboard_text;
 
+std::string last_expression, expression_result;
+
 bool clear;
 std::mutex clear_mutex;
 std::condition_variable clear_cond;
@@ -89,7 +91,6 @@ pid_t pid;
 int terminal_fd;
 
 std::mutex buffer_mutex;
-
 }
 
 static void LoadGlyph(wchar_t character) {
@@ -222,52 +223,16 @@ void X11_handle_configure(void) {
   {
     std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
     terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-        FONT_LineHeight(font));
+                    FONT_LineHeight(font));
   }
 
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
 }
 
-void run_command(int fd, const char* command, const char* arg) {
-  char path[4096];
-  int command_fd;
-
-  sprintf(path, ".cantera/commands/%s", command);
-
-  // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
-    fprintf(stderr, "Failed to open '%s' for reading: %s\n", path,
-            strerror(errno));
-    return;
-  }
-
-  pid_t child = fork();
-
-  if (child == -1) {
-    fprintf(stderr, "fork() failed: %s\n", strerror(errno));
-  } else if (!child) {
-    std::vector<char*> args;
-
-    // If requested, make the child process' standard output write to the
-    // specified file descriptor.
-    if (fd != -1) dup2(fd, 1);
-
-    args.push_back(path);
-    args.push_back(const_cast<char*>(arg));
-    args.push_back(nullptr);
-
-    fexecve(command_fd, &args[0], environ);
-
-    _exit(EXIT_FAILURE);
-  }
-
-  close(command_fd);
-}
-
 void X11ClearThread() {
   for (;;) {
     std::unique_lock<std::mutex> lock(clear_mutex);
-    clear_cond.wait(lock, []{ return clear; });
+    clear_cond.wait(lock, [] { return clear; });
     clear = false;
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
@@ -312,8 +277,7 @@ static void TTYReadThread() {
     if (!buffer_mutex.try_lock()) {
       // We couldn't get the lock straight away.  If the buffer is not full,
       // and we can get more data within 1 ms, go ahead and read that.
-      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1))
-        continue;
+      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1)) continue;
 
       // No new data available, go ahead and paint.
       buffer_mutex.lock();
@@ -424,20 +388,11 @@ int x11_process_events() {
   key_callbacks[KeyInfo(XK_Left, ControlMask)] = key_callbacks[XK_Home];
   key_callbacks[KeyInfo(XK_Right, ControlMask)] = key_callbacks[XK_End];
 
-  /* Inline calculator */
-  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent* event) {
-    terminal.Select(Terminal::kRangeParenthesis);
-
-    UpdateSelection(event->time);
-
-    XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-  };
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
-    if (!primary_selection.empty()) {
-      Command(home_fd, "calculate")
-          .SetStdout(terminal_fd)
-          .AddArg(primary_selection)
-          .Run();
+    if (!expression_result.empty()) {
+      std::string text(last_expression.size(), '\b');
+      text.insert(text.end(), expression_result.begin(), expression_result.end());
+      WriteToTTY(text.data(), text.length());
     }
   };
 
@@ -763,14 +718,33 @@ int x11_process_events() {
           ; /* Do nothing */
 
         Terminal::State draw_state;
+        std::string new_expression;
 
         {
           std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
           if (!primary_selection.empty() &&
               primary_selection != terminal.GetSelection())
             terminal.ClearSelection();
+
           terminal.GetState(&draw_state);
+
+          new_expression = terminal.GetCurrentLine(true);
         }
+
+        if (new_expression != last_expression) {
+          // TODO(mortehu): Move processing to a separate thread.
+          std::string::size_type expression_offset;
+          expression_result.clear();
+          expression::ParseContext::FindAndEval(
+              new_expression, &expression_offset, &expression_result);
+          last_expression = new_expression;
+        } else if (new_expression.empty()) {
+          last_expression.clear();
+          expression_result.clear();
+        }
+
+        if (!expression_result.empty())
+          draw_state.cursor_hint = expression_result;
 
         draw_gl_30(draw_state, font);
       } break;

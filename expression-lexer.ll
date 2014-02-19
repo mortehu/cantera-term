@@ -26,6 +26,7 @@ loc.step();
 "," return yy::ExpressionParser::make_COMMA(loc);
 "-" return yy::ExpressionParser::make_MINUS(loc);
 "/" return yy::ExpressionParser::make_SLASH(loc);
+"%" return yy::ExpressionParser::make_PERCENT(loc);
 "^" return yy::ExpressionParser::make_CIRCUMFLEX(loc);
 
 e return yy::ExpressionParser::make_Numeric(yytext, loc);
@@ -35,7 +36,7 @@ pi return yy::ExpressionParser::make_Numeric(yytext, loc);
 [A-Za-z_][A-Za-z0-9_.]*  return yy::ExpressionParser::make_Identifier(yytext, loc);
 {blank}+                 loc.step();
 [\n]+                    loc.lines(yyleng); loc.step();
-.                        context->SetError(loc, "Invalid character");
+.                        { context->SetError(loc, "Invalid character"); return yy::ExpressionParser::make_INVALID(loc); }
 <<EOF>>                  return yy::ExpressionParser::make_END(loc);
 %%
 
