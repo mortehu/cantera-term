@@ -13,7 +13,7 @@ BUILT_SOURCES = expression-parser.hh
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
-AM_YFLAGS = -d
+AM_YFLAGS = --defines=expression-parser.hh
 
 cantera_term_SOURCES = \
   draw-gl-30.cc \
