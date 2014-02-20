@@ -82,6 +82,7 @@ std::string primary_selection;
 std::string clipboard_text;
 
 std::string last_expression, expression_result;
+std::string::size_type expression_offset;
 
 bool clear;
 std::mutex clear_mutex;
@@ -390,7 +391,7 @@ int x11_process_events() {
 
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
     if (!expression_result.empty() && expression_result != last_expression) {
-      std::string text(last_expression.size(), '\b');
+      std::string text(last_expression.size() - expression_offset, '\b');
       text.insert(text.end(), expression_result.begin(),
                   expression_result.end());
       WriteToTTY(text.data(), text.length());
@@ -734,7 +735,6 @@ int x11_process_events() {
 
         if (new_expression != last_expression) {
           // TODO(mortehu): Move processing to a separate thread.
-          std::string::size_type expression_offset;
           expression_result.clear();
           expression::ParseContext::FindAndEval(
               new_expression, &expression_offset, &expression_result);
