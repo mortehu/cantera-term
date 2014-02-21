@@ -34,6 +34,23 @@ void TestExpression(const std::string& input, const std::string& expected) {
   }
 }
 
+void TestInvalidExpression(const std::string& input) {
+  expression::ParseContext parse_context;
+
+  std::unique_ptr<expression::Expression> expression(
+      parse_context.ParseExpression(input));
+
+  if (expression)
+    return;
+
+  std::string result;
+
+  if (!expression->ToString(&result))
+    return;
+
+  fprintf(stderr, "Unexpectedly succeeded evaluating \"%s\"\n", input.c_str());
+}
+
 void TestAutoExpression(const std::string& input, const std::string& expected) {
   std::string result;
   std::string::size_type offset;
@@ -73,8 +90,12 @@ int main(int argc, char** argv) {
   TestExpression("(((1)+(2))*(3))", "9");
 
   TestExpression("pi/pi", "1");
+  TestExpression("hex(16)", "0x10");
 
   TestExpression("e**pi-pi", "19.9990999791895");
+
+  TestInvalidExpression("0/0");
+  TestInvalidExpression("hex(hex(16))");
 
   TestAutoExpression("[foo@bar:~/xyz/2]$ 2*10", "20");
 
