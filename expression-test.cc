@@ -40,7 +40,7 @@ void TestInvalidExpression(const std::string& input) {
   std::unique_ptr<expression::Expression> expression(
       parse_context.ParseExpression(input));
 
-  if (expression)
+  if (!expression)
     return;
 
   std::string result;
@@ -93,6 +93,11 @@ int main(int argc, char** argv) {
   TestExpression("hex(16)", "0x10");
 
   TestExpression("e**pi-pi", "19.9990999791895");
+
+  // Check all hexadecimal digits
+  TestExpression("0x76543210", "1985229328");
+  TestExpression("0xfedcba98", "4275878552");
+  TestInvalidExpression("0xg");
 
   TestInvalidExpression("0/0");
   TestInvalidExpression("hex(hex(16))");

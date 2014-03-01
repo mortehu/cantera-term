@@ -8,16 +8,21 @@
 
 namespace expression {
 
+const mp_prec_t kPrecision = 160;  // Bits
+
 Expression* Expression::CreateNumeric(const std::string& v) {
   Expression* result = new Expression(kNumeric);
-  if (v == "pi")
+  if (!v.compare(0, 2, "0x")) {
+    result->numeric_ = mpfr::mpreal(v.substr(2), kPrecision, 16);
+  } else if (v == "pi") {
     result->numeric_ = "3.1415926535897932384626433832795";
-  else if (v == "phi")
+  } else if (v == "phi") {
     result->numeric_ = "1.61803398874989484820458683436563811";
-  else if (v == "e")
+  } else if (v == "e") {
     result->numeric_ = "2.71828182845904523536028747135";
-  else
-    result->numeric_ = mpfr::mpreal(v, 160);  // 160 bits precision.
+  } else {
+    result->numeric_ = mpfr::mpreal(v, kPrecision, 10);
+  }
   return result;
 }
 

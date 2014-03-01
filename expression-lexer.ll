@@ -31,6 +31,7 @@ loc.step();
 
 e      return yy::ExpressionParser::make_Numeric(yytext, loc);
 pi     return yy::ExpressionParser::make_Numeric(yytext, loc);
+0x[0-9a-fA-F]+ return yy::ExpressionParser::make_Numeric(yytext, loc);
 [0-9]*\.?[0-9]+([eE][-+]?[0-9]+)? return yy::ExpressionParser::make_Numeric(yytext, loc);
 
 cos    return yy::ExpressionParser::make_COS(loc);
