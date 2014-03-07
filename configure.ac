@@ -17,6 +17,9 @@ AC_PROG_LEX
 AC_PROG_MAKE_SET
 AC_PROG_YACC
 
+AC_CHECK_HEADER([bash/config.h], [USE_BASH=1], [USE_BASH=0])
+AM_CONDITIONAL(USE_BASH, [test $USE_BASH = 1])
+
 LT_INIT
 
 PKG_CHECK_MODULES([PACKAGES], [x11 freetype2 >= 9.20 fontconfig >= 2.8.0 libpng >= 1.2 glew])

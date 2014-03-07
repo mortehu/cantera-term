@@ -1,5 +1,5 @@
 bin_PROGRAMS = cantera-term
-lib_LTLIBRARIES = libcantera-bash.la
+lib_LTLIBRARIES =
 noinst_LTLIBRARIES = libcommon.la libexpression.la
 check_PROGRAMS = expression-test fuzz-test
 man1_MANS = doc/cantera-term.1
@@ -19,8 +19,6 @@ cantera_term_SOURCES = \
   draw-gl-30.cc \
   base/file.cc \
   base/file.h \
-  bash.cc \
-  bash.h \
   command.cc \
   command.h \
   font.c \
@@ -45,11 +43,6 @@ libexpression_la_SOURCES = \
   expr.h
 libexpression_la_LDFLAGS = -lmpfr
 
-libcantera_bash_la_SOURCES = bash-builtin.cc
-libcantera_bash_la_CPPFLAGS = -I/usr/include/bash
-libcantera_bash_la_LIBADD = libcommon.la
-libcantera_bash_la_LDFLAGS = -lpthread
-
 libcommon_la_SOURCES = \
   base/string.cc \
   base/string.h \
@@ -60,6 +53,16 @@ expression_test_SOURCES = expression-test.cc
 expression_test_LDADD = libexpression.la libcommon.la
 
 fuzz_test_SOURCES = fuzz-test.cc terminal.h terminal.cc
+
+if USE_BASH
+cantera_term_SOURCES += bash.cc bash.h
+lib_LTLIBRARIES += libcantera-bash.la
+
+libcantera_bash_la_SOURCES = bash-builtin.cc
+libcantera_bash_la_CPPFLAGS = -I/usr/include/bash
+libcantera_bash_la_LIBADD = libcommon.la
+libcantera_bash_la_LDFLAGS = -lpthread
+endif
 
 TESTS = expression-test fuzz-test
 
