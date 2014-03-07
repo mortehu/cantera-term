@@ -10,6 +10,8 @@ bool ParseContext::FindAndEval(const std::string& input,
   ParseContext context;
 
   for (std::string::size_type i = 0; i + 1 < input.length(); ++i) {
+    if (isspace(input[i])) continue;
+
     std::string suffix = input.substr(i);
 
     std::unique_ptr<Expression> expr(context.ParseExpression(suffix));

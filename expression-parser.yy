@@ -21,10 +21,6 @@ class ParseContext;
 %param { expression::ParseContext *context }
 
 %locations
-%initial-action
-{
-}
-
 %code
 {
 #ifdef HAVE_CONFIG_H
@@ -37,8 +33,6 @@ class ParseContext;
 #include "expr-parse.h"
 }
 
-%define api.token.prefix {TOK_}
-
 %token
   END  0     "end of file"
   LPAREN     "("
@@ -48,9 +42,14 @@ class ParseContext;
   COMMA      ","
   MINUS      "-"
   SLASH      "/"
+  PERCENT    "%"
   CIRCUMFLEX "^"
+  COS        "COS"
+  SIN        "SIN"
+  LOG        "LOG"
+  HEX        "HEX"
   ;
-%token AND OR
+%token INVALID
 
 %token <std::string> Identifier "Identifier"
 %token <std::string> Numeric "Numeric"
@@ -67,7 +66,7 @@ document
     ;
 
 %left "+" "-";
-%left "*" "/";
+%left "*" "/" "%";
 %left UMINUS;
 
 expression
@@ -81,7 +80,7 @@ expression
       }
     | "-" expression %prec UMINUS
       {
-        $$ = new expression::Expression(expression::Expression::kMinus, $2, nullptr);
+        $$ = new expression::Expression(expression::Expression::kMinus, $2);
       }
     | expression "+" expression
       {
@@ -99,6 +98,10 @@ expression
       {
         $$ = new expression::Expression(expression::Expression::kDivide, $1, $3);
       }
+    | expression "%" expression
+      {
+        $$ = new expression::Expression(expression::Expression::kModulus, $1, $3);
+      }
     | expression "^" expression
       {
         $$ = new expression::Expression(expression::Expression::kExponentiate, $1, $3);
@@ -106,6 +109,22 @@ expression
     | expression "*" "*" expression
       {
         $$ = new expression::Expression(expression::Expression::kExponentiate, $1, $4);
+      }
+    | "COS" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kCos, $3);
+      }
+    | "SIN" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kSin, $3);
+      }
+    | "LOG" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kLog, $3);
+      }
+    | "HEX" "(" expression ")"
+      {
+        $$ = new expression::Expression(expression::Expression::kHex, $3);
       }
     ;
 %%

@@ -13,7 +13,7 @@ BUILT_SOURCES = expression-parser.hh
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
-AM_YFLAGS = -d
+AM_YFLAGS = --defines=expression-parser.hh
 
 cantera_term_SOURCES = \
   draw-gl-30.cc \
@@ -32,7 +32,7 @@ cantera_term_SOURCES = \
   tree.h \
   x11.c \
   x11.h
-cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libcommon.la
+cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libexpression.la libcommon.la
 
 libexpression_la_SOURCES = \
   expression-lexer.ll \

@@ -44,6 +44,7 @@
 #include "bash.h"
 #include "command.h"
 #include "draw.h"
+#include "expr-parse.h"
 #include "font.h"
 #include "glyph.h"
 #include "terminal.h"
@@ -57,10 +58,9 @@ namespace {
 int print_version;
 int print_help;
 
-struct option long_options[] = {
-    {"version", no_argument, &print_version, 1},
-    {"help", no_argument, &print_help, 1},
-    {0, 0, 0, 0}};
+struct option long_options[] = {{"version", no_argument, &print_version, 1},
+                                {"help", no_argument, &print_help, 1},
+                                {0, 0, 0, 0}};
 
 std::unique_ptr<tree> config;
 bool hidden;
@@ -75,12 +75,14 @@ unsigned int palette[16];
 
 int done;
 int home_fd;
-const char* session_path;
 
 Terminal terminal;
 
 std::string primary_selection;
 std::string clipboard_text;
+
+std::string last_expression, expression_result;
+std::string::size_type expression_offset;
 
 bool clear;
 std::mutex clear_mutex;
@@ -90,7 +92,6 @@ pid_t pid;
 int terminal_fd;
 
 std::mutex buffer_mutex;
-
 }
 
 static void LoadGlyph(wchar_t character) {
@@ -154,19 +155,6 @@ static void CreateLineArtGlyphs(void) {
 #undef CREATE_GLYPH
 
   free(glyph);
-}
-
-static void sighandler(int signal) {
-  static int first = 1;
-
-  fprintf(stderr, "Got signal %d\n", signal);
-
-  if (first) {
-    first = 0;
-    if (session_path) terminal.SaveSession(session_path);
-  }
-
-  exit(EXIT_SUCCESS);
 }
 
 static void UpdateSelection(Time time) {
@@ -233,52 +221,19 @@ void X11_handle_configure(void) {
   glLoadIdentity();
   glOrtho(0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
-  terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-                  FONT_LineHeight(font));
+  {
+    std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
+    terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+                    FONT_LineHeight(font));
+  }
 
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
-}
-
-void run_command(int fd, const char* command, const char* arg) {
-  char path[4096];
-  int command_fd;
-
-  sprintf(path, ".cantera/commands/%s", command);
-
-  // O_CLOEXEC doesn't work with fexecve in Linux 3.12.
-  if (-1 == (command_fd = openat(home_fd, path, O_RDONLY))) {
-    fprintf(stderr, "Failed to open '%s' for reading: %s\n", path,
-            strerror(errno));
-    return;
-  }
-
-  pid_t child = fork();
-
-  if (child == -1) {
-    fprintf(stderr, "fork() failed: %s\n", strerror(errno));
-  } else if (!child) {
-    std::vector<char*> args;
-
-    // If requested, make the child process' standard output write to the
-    // specified file descriptor.
-    if (fd != -1) dup2(fd, 1);
-
-    args.push_back(path);
-    args.push_back(const_cast<char*>(arg));
-    args.push_back(nullptr);
-
-    fexecve(command_fd, &args[0], environ);
-
-    _exit(EXIT_FAILURE);
-  }
-
-  close(command_fd);
 }
 
 void X11ClearThread() {
   for (;;) {
     std::unique_lock<std::mutex> lock(clear_mutex);
-    clear_cond.wait(lock, []{ return clear; });
+    clear_cond.wait(lock, [] { return clear; });
     clear = false;
 
     XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
@@ -323,8 +278,7 @@ static void TTYReadThread() {
     if (!buffer_mutex.try_lock()) {
       // We couldn't get the lock straight away.  If the buffer is not full,
       // and we can get more data within 1 ms, go ahead and read that.
-      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1))
-        continue;
+      if (fill < sizeof(buf) && 0 < poll(&pfd, 1, 1)) continue;
 
       // No new data available, go ahead and paint.
       buffer_mutex.lock();
@@ -336,8 +290,6 @@ static void TTYReadThread() {
 
     X11_Clear();
   }
-
-  if (session_path) terminal.SaveSession(session_path);
 
   done = 1;
 
@@ -372,7 +324,6 @@ static void WaitForDeadChildren(void) {
 
   while (0 < (child_pid = waitpid(-1, &status, WNOHANG))) {
     if (child_pid == pid) {
-      if (session_path) terminal.SaveSession(session_path);
 
       exit(EXIT_SUCCESS);
     }
@@ -438,20 +389,12 @@ int x11_process_events() {
   key_callbacks[KeyInfo(XK_Left, ControlMask)] = key_callbacks[XK_Home];
   key_callbacks[KeyInfo(XK_Right, ControlMask)] = key_callbacks[XK_End];
 
-  /* Inline calculator */
-  key_callbacks[KeyInfo(XK_Menu, ShiftMask)] = [](XKeyEvent* event) {
-    terminal.Select(Terminal::kRangeParenthesis);
-
-    UpdateSelection(event->time);
-
-    XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-  };
   key_callbacks[XK_Menu] = [](XKeyEvent* event) {
-    if (!primary_selection.empty()) {
-      Command(home_fd, "calculate")
-          .SetStdout(terminal_fd)
-          .AddArg(primary_selection)
-          .Run();
+    if (!expression_result.empty() && expression_result != last_expression) {
+      std::string text(last_expression.size() - expression_offset, '\b');
+      text.insert(text.end(), expression_result.begin(),
+                  expression_result.end());
+      WriteToTTY(text.data(), text.length());
     }
   };
 
@@ -772,18 +715,37 @@ int x11_process_events() {
       } break;
 
       case Expose: {
-
         /* Skip to last Expose event */
         while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
           ; /* Do nothing */
 
         Terminal::State draw_state;
+        std::string new_expression;
 
-        std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
-        if (!primary_selection.empty() &&
-            primary_selection != terminal.GetSelection())
-          terminal.ClearSelection();
-        terminal.GetState(&draw_state);
+        {
+          std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
+          if (!primary_selection.empty() &&
+              primary_selection != terminal.GetSelection())
+            terminal.ClearSelection();
+
+          terminal.GetState(&draw_state);
+
+          new_expression = terminal.GetCurrentLine(true);
+        }
+
+        if (new_expression != last_expression) {
+          // TODO(mortehu): Move processing to a separate thread.
+          expression_result.clear();
+          expression::ParseContext::FindAndEval(
+              new_expression, &expression_offset, &expression_result);
+          last_expression = new_expression;
+        } else if (new_expression.empty()) {
+          last_expression.clear();
+          expression_result.clear();
+        }
+
+        if (!expression_result.empty())
+          draw_state.cursor_hint = expression_result;
 
         draw_gl_30(draw_state, font);
       } break;
@@ -858,7 +820,7 @@ static void StartSubprocess(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
-  int i, session_fd;
+  int i;
   const char* home;
   char* palette_str, *token;
 
@@ -896,10 +858,6 @@ int main(int argc, char** argv) {
     return EXIT_SUCCESS;
   }
 
-  session_path = getenv("SESSION_PATH");
-
-  if (session_path) unsetenv("SESSION_PATH");
-
   if (!(home = getenv("HOME")))
     errx(EXIT_FAILURE, "HOME environment variable missing");
 
@@ -929,26 +887,10 @@ int main(int argc, char** argv) {
   font_weight =
       tree_get_integer_default(config.get(), "terminal.font-weight", 200);
 
-  signal(SIGTERM, sighandler);
-  signal(SIGIO, sighandler);
   signal(SIGPIPE, SIG_IGN);
   signal(SIGALRM, SIG_IGN);
 
   setenv("TERM", "xterm", 1);
-
-  if (session_path) {
-    session_fd = open(session_path, O_RDONLY | O_CLOEXEC);
-
-    if (session_fd != -1) {
-      struct winsize ws;
-
-      if (sizeof(ws) == read(session_fd, &ws, sizeof(ws))) {
-        X11_window_width = ws.ws_xpixel;
-        X11_window_height = ws.ws_ypixel;
-      }
-    }
-  } else
-    session_fd = -1;
 
   X11_Setup();
 
@@ -985,34 +927,6 @@ int main(int argc, char** argv) {
   X11_handle_configure();
 
   init_gl_30();
-
-  if (session_fd != -1) {
-    size_t size;
-
-    size = terminal.Size().ws_col * terminal.history_size;
-
-    read(session_fd, &terminal.cursorx, sizeof(terminal.cursorx));
-    read(session_fd, &terminal.cursory, sizeof(terminal.cursory));
-
-    if (terminal.cursorx >= terminal.Size().ws_col ||
-        terminal.cursory >= terminal.Size().ws_row || terminal.cursorx < 0 ||
-        terminal.cursory < 0) {
-      terminal.cursorx = 0;
-      terminal.cursory = 0;
-    } else {
-      read(session_fd, &terminal.chars[0][0],
-           size * sizeof(terminal.chars[0][0]));
-      read(session_fd, &terminal.attr[0][0],
-           size * sizeof(terminal.attr[0][0]));
-
-      if (terminal.cursory >= terminal.Size().ws_row)
-        terminal.cursory = terminal.Size().ws_row - 1;
-      terminal.cursorx = 0;
-    }
-
-    close(session_fd);
-    unlink(session_path);
-  }
 
   std::thread(TTYReadThread).detach();
   std::thread(X11ClearThread).detach();
