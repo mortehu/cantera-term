@@ -1,5 +1,5 @@
 before_install: sudo apt-get update
 
-install: ./install-debian-deps.sh
+install: sudo ./install-debian-deps.sh
 
 language: cpp
