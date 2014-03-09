@@ -68,3 +68,6 @@ EXTRA_DIST = doc/cantera-term.1
 install-data-local:
 	$(INSTALL) -m 0755 -d $(DESTDIR)$(datadir)/applications
 	$(INSTALL_DATA) $(srcdir)/cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop
+
+# Test target name assumed by Travis CI
+test: check
