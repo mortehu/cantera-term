@@ -16,14 +16,8 @@
 /Makefile
 /cantera-term
 /config.h
-/expression-lexer.cc
-/expression-parser.cc
-/expression-parser.hh
 /expression-test
 /fuzz
 /fuzz-test
 /libtool
-/location.hh
-/position.hh
-/stack.hh
 /stamp-h1
