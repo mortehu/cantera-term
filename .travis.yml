@@ -3,3 +3,5 @@ before_install: sudo apt-get update
 install: sudo ./install-debian-deps.sh
 
 language: cpp
+
+script: ./configure --disable-maintainer-mode && make && make test
