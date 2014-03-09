@@ -2,9 +2,9 @@
 
 #include <cassert>
 
-#include <mpreal.h>
 
 #include "base/string.h"
+#include "3rd_party/mpfrc++/mpreal.h"
 
 namespace expression {
 
