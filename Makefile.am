@@ -71,6 +71,8 @@ TESTS = expression-test fuzz-test
 
 EXTRA_DIST = doc/cantera-term.1
 
+expression-parser.hh: expression-parser.cc
+
 install-data-local:
 	$(INSTALL) -m 0755 -d $(DESTDIR)$(datadir)/applications
 	$(INSTALL_DATA) $(srcdir)/cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop
