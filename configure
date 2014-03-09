@@ -6062,6 +6062,14 @@ else
 fi
 
 
+ac_fn_c_check_header_mongrel "$LINENO" "mpfr.h" "ac_cv_header_mpfr_h" "$ac_includes_default"
+if test "x$ac_cv_header_mpfr_h" = xyes; then :
+
+else
+  as_fn_error $? "mpfr.h not found" "$LINENO" 5
+fi
+
+
  if test "x$ac_cv_header_bash_config_h" = xyes; then
   USE_BASH_TRUE=
   USE_BASH_FALSE='#'
