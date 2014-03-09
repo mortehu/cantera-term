@@ -17,8 +17,11 @@ AC_PROG_LEX
 AC_PROG_MAKE_SET
 AC_PROG_YACC
 
-AC_CHECK_HEADER([bash/config.h], [USE_BASH=1], [USE_BASH=0])
-AM_CONDITIONAL(USE_BASH, [test $USE_BASH = 1])
+AC_DEFINE(USE_BASH, [], [Build bash plugin])
+AC_CHECK_HEADER([bash/config.h],
+                [AC_DEFINE(USE_BASH, 1)],
+                [AC_DEFINE(USE_BASH, 0)])
+AM_CONDITIONAL(USE_BASH, [test "x$ac_cv_header_bash_config_h" = xyes])
 
 LT_INIT
 

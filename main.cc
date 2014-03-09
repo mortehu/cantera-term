@@ -40,8 +40,11 @@
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 
+#if USE_BASH
+#  include "bash.h"
+#endif
+
 #include "base/string.h"
-#include "bash.h"
 #include "command.h"
 #include "draw.h"
 #include "expr-parse.h"
@@ -907,12 +910,16 @@ int main(int argc, char** argv) {
   for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
+#if USE_BASH
   Bash bash;
   bash.Setup(&terminal);
+#endif
 
   StartSubprocess(argc, argv);
 
+#if USE_BASH
   bash.Start();
+#endif
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
 
