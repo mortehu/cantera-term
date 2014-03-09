@@ -25,7 +25,12 @@ AM_CONDITIONAL(USE_BASH, [test "x$ac_cv_header_bash_config_h" = xyes])
 
 LT_INIT
 
-PKG_CHECK_MODULES([PACKAGES], [x11 freetype2 >= 9.20 fontconfig >= 2.8.0 libpng >= 1.2 glew])
+PKG_CHECK_MODULES([PACKAGES],
+                  [fontconfig >= 2.8.0
+                   freetype2 >= 9.20
+                   glew
+                   libpng >= 1.2
+                   x11])
 
 AC_SUBST(PACKAGES_CFLAGS)
 AC_SUBST(PACKAGES_LIBS)
