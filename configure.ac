@@ -29,7 +29,6 @@ PKG_CHECK_MODULES([PACKAGES],
                   [fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11])
 
 AC_SUBST(PACKAGES_CFLAGS)

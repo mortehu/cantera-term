@@ -16516,12 +16516,10 @@ if test -n "$PACKAGES_CFLAGS"; then
     { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11\""; } >&5
   ($PKG_CONFIG --exists --print-errors "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11") 2>&5
   ac_status=$?
   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
@@ -16529,7 +16527,6 @@ if test -n "$PACKAGES_CFLAGS"; then
   pkg_cv_PACKAGES_CFLAGS=`$PKG_CONFIG --cflags "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
@@ -16545,12 +16542,10 @@ if test -n "$PACKAGES_LIBS"; then
     { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11\""; } >&5
   ($PKG_CONFIG --exists --print-errors "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11") 2>&5
   ac_status=$?
   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
@@ -16558,7 +16553,6 @@ if test -n "$PACKAGES_LIBS"; then
   pkg_cv_PACKAGES_LIBS=`$PKG_CONFIG --libs "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
@@ -16583,13 +16577,11 @@ fi
 	        PACKAGES_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11" 2>&1`
         else
 	        PACKAGES_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11" 2>&1`
         fi
 	# Put the nasty error message in config.log where it belongs
@@ -16598,7 +16590,6 @@ fi
 	as_fn_error $? "Package requirements (fontconfig >= 2.8.0
                    freetype2 >= 9.20
                    glew
-                   libpng >= 1.2
                    x11) were not met:
 
 $PACKAGES_PKG_ERRORS
