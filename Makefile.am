@@ -4,6 +4,9 @@ noinst_LTLIBRARIES = libcommon.la libexpression.la
 check_PROGRAMS = expression-test fuzz-test
 man1_MANS = doc/cantera-term.1
 
+# Required for Bison to work correctly
+AUTOMAKE_OPTIONS = 1.14
+
 ACLOCAL_AMFLAGS = -I m4
 
 CONVERT = @CONVERT@
