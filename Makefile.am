@@ -11,7 +11,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 CONVERT = @CONVERT@
 
-BUILT_SOURCES = expression-parser.hh
+BUILT_SOURCES = expression-parser.hh location.hh position.hh stack.hh
 
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
@@ -19,16 +19,20 @@ AM_CPPFLAGS = -I/usr/include/freetype2
 AM_YFLAGS = --defines=expression-parser.hh
 
 cantera_term_SOURCES = \
-  draw-gl-30.cc \
+  $(BUILT_SOURCES) \
+  3rd_party/mpfrc++/mpreal.h \
   base/file.cc \
   base/file.h \
   command.cc \
   command.h \
+  draw-gl-30.cc \
+  draw.h \
   font.c \
   font.h \
   glyph.c \
   glyph.h \
   main.cc \
+  opengl.h \
   terminal.cc \
   terminal.h \
   tree.cc \
@@ -67,9 +71,9 @@ libcantera_bash_la_LIBADD = libcommon.la
 libcantera_bash_la_LDFLAGS = -lpthread
 endif
 
-TESTS = expression-test fuzz-test
+TESTS = expression-test fuzz-test lint-debian-package.sh
 
-EXTRA_DIST = doc/cantera-term.1
+EXTRA_DIST = doc/cantera-term.1 cantera-term.desktop
 
 expression-parser.hh: expression-parser.cc
 

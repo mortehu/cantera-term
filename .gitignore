@@ -12,6 +12,7 @@
 *.trs
 *~
 .deps
+.dirstamp
 .libs
 /Makefile
 /cantera-term

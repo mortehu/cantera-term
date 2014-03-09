@@ -84,7 +84,8 @@ bin_PROGRAMS = cantera-term$(EXEEXT)
 check_PROGRAMS = expression-test$(EXEEXT) fuzz-test$(EXEEXT)
 @USE_BASH_TRUE@am__append_1 = bash.cc bash.h
 @USE_BASH_TRUE@am__append_2 = libcantera-bash.la
-TESTS = expression-test$(EXEEXT) fuzz-test$(EXEEXT)
+TESTS = expression-test$(EXEEXT) fuzz-test$(EXEEXT) \
+	lint-debian-package.sh
 subdir = .
 DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(top_srcdir)/configure $(am__configure_deps) \
@@ -162,15 +163,17 @@ libexpression_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_CXXFLAGS) $(CXXFLAGS) $(libexpression_la_LDFLAGS) \
 	$(LDFLAGS) -o $@
 PROGRAMS = $(bin_PROGRAMS)
-am__cantera_term_SOURCES_DIST = draw-gl-30.cc base/file.cc base/file.h \
-	command.cc command.h font.c font.h glyph.c glyph.h main.cc \
-	terminal.cc terminal.h tree.cc tree.h x11.c x11.h bash.cc \
-	bash.h
-@USE_BASH_TRUE@am__objects_1 = bash.$(OBJEXT)
-am_cantera_term_OBJECTS = draw-gl-30.$(OBJEXT) base/file.$(OBJEXT) \
-	command.$(OBJEXT) font.$(OBJEXT) glyph.$(OBJEXT) \
-	main.$(OBJEXT) terminal.$(OBJEXT) tree.$(OBJEXT) x11.$(OBJEXT) \
-	$(am__objects_1)
+am__cantera_term_SOURCES_DIST = expression-parser.hh location.hh \
+	position.hh stack.hh 3rd_party/mpfrc++/mpreal.h base/file.cc \
+	base/file.h command.cc command.h draw-gl-30.cc draw.h font.c \
+	font.h glyph.c glyph.h main.cc opengl.h terminal.cc terminal.h \
+	tree.cc tree.h x11.c x11.h bash.cc bash.h
+am__objects_1 =
+@USE_BASH_TRUE@am__objects_2 = bash.$(OBJEXT)
+am_cantera_term_OBJECTS = $(am__objects_1) base/file.$(OBJEXT) \
+	command.$(OBJEXT) draw-gl-30.$(OBJEXT) font.$(OBJEXT) \
+	glyph.$(OBJEXT) main.$(OBJEXT) terminal.$(OBJEXT) \
+	tree.$(OBJEXT) x11.$(OBJEXT) $(am__objects_2)
 cantera_term_OBJECTS = $(am_cantera_term_OBJECTS)
 am__DEPENDENCIES_1 =
 cantera_term_DEPENDENCIES = $(am__DEPENDENCIES_1) libexpression.la \
@@ -624,13 +627,14 @@ man1_MANS = doc/cantera-term.1
 AUTOMAKE_OPTIONS = 1.14
 ACLOCAL_AMFLAGS = -I m4
 CONVERT = @CONVERT@
-BUILT_SOURCES = expression-parser.hh
+BUILT_SOURCES = expression-parser.hh location.hh position.hh stack.hh
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
 AM_YFLAGS = --defines=expression-parser.hh
-cantera_term_SOURCES = draw-gl-30.cc base/file.cc base/file.h \
-	command.cc command.h font.c font.h glyph.c glyph.h main.cc \
+cantera_term_SOURCES = $(BUILT_SOURCES) 3rd_party/mpfrc++/mpreal.h \
+	base/file.cc base/file.h command.cc command.h draw-gl-30.cc \
+	draw.h font.c font.h glyph.c glyph.h main.cc opengl.h \
 	terminal.cc terminal.h tree.cc tree.h x11.c x11.h \
 	$(am__append_1)
 cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libexpression.la libcommon.la
@@ -656,7 +660,7 @@ fuzz_test_SOURCES = fuzz-test.cc terminal.h terminal.cc
 @USE_BASH_TRUE@libcantera_bash_la_CPPFLAGS = -I/usr/include/bash
 @USE_BASH_TRUE@libcantera_bash_la_LIBADD = libcommon.la
 @USE_BASH_TRUE@libcantera_bash_la_LDFLAGS = -lpthread
-EXTRA_DIST = doc/cantera-term.1
+EXTRA_DIST = doc/cantera-term.1 cantera-term.desktop
 all: $(BUILT_SOURCES) config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -1196,6 +1200,13 @@ expression-test.log: expression-test$(EXEEXT)
 fuzz-test.log: fuzz-test$(EXEEXT)
 	@p='fuzz-test$(EXEEXT)'; \
 	b='fuzz-test'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
+lint-debian-package.sh.log: lint-debian-package.sh
+	@p='lint-debian-package.sh'; \
+	b='lint-debian-package.sh'; \
 	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
