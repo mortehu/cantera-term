@@ -171,6 +171,8 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
 
 static bool IsBlank(const Terminal::State& state, unsigned int x, unsigned int y, size_t length) {
   if (y >= state.height || x + length > state.width) return false;
+  if (state.cursor_y == y && state.cursor_x >= x && state.cursor_x < x + length)
+    return false;
   for (size_t i = 0; i < length; ++i) {
     if (state.chars[y * state.width + x + i] > ' ') return false;
     if (state.attr[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
