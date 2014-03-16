@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
   TestInvalidExpression("hex(hex(16))");
 
   TestAutoExpression("[foo@bar:~/xyz/2]$ 2*10", "20");
+  TestAutoExpression("[foo@bar:~/xyz/2]$ 1", "1");
 
   return EXIT_SUCCESS;
 }
