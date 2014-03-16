@@ -127,7 +127,7 @@ static GLuint load_shader(const char* error_context, const char* string,
     glGetShaderInfoLog(result, sizeof(log), &logLength, log);
 
     errx(EXIT_FAILURE, "%s: glCompileShader failed: %.*s", error_context,
-         (int)logLength, log);
+         (int) logLength, log);
   }
 
   return result;
@@ -155,7 +155,7 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
     GLsizei logLength;
     glGetProgramInfoLog(result.handle, sizeof(log), &logLength, log);
 
-    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int)logLength, log);
+    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int) logLength, log);
   }
 
   glUseProgram(result.handle);
@@ -169,13 +169,15 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
   return result;
 }
 
-static bool IsBlank(const Terminal::State& state, unsigned int x, unsigned int y, size_t length) {
+static bool IsBlank(const Terminal::State& state, unsigned int x,
+                    unsigned int y, size_t length) {
   if (y >= state.height || x + length > state.width) return false;
   if (state.cursor_y == y && state.cursor_x >= x && state.cursor_x < x + length)
     return false;
   for (size_t i = 0; i < length; ++i) {
     if (state.chars[y * state.width + x + i] > ' ') return false;
-    if (state.attr[y * state.width + x + i].extra & ATTR_UNDERLINE) return false;
+    if (state.attr[y * state.width + x + i].extra & ATTR_UNDERLINE)
+      return false;
   }
   return true;
 }
@@ -323,7 +325,8 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
       unsigned int hint_y = state.cursor_y;
       unsigned int hint_x = state.width - hint.length();
       if (IsBlank(state, hint_x, hint_y, hint.length())) {
-        draw_String(hint.c_str(), hint_x * spaceWidth, hint_y * lineHeight + ascent, font,
+        draw_String(hint.c_str(), hint_x * spaceWidth,
+                    hint_y * lineHeight + ascent, font,
                     Terminal::Color(255, 255, 255));
       }
     }
