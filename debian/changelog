@@ -1,5 +1,5 @@
-cantera (26-1) unstable; urgency=low
+cantera-term (31-1) unstable; urgency=low
 
-  * Initial release
+  * Initial release.
 
- -- Morten Hustveit <mortehu@debian.org>  Wed, 14 Oct 2009 13:14:39 +0200
+ -- Morten Hustveit <morten.hustveit@gmail.org>  Sun, 09 Mar 2014 14:16:52 -0700

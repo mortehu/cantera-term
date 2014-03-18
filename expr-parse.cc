@@ -9,8 +9,11 @@ bool ParseContext::FindAndEval(const std::string& input,
                                std::string* result) {
   ParseContext context;
 
-  for (std::string::size_type i = 0; i + 1 < input.length(); ++i) {
+  for (std::string::size_type i = 0; i < input.length(); ++i) {
     if (isspace(input[i])) continue;
+
+    // Avoid interpreting "apple" as the expression "e".
+    if (i > 0 && isalpha(input[i - 1])) continue;
 
     std::string suffix = input.substr(i);
 
