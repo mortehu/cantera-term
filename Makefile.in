@@ -82,8 +82,6 @@ host_triplet = @host@
 target_triplet = @target@
 bin_PROGRAMS = cantera-term$(EXEEXT)
 check_PROGRAMS = expression-test$(EXEEXT) fuzz-test$(EXEEXT)
-@USE_BASH_TRUE@am__append_1 = bash.cc bash.h
-@USE_BASH_TRUE@am__append_2 = libcantera-bash.la
 TESTS = expression-test$(EXEEXT) fuzz-test$(EXEEXT) \
 	lint-debian-package.sh
 subdir = .
@@ -136,24 +134,14 @@ am__uninstall_files_from_dir = { \
 am__installdirs = "$(DESTDIR)$(libdir)" "$(DESTDIR)$(bindir)" \
 	"$(DESTDIR)$(man1dir)"
 LTLIBRARIES = $(lib_LTLIBRARIES) $(noinst_LTLIBRARIES)
-@USE_BASH_TRUE@libcantera_bash_la_DEPENDENCIES = libcommon.la
-am__libcantera_bash_la_SOURCES_DIST = bash-builtin.cc
-@USE_BASH_TRUE@am_libcantera_bash_la_OBJECTS =  \
-@USE_BASH_TRUE@	libcantera_bash_la-bash-builtin.lo
-libcantera_bash_la_OBJECTS = $(am_libcantera_bash_la_OBJECTS)
-AM_V_lt = $(am__v_lt_@AM_V@)
-am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
-am__v_lt_0 = --silent
-am__v_lt_1 = 
-libcantera_bash_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
-	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
-	$(AM_CXXFLAGS) $(CXXFLAGS) $(libcantera_bash_la_LDFLAGS) \
-	$(LDFLAGS) -o $@
-@USE_BASH_TRUE@am_libcantera_bash_la_rpath = -rpath $(libdir)
 libcommon_la_LIBADD =
 am__dirstamp = $(am__leading_dot)dirstamp
 am_libcommon_la_OBJECTS = base/string.lo message.lo
 libcommon_la_OBJECTS = $(am_libcommon_la_OBJECTS)
+AM_V_lt = $(am__v_lt_@AM_V@)
+am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
+am__v_lt_0 = --silent
+am__v_lt_1 = 
 libexpression_la_LIBADD =
 am_libexpression_la_OBJECTS = expression-lexer.lo expression-parser.lo \
 	expr-parse.lo expr.lo
@@ -163,21 +151,18 @@ libexpression_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_CXXFLAGS) $(CXXFLAGS) $(libexpression_la_LDFLAGS) \
 	$(LDFLAGS) -o $@
 PROGRAMS = $(bin_PROGRAMS)
-am__cantera_term_SOURCES_DIST = expression-parser.hh location.hh \
-	position.hh stack.hh 3rd_party/mpfrc++/mpreal.h base/file.cc \
-	base/file.h command.cc command.h draw-gl-30.cc draw.h font.c \
-	font.h glyph.c glyph.h main.cc opengl.h terminal.cc terminal.h \
-	tree.cc tree.h x11.c x11.h bash.cc bash.h
 am__objects_1 =
-@USE_BASH_TRUE@am__objects_2 = bash.$(OBJEXT)
 am_cantera_term_OBJECTS = $(am__objects_1) base/file.$(OBJEXT) \
 	command.$(OBJEXT) draw-gl-30.$(OBJEXT) font.$(OBJEXT) \
 	glyph.$(OBJEXT) main.$(OBJEXT) terminal.$(OBJEXT) \
-	tree.$(OBJEXT) x11.$(OBJEXT) $(am__objects_2)
+	tree.$(OBJEXT) x11.$(OBJEXT)
 cantera_term_OBJECTS = $(am_cantera_term_OBJECTS)
 am__DEPENDENCIES_1 =
 cantera_term_DEPENDENCIES = $(am__DEPENDENCIES_1) libexpression.la \
 	libcommon.la
+cantera_term_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(AM_CXXFLAGS) \
+	$(CXXFLAGS) $(cantera_term_LDFLAGS) $(LDFLAGS) -o $@
 am_expression_test_OBJECTS = expression-test.$(OBJEXT)
 expression_test_OBJECTS = $(am_expression_test_OBJECTS)
 expression_test_DEPENDENCIES = libexpression.la libcommon.la
@@ -255,12 +240,11 @@ AM_V_YACC = $(am__v_YACC_@AM_V@)
 am__v_YACC_ = $(am__v_YACC_@AM_DEFAULT_V@)
 am__v_YACC_0 = @echo "  YACC    " $@;
 am__v_YACC_1 = 
-SOURCES = $(libcantera_bash_la_SOURCES) $(libcommon_la_SOURCES) \
-	$(libexpression_la_SOURCES) $(cantera_term_SOURCES) \
-	$(expression_test_SOURCES) $(fuzz_test_SOURCES)
-DIST_SOURCES = $(am__libcantera_bash_la_SOURCES_DIST) \
-	$(libcommon_la_SOURCES) $(libexpression_la_SOURCES) \
-	$(am__cantera_term_SOURCES_DIST) $(expression_test_SOURCES) \
+SOURCES = $(libcommon_la_SOURCES) $(libexpression_la_SOURCES) \
+	$(cantera_term_SOURCES) $(expression_test_SOURCES) \
+	$(fuzz_test_SOURCES)
+DIST_SOURCES = $(libcommon_la_SOURCES) $(libexpression_la_SOURCES) \
+	$(cantera_term_SOURCES) $(expression_test_SOURCES) \
 	$(fuzz_test_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
@@ -619,7 +603,7 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-lib_LTLIBRARIES = $(am__append_2)
+lib_LTLIBRARIES = 
 noinst_LTLIBRARIES = libcommon.la libexpression.la
 man1_MANS = doc/cantera-term.1
 
@@ -632,12 +616,30 @@ AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS)
 AM_CPPFLAGS = -I/usr/include/freetype2
 AM_YFLAGS = --defines=expression-parser.hh
-cantera_term_SOURCES = $(BUILT_SOURCES) 3rd_party/mpfrc++/mpreal.h \
-	base/file.cc base/file.h command.cc command.h draw-gl-30.cc \
-	draw.h font.c font.h glyph.c glyph.h main.cc opengl.h \
-	terminal.cc terminal.h tree.cc tree.h x11.c x11.h \
-	$(am__append_1)
+cantera_term_SOURCES = \
+  $(BUILT_SOURCES) \
+  3rd_party/mpfrc++/mpreal.h \
+  base/file.cc \
+  base/file.h \
+  command.cc \
+  command.h \
+  draw-gl-30.cc \
+  draw.h \
+  font.c \
+  font.h \
+  glyph.c \
+  glyph.h \
+  main.cc \
+  opengl.h \
+  terminal.cc \
+  terminal.h \
+  tree.cc \
+  tree.h \
+  x11.c \
+  x11.h
+
 cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libexpression.la libcommon.la
+cantera_term_LDFLAGS = -z relro
 libexpression_la_SOURCES = \
   expression-lexer.ll \
   expression-parser.yy \
@@ -656,10 +658,6 @@ libcommon_la_SOURCES = \
 expression_test_SOURCES = expression-test.cc
 expression_test_LDADD = libexpression.la libcommon.la
 fuzz_test_SOURCES = fuzz-test.cc terminal.h terminal.cc
-@USE_BASH_TRUE@libcantera_bash_la_SOURCES = bash-builtin.cc
-@USE_BASH_TRUE@libcantera_bash_la_CPPFLAGS = -I/usr/include/bash
-@USE_BASH_TRUE@libcantera_bash_la_LIBADD = libcommon.la
-@USE_BASH_TRUE@libcantera_bash_la_LDFLAGS = -lpthread
 EXTRA_DIST = doc/cantera-term.1 cantera-term.desktop
 all: $(BUILT_SOURCES) config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -761,9 +759,6 @@ clean-noinstLTLIBRARIES:
 	  echo rm -f $${locs}; \
 	  rm -f $${locs}; \
 	}
-
-libcantera-bash.la: $(libcantera_bash_la_OBJECTS) $(libcantera_bash_la_DEPENDENCIES) $(EXTRA_libcantera_bash_la_DEPENDENCIES) 
-	$(AM_V_CXXLD)$(libcantera_bash_la_LINK) $(am_libcantera_bash_la_rpath) $(libcantera_bash_la_OBJECTS) $(libcantera_bash_la_LIBADD) $(LIBS)
 base/$(am__dirstamp):
 	@$(MKDIR_P) base
 	@: > base/$(am__dirstamp)
@@ -840,7 +835,7 @@ base/file.$(OBJEXT): base/$(am__dirstamp) \
 
 cantera-term$(EXEEXT): $(cantera_term_OBJECTS) $(cantera_term_DEPENDENCIES) $(EXTRA_cantera_term_DEPENDENCIES) 
 	@rm -f cantera-term$(EXEEXT)
-	$(AM_V_CXXLD)$(CXXLINK) $(cantera_term_OBJECTS) $(cantera_term_LDADD) $(LIBS)
+	$(AM_V_CXXLD)$(cantera_term_LINK) $(cantera_term_OBJECTS) $(cantera_term_LDADD) $(LIBS)
 
 expression-test$(EXEEXT): $(expression_test_OBJECTS) $(expression_test_DEPENDENCIES) $(EXTRA_expression_test_DEPENDENCIES) 
 	@rm -f expression-test$(EXEEXT)
@@ -858,7 +853,6 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bash.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/command.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/draw-gl-30.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/expr-parse.Plo@am__quote@
@@ -869,7 +863,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/font.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fuzz-test.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/glyph.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libcantera_bash_la-bash-builtin.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/message.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/terminal.Po@am__quote@
@@ -925,13 +918,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LTCXXCOMPILE) -c -o $@ $<
-
-libcantera_bash_la-bash-builtin.lo: bash-builtin.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libcantera_bash_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libcantera_bash_la-bash-builtin.lo -MD -MP -MF $(DEPDIR)/libcantera_bash_la-bash-builtin.Tpo -c -o libcantera_bash_la-bash-builtin.lo `test -f 'bash-builtin.cc' || echo '$(srcdir)/'`bash-builtin.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libcantera_bash_la-bash-builtin.Tpo $(DEPDIR)/libcantera_bash_la-bash-builtin.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='bash-builtin.cc' object='libcantera_bash_la-bash-builtin.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libcantera_bash_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libcantera_bash_la-bash-builtin.lo `test -f 'bash-builtin.cc' || echo '$(srcdir)/'`bash-builtin.cc
 
 .ll.cc:
 	$(AM_V_LEX)$(am__skiplex) $(SHELL) $(YLWRAP) $< $(LEX_OUTPUT_ROOT).c $@ -- $(LEXCOMPILE)
@@ -1547,6 +1533,9 @@ expression-parser.hh: expression-parser.cc
 install-data-local:
 	$(INSTALL) -m 0755 -d $(DESTDIR)$(datadir)/applications
 	$(INSTALL_DATA) $(srcdir)/cantera-term.desktop $(DESTDIR)$(datadir)/applications/cantera-term.desktop
+
+# Test target name assumed by Travis CI
+test: check
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

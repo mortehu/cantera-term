@@ -655,8 +655,6 @@ LD
 FGREP
 SED
 LIBTOOL
-USE_BASH_FALSE
-USE_BASH_TRUE
 YFLAGS
 YACC
 LEXLIB
@@ -6047,36 +6045,6 @@ fi
   test -n "$YACC" && break
 done
 test -n "$YACC" || YACC="yacc"
-
-
-
-$as_echo "#define USE_BASH /**/" >>confdefs.h
-
-ac_fn_c_check_header_mongrel "$LINENO" "bash/config.h" "ac_cv_header_bash_config_h" "$ac_includes_default"
-if test "x$ac_cv_header_bash_config_h" = xyes; then :
-  $as_echo "#define USE_BASH 1" >>confdefs.h
-
-else
-  $as_echo "#define USE_BASH 0" >>confdefs.h
-
-fi
-
-
-ac_fn_c_check_header_mongrel "$LINENO" "mpfr.h" "ac_cv_header_mpfr_h" "$ac_includes_default"
-if test "x$ac_cv_header_mpfr_h" = xyes; then :
-
-else
-  as_fn_error $? "mpfr.h not found" "$LINENO" 5
-fi
-
-
- if test "x$ac_cv_header_bash_config_h" = xyes; then
-  USE_BASH_TRUE=
-  USE_BASH_FALSE='#'
-else
-  USE_BASH_TRUE='#'
-  USE_BASH_FALSE=
-fi
 
 
 case `pwd` in
@@ -16914,10 +16882,6 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${am__fastdepCXX_TRUE}" && test -z "${am__fastdepCXX_FALSE}"; then
   as_fn_error $? "conditional \"am__fastdepCXX\" was never defined.
-Usually this means the macro was only invoked conditionally." "$LINENO" 5
-fi
-if test -z "${USE_BASH_TRUE}" && test -z "${USE_BASH_FALSE}"; then
-  as_fn_error $? "conditional \"USE_BASH\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 

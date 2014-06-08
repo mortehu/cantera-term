@@ -40,6 +40,7 @@ cantera_term_SOURCES = \
   x11.c \
   x11.h
 cantera_term_LDADD = $(PACKAGES_LIBS) -lutil -lm -lGL libexpression.la libcommon.la
+cantera_term_LDFLAGS = -z relro
 
 libexpression_la_SOURCES = \
   expression-lexer.ll \
@@ -60,16 +61,6 @@ expression_test_SOURCES = expression-test.cc
 expression_test_LDADD = libexpression.la libcommon.la
 
 fuzz_test_SOURCES = fuzz-test.cc terminal.h terminal.cc
-
-if USE_BASH
-cantera_term_SOURCES += bash.cc bash.h
-lib_LTLIBRARIES += libcantera-bash.la
-
-libcantera_bash_la_SOURCES = bash-builtin.cc
-libcantera_bash_la_CPPFLAGS = -I/usr/include/bash
-libcantera_bash_la_LIBADD = libcommon.la
-libcantera_bash_la_LDFLAGS = -lpthread
-endif
 
 TESTS = expression-test fuzz-test lint-debian-package.sh
 

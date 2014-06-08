@@ -19,13 +19,6 @@ AC_PROG_LEX
 AC_PROG_MAKE_SET
 AC_PROG_YACC
 
-AC_DEFINE(USE_BASH, [], [Build bash plugin])
-AC_CHECK_HEADER([bash/config.h],
-                [AC_DEFINE(USE_BASH, 1)],
-                [AC_DEFINE(USE_BASH, 0)])
-AC_CHECK_HEADER([mpfr.h], [], [AC_ERROR([mpfr.h not found])])
-AM_CONDITIONAL(USE_BASH, [test "x$ac_cv_header_bash_config_h" = xyes])
-
 LT_INIT
 
 PKG_CHECK_MODULES([PACKAGES],
