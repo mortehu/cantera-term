@@ -1,6 +1,9 @@
 [Desktop Entry]
-Encoding=UTF-8
-Name=Cantera Terminal
-TryExec=cantera-term
+Categories=System;TerminalEmulator;Utility;
+Comment=terminal emulator for the X window system
 Exec=cantera-term
 Icon=terminal
+Name=Cantera Terminal
+Terminal=false
+Type=Application
+X-Desktop-File-Install-Version=0.22
