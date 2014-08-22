@@ -19,4 +19,4 @@ cd cantera-term-31
 cp -va "$SRCDIR"/debian .
 dpkg-buildpackage -us -uc -rfakeroot
 cd ..
-lintian --fail-on-warnings --suppress-tags new-package-should-close-itp-bug *.changes
+lintian --suppress-tags new-package-should-close-itp-bug *.changes
