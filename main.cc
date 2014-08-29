@@ -740,7 +740,8 @@ int x11_process_events() {
           // TODO(mortehu): Move processing to a separate thread.
           expression_result.clear();
           expression::ParseContext::FindAndEval(
-              new_expression, &expression_offset, &expression_result);
+              new_expression, &expression_offset, &expression_result,
+              expression::ParseContext::kIgnoreTrivial);
           last_expression = new_expression;
         } else if (new_expression.empty()) {
           last_expression.clear();

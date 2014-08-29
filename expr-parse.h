@@ -2,6 +2,7 @@
 #define EXPR_PARSE_H_ 1
 
 #include <cstdio>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -12,11 +13,17 @@ namespace expression {
 
 class ParseContext {
  public:
+  enum Flag {
+    // Ignore expressions whose result are exactly equal to their input.
+    kIgnoreTrivial = 0x0001,
+  };
+
   // Finds the longest suffix of `input` that is a valid expression, evaluates
   // its, and stores the value in `result`.  Returns true on success, and false
   // on error.
   static bool FindAndEval(const std::string& input,
-                          std::string::size_type* offset, std::string* result);
+                          std::string::size_type* offset, std::string* result,
+                          uint16_t flags = 0);
 
   void SetError(const yy::ExpressionParser::location_type& l,
                 const std::string& error);

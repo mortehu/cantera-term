@@ -6,7 +6,8 @@ namespace expression {
 
 bool ParseContext::FindAndEval(const std::string& input,
                                std::string::size_type* offset,
-                               std::string* result) {
+                               std::string* result,
+                               uint16_t flags) {
   ParseContext context;
 
   for (std::string::size_type i = 0; i < input.length(); ++i) {
@@ -20,6 +21,11 @@ bool ParseContext::FindAndEval(const std::string& input,
     std::unique_ptr<Expression> expr(context.ParseExpression(suffix));
 
     if (expr && expr->ToString(result)) {
+      if ((flags & kIgnoreTrivial) && *result == suffix) {
+        result->clear();
+        return false;
+      }
+
       *offset = i;
 
       return true;
