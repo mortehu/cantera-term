@@ -217,7 +217,14 @@ static void paste(Atom selection, Time time) {
 }
 
 void X11_handle_configure(void) {
+  static unsigned int configured_width, configured_height;
   /* Resize event -- create new buffers and copy+clip old data */
+
+  if (X11_window_width == configured_width &&
+      X11_window_height == configured_height)
+    return;
+  configured_width = X11_window_width;
+  configured_height = X11_window_height;
 
   glViewport(0, 0, X11_window_width, X11_window_height);
   glMatrixMode(GL_PROJECTION);
