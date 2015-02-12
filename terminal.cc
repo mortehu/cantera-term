@@ -436,17 +436,21 @@ void Terminal::ProcessData(const void* buf, size_t count) {
           escape = 0;
         else if (param[0] == -2) {
           /* Handle ESC ] Ps ; Pt BEL */
+
+          if (*begin == '\007') {
+            escape = 0;
+            break;
+          }
+
           if (escape == 2) {
             if (*begin >= '0' && *begin <= '9') {
               param[1] *= 10;
               param[1] += *begin - '0';
-            } else
+            } else if (*begin == ';') {
               ++escape;
+            }
           } else {
-            if (*begin != '\007') {
-              /* XXX: Store text */
-            } else
-              escape = 0;
+            /* XXX: Store text */
           }
         } else if (param[0] == -4) {
           switch (*begin) {
