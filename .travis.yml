@@ -2,12 +2,13 @@ sudo: false
 
 addons:
   apt:
-    - libfreetype6-dev
-    - libglew-dev
-    - libmpfr-dev
-    - libxft-dev
-    - libxrender-dev
-    - lintian
+    packages:
+      - libfreetype6-dev
+      - libglew-dev
+      - libmpfr-dev
+      - libxft-dev
+      - libxrender-dev
+      - lintian
 
 language: cpp
 
