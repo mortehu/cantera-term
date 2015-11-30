@@ -51,7 +51,7 @@ static const Terminal::Attr kDefaultAttr(Terminal::Color(127, 127, 127),
 
 }  // namespace
 
-Terminal::Terminal()
+Terminal::Terminal(std::function<void(const void*, size_t)>&& write_function)
     : reverse(),
       history_size(),
       scrolltop(),
@@ -65,6 +65,7 @@ Terminal::Terminal()
       select_end(-1),
       focused(),
       history_scroll(),
+      write_function_(std::move(write_function)),
       nch_(),
       savedx_(),
       savedy_() {}
@@ -757,6 +758,13 @@ void Terminal::ProcessData(const void* buf, size_t count) {
               }
 
             } break;
+
+            case 'c':
+              if (!param[0]) {
+                // Terminal attributes requested.
+                write_function_("\033[?1;0c", 7);
+              }
+              break;
 
             case 'd':
 

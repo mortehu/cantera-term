@@ -1,6 +1,7 @@
 #ifndef TERMINAL_H_
 #define TERMINAL_H_ 1
 
+#include <functional>
 #include <memory>
 #include <set>
 #include <string.h>
@@ -79,7 +80,7 @@ class Terminal {
     std::string cursor_hint;
   };
 
-  Terminal();
+  Terminal(std::function<void(const void*, size_t)>&& write_function);
 
   void SetANSIColor(unsigned int index, const Color& color) {
     ansi_colors_[index] = color;
@@ -149,6 +150,8 @@ class Terminal {
   Attr EffectiveAttribute() const {
     return reverse ? attribute_.Reverse() : attribute_;
   }
+
+  std::function<void(const void*, size_t)> write_function_;
 
   struct winsize size_;
 

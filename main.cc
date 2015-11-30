@@ -79,7 +79,7 @@ unsigned int palette[16];
 int done;
 int home_fd;
 
-Terminal terminal;
+std::unique_ptr<Terminal> terminal;
 
 std::string primary_selection;
 std::string clipboard_text;
@@ -161,13 +161,13 @@ static void CreateLineArtGlyphs(void) {
 }
 
 static void UpdateSelection(Time time) {
-  primary_selection = terminal.GetSelection();
+  primary_selection = terminal->GetSelection();
 
   XSetSelectionOwner(X11_display, XA_PRIMARY, X11_window, time);
 
   if (X11_window != XGetSelectionOwner(X11_display, XA_PRIMARY)) {
     /* We did not get the selection */
-    terminal.ClearSelection();
+    terminal->ClearSelection();
     primary_selection.clear();
   }
 }
@@ -233,11 +233,11 @@ void X11_handle_configure(void) {
 
   {
     std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
-    terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+    terminal->Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
                     FONT_LineHeight(font));
   }
 
-  ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
+  ioctl(terminal_fd, TIOCSWINSZ, &terminal->Size());
 }
 
 void X11ClearThread() {
@@ -294,7 +294,7 @@ static void TTYReadThread() {
       buffer_mutex.lock();
     }
 
-    terminal.ProcessData(buf, fill);
+    terminal->ProcessData(buf, fill);
     fill = 0;
     buffer_mutex.unlock();
 
@@ -384,14 +384,14 @@ int x11_process_events() {
   MAP_KEY_TO_STRING(XK_F12, "\033[24~");
   MAP_KEY_TO_STRING(XK_Insert, "\033[2~");
   MAP_KEY_TO_STRING(XK_Delete, "\033[3~");
-  MAP_KEY_TO_STRING(XK_Home, terminal.appcursor ? "\033OH" : "\033[H");
-  MAP_KEY_TO_STRING(XK_End, terminal.appcursor ? "\033OF" : "\033[F");
+  MAP_KEY_TO_STRING(XK_Home, terminal->appcursor ? "\033OH" : "\033[H");
+  MAP_KEY_TO_STRING(XK_End, terminal->appcursor ? "\033OF" : "\033[F");
   MAP_KEY_TO_STRING(XK_Page_Up, "\033[5~");
   MAP_KEY_TO_STRING(XK_Page_Down, "\033[6~");
-  MAP_KEY_TO_STRING(XK_Up, terminal.appcursor ? "\033OA" : "\033[A");
-  MAP_KEY_TO_STRING(XK_Down, terminal.appcursor ? "\033OB" : "\033[B");
-  MAP_KEY_TO_STRING(XK_Right, terminal.appcursor ? "\033OC" : "\033[C");
-  MAP_KEY_TO_STRING(XK_Left, terminal.appcursor ? "\033OD" : "\033[D");
+  MAP_KEY_TO_STRING(XK_Up, terminal->appcursor ? "\033OA" : "\033[A");
+  MAP_KEY_TO_STRING(XK_Down, terminal->appcursor ? "\033OB" : "\033[B");
+  MAP_KEY_TO_STRING(XK_Right, terminal->appcursor ? "\033OC" : "\033[C");
+  MAP_KEY_TO_STRING(XK_Left, terminal->appcursor ? "\033OD" : "\033[D");
 
 #undef MAP_KEY_TO_STRING
 
@@ -472,40 +472,40 @@ int x11_process_events() {
           if ((modifier_mask & ShiftMask) && key_sym == XK_Up) {
             history_scroll_reset = 0;
 
-            if (terminal.history_scroll < scroll_extra) {
-              ++terminal.history_scroll;
+            if (terminal->history_scroll < scroll_extra) {
+              ++terminal->history_scroll;
               XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
             }
           } else if ((modifier_mask & ShiftMask) && key_sym == XK_Down) {
             history_scroll_reset = 0;
 
-            if (terminal.history_scroll) {
-              --terminal.history_scroll;
+            if (terminal->history_scroll) {
+              --terminal->history_scroll;
               XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
             }
           } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Up) {
             history_scroll_reset = 0;
 
-            terminal.history_scroll += terminal.Size().ws_row;
+            terminal->history_scroll += terminal->Size().ws_row;
 
-            if (terminal.history_scroll > scroll_extra)
-              terminal.history_scroll = scroll_extra;
+            if (terminal->history_scroll > scroll_extra)
+              terminal->history_scroll = scroll_extra;
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Down) {
             history_scroll_reset = 0;
 
-            if (terminal.history_scroll > terminal.Size().ws_row)
-              terminal.history_scroll -= terminal.Size().ws_row;
+            if (terminal->history_scroll > terminal->Size().ws_row)
+              terminal->history_scroll -= terminal->Size().ws_row;
             else
-              terminal.history_scroll = 0;
+              terminal->history_scroll = 0;
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           } else if ((modifier_mask & ShiftMask) && key_sym == XK_Home) {
             history_scroll_reset = 0;
 
-            if (terminal.history_scroll != scroll_extra) {
-              terminal.history_scroll = scroll_extra;
+            if (terminal->history_scroll != scroll_extra) {
+              terminal->history_scroll = scroll_extra;
 
               XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
             }
@@ -526,8 +526,8 @@ int x11_process_events() {
             }
           }
 
-          if (history_scroll_reset && terminal.history_scroll) {
-            terminal.history_scroll = 0;
+          if (history_scroll_reset && terminal->history_scroll) {
+            terminal->history_scroll = 0;
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           }
 
@@ -542,23 +542,23 @@ int x11_process_events() {
           int x, y;
           unsigned int size;
 
-          size = terminal.history_size * terminal.Size().ws_col;
+          size = terminal->history_size * terminal->Size().ws_col;
 
           x = event.xbutton.x / FONT_SpaceWidth(font);
           y = event.xbutton.y / FONT_LineHeight(font);
 
-          size_t new_select_end = y * terminal.Size().ws_col + x;
+          size_t new_select_end = y * terminal->Size().ws_col + x;
 
-          if (terminal.history_scroll)
+          if (terminal->history_scroll)
             new_select_end +=
-                size - (terminal.history_scroll * terminal.Size().ws_col);
+                size - (terminal->history_scroll * terminal->Size().ws_col);
 
           if (event.xbutton.state & ControlMask)
-            terminal.FindRange(Terminal::kRangeWordOrURL,
-                               &terminal.select_begin, &new_select_end);
+            terminal->FindRange(Terminal::kRangeWordOrURL,
+                               &terminal->select_begin, &new_select_end);
 
-          if (new_select_end != terminal.select_end) {
-            terminal.select_end = new_select_end;
+          if (new_select_end != terminal->select_end) {
+            terminal->select_end = new_select_end;
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
           }
@@ -568,7 +568,7 @@ int x11_process_events() {
 
       case ButtonPress:
 
-        XSetInputFocus(X11_display, X11_window, RevertToPointerRoot,
+        XSetInputFocus(X11_display, X11_window, RevertToParent,
                        event.xkey.time);
 
         switch (event.xbutton.button) {
@@ -576,27 +576,27 @@ int x11_process_events() {
             // Left button.
             primary_selection.clear();
 
-            size_t size = terminal.history_size * terminal.Size().ws_col;
+            size_t size = terminal->history_size * terminal->Size().ws_col;
 
             int x =
-                std::min(static_cast<unsigned int>(terminal.Size().ws_col) - 1,
+                std::min(static_cast<unsigned int>(terminal->Size().ws_col) - 1,
                          std::max(0U, event.xbutton.x / FONT_SpaceWidth(font)));
             int y =
-                std::min(static_cast<unsigned int>(terminal.Size().ws_row) - 1,
+                std::min(static_cast<unsigned int>(terminal->Size().ws_row) - 1,
                          std::max(0U, event.xbutton.y / FONT_LineHeight(font)));
 
-            terminal.select_begin = y * terminal.Size().ws_col + x;
+            terminal->select_begin = y * terminal->Size().ws_col + x;
 
-            if (terminal.history_scroll) {
-              terminal.select_begin +=
-                  size - (terminal.history_scroll * terminal.Size().ws_col);
+            if (terminal->history_scroll) {
+              terminal->select_begin +=
+                  size - (terminal->history_scroll * terminal->Size().ws_col);
             }
 
-            terminal.select_end = terminal.select_begin;
+            terminal->select_end = terminal->select_begin;
 
             if (event.xbutton.state & ControlMask) {
-              terminal.FindRange(Terminal::kRangeWordOrURL,
-                                 &terminal.select_begin, &terminal.select_end);
+              terminal->FindRange(Terminal::kRangeWordOrURL,
+                                 &terminal->select_begin, &terminal->select_end);
             }
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
@@ -610,8 +610,8 @@ int x11_process_events() {
 
           case 4: /* Up */
 
-            if (terminal.history_scroll < scroll_extra) {
-              ++terminal.history_scroll;
+            if (terminal->history_scroll < scroll_extra) {
+              ++terminal->history_scroll;
               XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
             }
 
@@ -619,8 +619,8 @@ int x11_process_events() {
 
           case 5: /* Down */
 
-            if (terminal.history_scroll) {
-              --terminal.history_scroll;
+            if (terminal->history_scroll) {
+              --terminal->history_scroll;
               XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
             }
 
@@ -694,7 +694,7 @@ int x11_process_events() {
       case SelectionClear:
 
         if (event.xselectionclear.selection == XA_PRIMARY)
-          terminal.ClearSelection();
+          terminal->ClearSelection();
 
         break;
 
@@ -735,12 +735,12 @@ int x11_process_events() {
         {
           std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
           if (!primary_selection.empty() &&
-              primary_selection != terminal.GetSelection())
-            terminal.ClearSelection();
+              primary_selection != terminal->GetSelection())
+            terminal->ClearSelection();
 
-          terminal.GetState(&draw_state);
+          terminal->GetState(&draw_state);
 
-          new_expression = terminal.GetCurrentLine(true);
+          new_expression = terminal->GetCurrentLine(true);
         }
 
         if (new_expression != last_expression) {
@@ -773,7 +773,7 @@ int x11_process_events() {
 
       case FocusIn:
 
-        terminal.focused = true;
+        terminal->focused = true;
         XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
 
         break;
@@ -790,7 +790,7 @@ int x11_process_events() {
 
       case FocusOut:
 
-        terminal.focused = false;
+        terminal->focused = false;
         XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
 
         prev_key_sym = 0;
@@ -816,7 +816,7 @@ static void StartSubprocess(int argc, char** argv) {
     c_command_line.push_back(str.c_str());
   c_command_line.push_back(nullptr);
 
-  if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal.Size())))
+  if (-1 == (pid = forkpty(&terminal_fd, nullptr, nullptr, &terminal->Size())))
     err(EX_OSERR, "forkpty() failed");
 
   if (!pid) {
@@ -918,9 +918,19 @@ int main(int argc, char** argv) {
   for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
+  terminal.reset(new Terminal(WriteToTTY));
+
+  for (i = 0; i < 16; ++i) {
+    terminal->SetANSIColor(
+        i, Terminal::Color(palette[i] >> 16, palette[i] >> 8, palette[i]));
+  }
+
+  terminal->Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
+                 FONT_LineHeight(font), scroll_extra);
+
 #if USE_BASH
   Bash bash;
-  bash.Setup(&terminal);
+  bash.Setup(terminal.get());
 #endif
 
   StartSubprocess(argc, argv);
@@ -930,14 +940,6 @@ int main(int argc, char** argv) {
 #endif
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
-
-  for (i = 0; i < 16; ++i) {
-    terminal.SetANSIColor(
-        i, Terminal::Color(palette[i] >> 16, palette[i] >> 8, palette[i]));
-  }
-
-  terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-                FONT_LineHeight(font), scroll_extra);
 
   X11_handle_configure();
 
