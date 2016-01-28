@@ -5,6 +5,7 @@
 #include <set>
 #include <string.h>
 #include <string>
+#include <vector>
 
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -29,6 +30,15 @@
 #define FG_DEFAULT FG(ATTR_WHITE)
 #define BG_DEFAULT BG(ATTR_BLACK)
 #define ATTR_DEFAULT (FG_DEFAULT | BG_DEFAULT)
+
+struct KeyInfo : std::pair<unsigned int, unsigned int> {
+  typedef std::pair<unsigned int, unsigned int> super;
+
+  KeyInfo(unsigned int symbol) : super(symbol, 0) {}
+
+  KeyInfo(unsigned int symbol, unsigned int mask)
+      : super(symbol, mask & (ControlMask | Mod1Mask | ShiftMask)) {}
+};
 
 class Terminal {
  public:
@@ -70,13 +80,16 @@ class Terminal {
 
   struct State {
     size_t width, height;
-    std::unique_ptr<CharacterType[]> chars;
-    std::unique_ptr<Attr[]> attr;
+    std::vector<CharacterType> chars;
+    std::vector<Attr> attr;
     size_t cursor_x, cursor_y;
     size_t selection_begin, selection_end;
     bool cursor_hidden;
     bool focused;
     std::string cursor_hint;
+
+    // Next predicted keystrokes.
+    std::vector<char> completion_hint;
   };
 
   Terminal();
@@ -167,5 +180,16 @@ class Terminal {
 
   std::set<unsigned int> tab_stops_;
 };
+
+namespace std {
+
+template <>
+struct hash<KeyInfo> {
+  size_t operator()(const KeyInfo& k) const {
+    return (k.first << 16) | k.second;
+  }
+};
+
+}  // namespace std
 
 #endif /* !TERMINAL_H_ */

@@ -25,6 +25,7 @@ cantera_term_SOURCES = \
   base/file.h \
   command.cc \
   command.h \
+  completion.cc \
   draw-gl-30.cc \
   draw.h \
   font.c \

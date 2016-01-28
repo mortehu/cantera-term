@@ -8,6 +8,7 @@
 
 #include <err.h>
 
+#include "base/string.h"
 #include "font.h"
 #include "glyph.h"
 #include "opengl.h"
@@ -58,8 +59,11 @@ static void draw_AddTexturedQuad(unsigned int x, unsigned int y,
   texturedVertices.emplace_back(x + width, y, u + width, v, color);
 }
 
-static void draw_String(const char* string, unsigned int x, unsigned int y,
-                        const FONT_Data* font, const Terminal::Color& color) {
+static unsigned int draw_String(const char* string, const unsigned int orig_x,
+                                unsigned int y, const FONT_Data* font,
+                                const Terminal::Color& color) {
+  auto x = orig_x;
+
   while (*string) {
     FONT_Glyph glyph;
     uint16_t u, v;
@@ -84,6 +88,8 @@ static void draw_String(const char* string, unsigned int x, unsigned int y,
     x += glyph.xOffset;
     ++string;
   }
+
+  return x - orig_x;
 }
 
 static void draw_FlushQuads(void) {
@@ -127,7 +133,7 @@ static GLuint load_shader(const char* error_context, const char* string,
     glGetShaderInfoLog(result, sizeof(log), &logLength, log);
 
     errx(EXIT_FAILURE, "%s: glCompileShader failed: %.*s", error_context,
-         (int) logLength, log);
+         (int)logLength, log);
   }
 
   return result;
@@ -155,7 +161,7 @@ static struct draw_Shader load_program(const char* vertex_shader_source,
     GLsizei logLength;
     glGetProgramInfoLog(result.handle, sizeof(log), &logLength, log);
 
-    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int) logLength, log);
+    errx(EXIT_FAILURE, "glLinkProgram failed: %.*s", (int)logLength, log);
   }
 
   glUseProgram(result.handle);
@@ -230,9 +236,9 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
 
-  unsigned int ascent = FONT_Ascent(font);
-  unsigned int lineHeight = FONT_LineHeight(font);
-  unsigned int spaceWidth = FONT_SpaceWidth(font);
+  const auto ascent = FONT_Ascent(font);
+  const auto lineHeight = FONT_LineHeight(font);
+  const auto spaceWidth = FONT_SpaceWidth(font);
 
   bool in_selection = (state.selection_begin > state.width * state.height &&
                        state.selection_end < state.width * state.height);
@@ -243,8 +249,8 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   GLYPH_Get('_', &underscore, &underscore_u, &underscore_v);
 
   for (size_t row = 0; row < state.height; ++row) {
-    const wchar_t* line = &state.chars[row * state.width];
-    const Terminal::Attr* attrline = &state.attr[row * state.width];
+    const auto* line = &state.chars[row * state.width];
+    const auto* attrline = &state.attr[row * state.width];
     int x = 0;
 
     for (size_t col = 0; col < state.width; ++col) {
@@ -320,7 +326,7 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   }
 
   if (!state.cursor_hint.empty()) {
-    const std::string& hint = state.cursor_hint;
+    const auto& hint = state.cursor_hint;
     if (hint.length() < state.width) {
       unsigned int hint_y = state.cursor_y;
       unsigned int hint_x = state.width - hint.length();
@@ -330,6 +336,48 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
                     Terminal::Color(255, 255, 255));
       }
     }
+  }
+
+  if (!state.completion_hint.empty()) {
+    unsigned int x = 0;
+    const auto y = X11_window_height - lineHeight + ascent;
+
+    std::string buffer;
+    bool text_mode = true;
+
+    const auto flush_buffer = [&buffer, &text_mode, &x, y, font, ascent] {
+      if (buffer.empty()) return;
+      const auto color = text_mode ? Terminal::Color(192, 255, 192)
+                                   : Terminal::Color(127, 127, 255);
+      x += draw_String(buffer.c_str(), x, y, font, color);
+      buffer.clear();
+    };
+
+    for (const auto key : state.completion_hint) {
+      if (key >= ' ' && key <= '~') {
+        if (!text_mode) {
+          flush_buffer();
+          text_mode = true;
+        }
+        text_mode = true;
+        buffer.push_back(key);
+      } else {
+        if (text_mode) {
+          flush_buffer();
+          text_mode = false;
+        }
+        switch (key) {
+          case '\r':
+            buffer += "<CR>";
+            break;
+
+          default:
+            buffer += StringPrintf("\\0%o", key);
+        }
+      }
+    }
+
+    flush_buffer();
   }
 
   GLYPH_UpdateTexture();

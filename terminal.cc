@@ -921,8 +921,8 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 void Terminal::GetState(State* state) const {
   state->width = size_.ws_col;
   state->height = size_.ws_row;
-  state->chars.reset(new CharacterType[size_.ws_col * size_.ws_row]);
-  state->attr.reset(new Attr[size_.ws_col * size_.ws_row]);
+  state->chars.resize(size_.ws_col * size_.ws_row);
+  state->attr.resize(size_.ws_col * size_.ws_row);
 
   for (size_t row = 0, offset = (history_size - history_scroll +
                                  current_screen_->scroll_line) *

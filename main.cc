@@ -2,19 +2,26 @@
 #include "config.h"
 #endif
 
-#include <assert.h>
-#include <ctype.h>
+#include <algorithm>
+#include <cassert>
+#include <cctype>
+#include <cerrno>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+
 #include <err.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <locale.h>
 #include <pty.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
@@ -27,25 +34,15 @@
 #include <utmp.h>
 #include <wchar.h>
 
-#include <algorithm>
-#include <condition_variable>
-#include <memory>
-#include <mutex>
-#include <thread>
-#include <unordered_map>
-
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 
-#if USE_BASH
-#  include "bash.h"
-#endif
-
 #include "base/string.h"
 #include "command.h"
+#include "completion.h"
 #include "draw.h"
 #include "expr-parse.h"
 #include "font.h"
@@ -53,8 +50,6 @@
 #include "terminal.h"
 #include "tree.h"
 #include "x11.h"
-
-extern char** environ;
 
 namespace {
 
@@ -95,7 +90,17 @@ pid_t pid;
 int terminal_fd;
 
 std::mutex buffer_mutex;
-}
+
+std::unique_ptr<Completion> completion;
+
+// Last pressed key.
+KeySym prev_key_sym = 0;
+
+std::unordered_map<KeyInfo, void (*)(XKeyEvent* event)> key_callbacks;
+
+Terminal::State draw_state;
+
+}  // namespace
 
 static void LoadGlyph(wchar_t character) {
   FONT_Glyph* glyph;
@@ -232,9 +237,10 @@ void X11_handle_configure(void) {
   glOrtho(0.0f, X11_window_width, X11_window_height, 0.0f, 0.0f, 1.0f);
 
   {
+    const auto line_height = FONT_LineHeight(font);
     std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
-    terminal.Resize(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-                    FONT_LineHeight(font));
+    terminal.Resize(X11_window_width, X11_window_height - line_height,
+                    FONT_SpaceWidth(font), line_height);
   }
 
   ioctl(terminal_fd, TIOCSWINSZ, &terminal.Size());
@@ -334,36 +340,105 @@ static void WaitForDeadChildren(void) {
 
   while (0 < (child_pid = waitpid(-1, &status, WNOHANG))) {
     if (child_pid == pid) {
-
       exit(EXIT_SUCCESS);
     }
   }
 }
 
-struct KeyInfo : std::pair<unsigned int, unsigned int> {
-  typedef std::pair<unsigned int, unsigned int> super;
+void HandleKeyPress(KeySym key_sym, const char* text, size_t len,
+                    unsigned int modifier_mask, XEvent* event,
+                    bool& history_scroll_reset) {
+  if (key_sym == XK_Control_L || key_sym == XK_Control_R)
+    modifier_mask |= ControlMask, history_scroll_reset = false;
 
-  KeyInfo(unsigned int symbol) : super(symbol, 0) {}
+  if (key_sym == XK_Alt_L || key_sym == XK_Alt_R || key_sym == XK_Shift_L ||
+      key_sym == XK_Shift_R)
+    history_scroll_reset = false;
 
-  KeyInfo(unsigned int symbol, unsigned int mask)
-      : super(symbol, mask & (ControlMask | Mod1Mask | ShiftMask)) {}
-};
-
-namespace std {
-template <>
-struct hash<KeyInfo> {
-  size_t operator()(const KeyInfo& k) const {
-    return (k.first << 16) | k.second;
+  /* Hack for keyboards with no menu key; remap two consecutive
+   * taps of R-Control to Menu */
+  if (key_sym == XK_Control_R && prev_key_sym == XK_Control_R) {
+    key_sym = XK_Menu;
+    modifier_mask &= ~ControlMask;
   }
-};
+
+  if (!draw_state.completion_hint.empty() && (modifier_mask & Mod1Mask) &&
+      key_sym == XK_Tab) {
+    std::vector<char> characters;
+    for (const auto ch : draw_state.completion_hint) {
+      if (ch == '\r' && !characters.empty()) break;
+      characters.emplace_back(ch);
+    }
+
+    WriteToTTY(characters.data(), characters.size());
+
+    draw_state.completion_hint.clear();
+
+    return;
+  }
+
+  if ((modifier_mask & ShiftMask) && key_sym == XK_Up) {
+    history_scroll_reset = false;
+
+    if (terminal.history_scroll < scroll_extra) {
+      ++terminal.history_scroll;
+      XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
+    }
+  } else if ((modifier_mask & ShiftMask) && key_sym == XK_Down) {
+    history_scroll_reset = false;
+
+    if (terminal.history_scroll) {
+      --terminal.history_scroll;
+      XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
+    }
+  } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Up) {
+    history_scroll_reset = false;
+
+    terminal.history_scroll += terminal.Size().ws_row;
+
+    if (terminal.history_scroll > scroll_extra)
+      terminal.history_scroll = scroll_extra;
+
+    XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
+  } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Down) {
+    history_scroll_reset = false;
+
+    if (terminal.history_scroll > terminal.Size().ws_row)
+      terminal.history_scroll -= terminal.Size().ws_row;
+    else
+      terminal.history_scroll = 0;
+
+    XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
+  } else if ((modifier_mask & ShiftMask) && key_sym == XK_Home) {
+    history_scroll_reset = false;
+
+    if (terminal.history_scroll != scroll_extra) {
+      terminal.history_scroll = scroll_extra;
+
+      XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
+    }
+  } else {
+    auto handler = key_callbacks.find(
+        KeyInfo(key_sym, modifier_mask & (ControlMask | ShiftMask)));
+
+    if (handler != key_callbacks.end()) {
+      handler->second(&event->xkey);
+    } else if (len) {
+      if ((modifier_mask & Mod1Mask)) WriteStringToTTY("\033");
+
+      if (len == 1 && (text[0] == ('S' & 0x3f) || text[0] == ('Q' && 0x3f)))
+        history_scroll_reset = false;
+
+      WriteToTTY(text, len);
+
+      if (completion && len == 1 &&
+          ((text[0] >= ' ' && text[0] <= '~') || text[0] == '\r'))
+        completion->Train(draw_state, text[0]);
+    }
+  }
 }
 
-int x11_process_events() {
-  std::unordered_map<KeyInfo, void (*)(XKeyEvent * event)> key_callbacks;
-  KeySym prev_key_sym = 0;
-  XEvent event;
-  int result;
-
+void SetupKeyCallbacks() {
 #define MAP_KEY_TO_STRING(keysym, string)                  \
   key_callbacks[keysym] = [](XKeyEvent* event) {           \
     if (event->state & Mod1Mask) WriteStringToTTY("\033"); \
@@ -417,8 +492,8 @@ int x11_process_events() {
     }
   };
   key_callbacks[KeyInfo(XK_Insert, ControlMask | ShiftMask)] =
-      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] = [](
-          XKeyEvent* event) { paste(xa_clipboard, event->time); };
+      key_callbacks[KeyInfo(XK_V, ControlMask | ShiftMask)] =
+          [](XKeyEvent* event) { paste(xa_clipboard, event->time); };
   key_callbacks[KeyInfo(XK_Insert, ShiftMask)] = [](XKeyEvent* event) {
     paste(XA_PRIMARY, event->time);
   };
@@ -427,6 +502,13 @@ int x11_process_events() {
   key_callbacks[XK_Shift_L] = key_callbacks[XK_Shift_R] =
       key_callbacks[XK_ISO_Prev_Group] =
           key_callbacks[XK_ISO_Next_Group] = [](XKeyEvent* event) {};
+}
+
+int x11_process_events() {
+  XEvent event;
+  int result;
+
+  SetupKeyCallbacks();
 
   while (!done) {
     XNextEvent(X11_display, &event);
@@ -447,7 +529,7 @@ int x11_process_events() {
           Status status;
           KeySym key_sym;
           int len;
-          int history_scroll_reset = 1;
+          bool history_scroll_reset = true;
           unsigned int modifier_mask = event.xkey.state;
 
           len = Xutf8LookupString(X11_xic, &event.xkey, text, sizeof(text) - 1,
@@ -455,76 +537,8 @@ int x11_process_events() {
 
           if (!text[0]) len = 0;
 
-          if (key_sym == XK_Control_L || key_sym == XK_Control_R)
-            modifier_mask |= ControlMask, history_scroll_reset = 0;
-
-          if (key_sym == XK_Alt_L || key_sym == XK_Alt_R ||
-              key_sym == XK_Shift_L || key_sym == XK_Shift_R)
-            history_scroll_reset = 0;
-
-          /* Hack for keyboards with no menu key; remap two consecutive
-           * taps of R-Control to Menu */
-          if (key_sym == XK_Control_R && prev_key_sym == XK_Control_R) {
-            key_sym = XK_Menu;
-            modifier_mask &= ~ControlMask;
-          }
-
-          if ((modifier_mask & ShiftMask) && key_sym == XK_Up) {
-            history_scroll_reset = 0;
-
-            if (terminal.history_scroll < scroll_extra) {
-              ++terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-            }
-          } else if ((modifier_mask & ShiftMask) && key_sym == XK_Down) {
-            history_scroll_reset = 0;
-
-            if (terminal.history_scroll) {
-              --terminal.history_scroll;
-              XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-            }
-          } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Up) {
-            history_scroll_reset = 0;
-
-            terminal.history_scroll += terminal.Size().ws_row;
-
-            if (terminal.history_scroll > scroll_extra)
-              terminal.history_scroll = scroll_extra;
-
-            XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-          } else if ((modifier_mask & ShiftMask) && key_sym == XK_Page_Down) {
-            history_scroll_reset = 0;
-
-            if (terminal.history_scroll > terminal.Size().ws_row)
-              terminal.history_scroll -= terminal.Size().ws_row;
-            else
-              terminal.history_scroll = 0;
-
-            XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-          } else if ((modifier_mask & ShiftMask) && key_sym == XK_Home) {
-            history_scroll_reset = 0;
-
-            if (terminal.history_scroll != scroll_extra) {
-              terminal.history_scroll = scroll_extra;
-
-              XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);
-            }
-          } else {
-            auto handler = key_callbacks.find(
-                KeyInfo(key_sym, modifier_mask & (ControlMask | ShiftMask)));
-
-            if (handler != key_callbacks.end())
-              handler->second(&event.xkey);
-            else if (len) {
-              if ((modifier_mask & Mod1Mask)) WriteStringToTTY("\033");
-
-              if (len == 1 &&
-                  (text[0] == ('S' & 0x3f) || text[0] == ('Q' && 0x3f)))
-                history_scroll_reset = 0;
-
-              WriteToTTY(text, len);
-            }
-          }
+          HandleKeyPress(key_sym, text, len, modifier_mask, &event,
+                         history_scroll_reset);
 
           if (history_scroll_reset && terminal.history_scroll) {
             terminal.history_scroll = 0;
@@ -729,7 +743,6 @@ int x11_process_events() {
         while (XCheckTypedWindowEvent(X11_display, X11_window, Expose, &event))
           ; /* Do nothing */
 
-        Terminal::State draw_state;
         std::string new_expression;
 
         {
@@ -757,6 +770,9 @@ int x11_process_events() {
 
         if (!expression_result.empty())
           draw_state.cursor_hint = expression_result;
+
+        if (completion)
+          draw_state.completion_hint = completion->Predict(draw_state);
 
         draw_gl_30(draw_state, font);
       } break;
@@ -833,7 +849,7 @@ static void StartSubprocess(int argc, char** argv) {
 int main(int argc, char** argv) {
   int i;
   const char* home;
-  char* palette_str, *token;
+  char *palette_str, *token;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
@@ -918,16 +934,7 @@ int main(int argc, char** argv) {
   for (i = 0xa1; i <= 0xff; ++i) LoadGlyph(i);
   CreateLineArtGlyphs();
 
-#if USE_BASH
-  Bash bash;
-  bash.Setup(&terminal);
-#endif
-
   StartSubprocess(argc, argv);
-
-#if USE_BASH
-  bash.Start();
-#endif
 
   fcntl(terminal_fd, F_SETFL, O_NDELAY);
 
@@ -936,12 +943,16 @@ int main(int argc, char** argv) {
         i, Terminal::Color(palette[i] >> 16, palette[i] >> 8, palette[i]));
   }
 
-  terminal.Init(X11_window_width, X11_window_height, FONT_SpaceWidth(font),
-                FONT_LineHeight(font), scroll_extra);
+  const auto line_height = FONT_LineHeight(font);
+
+  terminal.Init(X11_window_width, X11_window_height - line_height,
+                FONT_SpaceWidth(font), line_height, scroll_extra);
 
   X11_handle_configure();
 
   init_gl_30();
+
+  completion = Completion::CreateBasicCompletion();
 
   std::thread(TTYReadThread).detach();
   std::thread(X11ClearThread).detach();
