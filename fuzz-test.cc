@@ -19,7 +19,8 @@ static const char* escape_codes[] = {
 int main(int argc, char** argv) {
   srand(time(NULL));
 
-  Terminal terminal_noscroll, terminal_scroll;
+  Terminal terminal_noscroll([](const void* data, size_t size){});
+  Terminal terminal_scroll([](const void* data, size_t size){});
   terminal_noscroll.Init(800, 500, 10, 20, 0);
   terminal_scroll.Init(800, 500, 10, 20, 1001);
 

@@ -1,6 +1,14 @@
-before_install: sudo apt-get update
+sudo: false
 
-install: sudo ./install-debian-deps.sh
+addons:
+  apt:
+    packages:
+      - libfreetype6-dev
+      - libglew-dev
+      - libmpfr-dev
+      - libxft-dev
+      - libxrender-dev
+      - lintian
 
 language: cpp
 
