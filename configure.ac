@@ -1,4 +1,4 @@
-AC_INIT(cantera-term,31)
+AC_INIT(cantera-term,32)
 
 AC_CANONICAL_TARGET
 AC_USE_SYSTEM_EXTENSIONS
