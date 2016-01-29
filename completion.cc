@@ -34,7 +34,8 @@ class BasicCompletion : public Completion {
       fprintf(stderr, "Ran out of space\n");
     }
 
-    lut_.emplace(std::move(prefix), ch);
+    auto i = lut_.emplace(std::move(prefix), ch);
+    if (!i.second) i.first->second = ch;
   }
 
   std::vector<char> Predict(const Terminal::State& state) override {
