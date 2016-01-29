@@ -432,6 +432,7 @@ void HandleKeyPress(KeySym key_sym, const char* text, size_t len,
       WriteToTTY(text, len);
 
       if (completion && len == 1 &&
+          !(modifier_mask & (Mod1Mask | ControlMask)) &&
           ((text[0] >= ' ' && text[0] <= '~') || text[0] == '\r'))
         completion->Train(draw_state, text[0]);
     }
