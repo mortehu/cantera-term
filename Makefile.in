@@ -636,6 +636,7 @@ cantera_term_SOURCES = \
   command.cc \
   command.h \
   completion.cc \
+  completion.h \
   draw-gl-30.cc \
   draw.h \
   font.c \
