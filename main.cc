@@ -838,8 +838,8 @@ static void StartSubprocess(int argc, char** argv) {
 
   if (!pid) {
     /* In child process */
-    execve(c_command_line[0], const_cast<char* const*>(&c_command_line[0]),
-           environ);
+    execvpe(c_command_line[0], const_cast<char* const*>(&c_command_line[0]),
+            environ);
 
     fprintf(stderr, "Failed to execute '%s'", c_command_line[0]);
 
