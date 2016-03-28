@@ -70,7 +70,7 @@ binary: build install
 	dh_testdir
 	dh_testroot
 	dh_installchangelogs ChangeLog
-	dh_installdocs
+	cp -a README.md debian/cantera-term/usr/share/doc/cantera-term
 	dh_installexamples
 	dh_installman
 	dh_link
