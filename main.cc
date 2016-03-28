@@ -42,7 +42,6 @@
 
 #include "base/string.h"
 #include "command.h"
-#include "completion.h"
 #include "draw.h"
 #include "expr-parse.h"
 #include "font.h"
@@ -90,8 +89,6 @@ pid_t pid;
 int terminal_fd;
 
 std::mutex buffer_mutex;
-
-std::unique_ptr<Completion> completion;
 
 // Last pressed key.
 KeySym prev_key_sym = 0;
@@ -239,7 +236,7 @@ void X11_handle_configure(void) {
   {
     const auto line_height = FONT_LineHeight(font);
     std::lock_guard<std::mutex> buffer_lock(buffer_mutex);
-    terminal->Resize(X11_window_width, X11_window_height - line_height,
+    terminal->Resize(X11_window_width, X11_window_height,
                     FONT_SpaceWidth(font), line_height);
   }
 
@@ -362,21 +359,6 @@ void HandleKeyPress(KeySym key_sym, const char* text, size_t len,
     modifier_mask &= ~ControlMask;
   }
 
-  if (!draw_state.completion_hint.empty() && (modifier_mask & Mod1Mask) &&
-      key_sym == XK_Tab) {
-    std::vector<char> characters;
-    for (const auto ch : draw_state.completion_hint) {
-      if (ch == '\r' && !characters.empty()) break;
-      characters.emplace_back(ch);
-    }
-
-    WriteToTTY(characters.data(), characters.size());
-
-    draw_state.completion_hint.clear();
-
-    return;
-  }
-
   if ((modifier_mask & ShiftMask) && key_sym == XK_Up) {
     history_scroll_reset = false;
 
@@ -430,11 +412,6 @@ void HandleKeyPress(KeySym key_sym, const char* text, size_t len,
         history_scroll_reset = false;
 
       WriteToTTY(text, len);
-
-      if (completion && len == 1 &&
-          !(modifier_mask & (Mod1Mask | ControlMask)) &&
-          ((text[0] >= ' ' && text[0] <= '~') || text[0] == '\r'))
-        completion->Train(draw_state, text[0]);
     }
   }
 }
@@ -772,9 +749,6 @@ int x11_process_events() {
         if (!expression_result.empty())
           draw_state.cursor_hint = expression_result;
 
-        if (completion)
-          draw_state.completion_hint = completion->Predict(draw_state);
-
         draw_gl_30(draw_state, font);
       } break;
 
@@ -952,8 +926,6 @@ int main(int argc, char** argv) {
   X11_handle_configure();
 
   init_gl_30();
-
-  completion = Completion::CreateBasicCompletion();
 
   std::thread(TTYReadThread).detach();
   std::thread(X11ClearThread).detach();

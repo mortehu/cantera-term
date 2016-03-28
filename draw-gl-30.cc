@@ -338,48 +338,6 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
     }
   }
 
-  if (!state.completion_hint.empty()) {
-    unsigned int x = 0;
-    const auto y = X11_window_height - lineHeight + ascent;
-
-    std::string buffer;
-    bool text_mode = true;
-
-    const auto flush_buffer = [&buffer, &text_mode, &x, y, font, ascent] {
-      if (buffer.empty()) return;
-      const auto color = text_mode ? Terminal::Color(192, 255, 192)
-                                   : Terminal::Color(127, 127, 255);
-      x += draw_String(buffer.c_str(), x, y, font, color);
-      buffer.clear();
-    };
-
-    for (const auto key : state.completion_hint) {
-      if (key >= ' ' && key <= '~') {
-        if (!text_mode) {
-          flush_buffer();
-          text_mode = true;
-        }
-        text_mode = true;
-        buffer.push_back(key);
-      } else {
-        if (text_mode) {
-          flush_buffer();
-          text_mode = false;
-        }
-        switch (key) {
-          case '\r':
-            buffer += "<CR>";
-            break;
-
-          default:
-            buffer += StringPrintf("\\0%o", key);
-        }
-      }
-    }
-
-    flush_buffer();
-  }
-
   GLYPH_UpdateTexture();
 
   draw_FlushQuads();

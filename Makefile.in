@@ -459,10 +459,9 @@ TEST_LOG_DRIVER = $(SHELL) $(top_srcdir)/test-driver
 TEST_LOG_COMPILE = $(TEST_LOG_COMPILER) $(AM_TEST_LOG_FLAGS) \
 	$(TEST_LOG_FLAGS)
 am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/config.h.in AUTHORS \
-	COPYING ChangeLog INSTALL NEWS README ar-lib compile \
-	config.guess config.sub depcomp expression-lexer.cc \
-	expression-parser.cc install-sh ltmain.sh missing test-driver \
-	ylwrap
+	COPYING ChangeLog INSTALL NEWS ar-lib compile config.guess \
+	config.sub depcomp expression-lexer.cc expression-parser.cc \
+	install-sh ltmain.sh missing test-driver ylwrap
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
