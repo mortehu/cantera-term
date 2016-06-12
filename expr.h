@@ -47,6 +47,8 @@ class Expression {
 
   bool ToString(std::string* result) const;
 
+  bool IsTrivial() const;
+
  private:
   struct Value {
     Value() : type(kInvalid) {}

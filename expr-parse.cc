@@ -21,7 +21,7 @@ bool ParseContext::FindAndEval(const std::string& input,
     std::unique_ptr<Expression> expr(context.ParseExpression(suffix));
 
     if (expr && expr->ToString(result)) {
-      if ((flags & kIgnoreTrivial) && *result == suffix) {
+      if ((flags & kIgnoreTrivial) && expr->IsTrivial()) {
         result->clear();
         return false;
       }

@@ -46,6 +46,18 @@ bool Expression::ToString(std::string* result) const {
   return true;
 }
 
+bool Expression::IsTrivial() const {
+  switch (type_) {
+    case kInvalid:
+    case kNumeric:
+    case kString:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 Expression::Value Expression::Eval() const {
   Value lhs, rhs;
   if (lhs_) lhs = lhs_->Eval();
