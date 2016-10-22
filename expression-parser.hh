@@ -1,8 +1,8 @@
-// A Bison parser, made by GNU Bison 3.0.2.
+// A Bison parser, made by GNU Bison 3.0.4.
 
 // Skeleton interface for Bison LALR(1) parsers in C++
 
-// Copyright (C) 2002-2013 Free Software Foundation, Inc.
+// Copyright (C) 2002-2015 Free Software Foundation, Inc.
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@
 #ifndef YY_YY_EXPRESSION_PARSER_HH_INCLUDED
 # define YY_YY_EXPRESSION_PARSER_HH_INCLUDED
 // //                    "%code requires" blocks.
-#line 13 "expression-parser.yy" // lalr1.cc:372
+#line 13 "expression-parser.yy" // lalr1.cc:377
 
 #include "expr.h"
 
@@ -48,13 +48,14 @@ namespace expression {
 class ParseContext;
 }  // namespace expression
 
-#line 52 "expression-parser.hh" // lalr1.cc:372
+#line 52 "expression-parser.hh" // lalr1.cc:377
 
 # include <cassert>
-# include <vector>
+# include <cstdlib> // std::abort
 # include <iostream>
 # include <stdexcept>
 # include <string>
+# include <vector>
 # include "stack.hh"
 # include "location.hh"
 #include <typeinfo>
@@ -124,7 +125,7 @@ class ParseContext;
 
 
 namespace yy {
-#line 128 "expression-parser.hh" // lalr1.cc:372
+#line 129 "expression-parser.hh" // lalr1.cc:377
 
 
 
@@ -141,13 +142,13 @@ namespace yy {
 
     /// Empty construction.
     variant ()
-      : yytname_ (YY_NULLPTR)
+      : yytypeid_ (YY_NULLPTR)
     {}
 
     /// Construct and fill.
     template <typename T>
     variant (const T& t)
-      : yytname_ (typeid (T).name ())
+      : yytypeid_ (&typeid (T))
     {
       YYASSERT (sizeof (T) <= S);
       new (yyas_<T> ()) T (t);
@@ -156,7 +157,7 @@ namespace yy {
     /// Destruction, allowed only if empty.
     ~variant ()
     {
-      YYASSERT (!yytname_);
+      YYASSERT (!yytypeid_);
     }
 
     /// Instantiate an empty \a T in here.
@@ -164,9 +165,9 @@ namespace yy {
     T&
     build ()
     {
-      YYASSERT (!yytname_);
+      YYASSERT (!yytypeid_);
       YYASSERT (sizeof (T) <= S);
-      yytname_ = typeid (T).name ();
+      yytypeid_ = & typeid (T);
       return *new (yyas_<T> ()) T;
     }
 
@@ -175,9 +176,9 @@ namespace yy {
     T&
     build (const T& t)
     {
-      YYASSERT (!yytname_);
+      YYASSERT (!yytypeid_);
       YYASSERT (sizeof (T) <= S);
-      yytname_ = typeid (T).name ();
+      yytypeid_ = & typeid (T);
       return *new (yyas_<T> ()) T (t);
     }
 
@@ -186,7 +187,7 @@ namespace yy {
     T&
     as ()
     {
-      YYASSERT (yytname_ == typeid (T).name ());
+      YYASSERT (*yytypeid_ == typeid (T));
       YYASSERT (sizeof (T) <= S);
       return *yyas_<T> ();
     }
@@ -196,7 +197,7 @@ namespace yy {
     const T&
     as () const
     {
-      YYASSERT (yytname_ == typeid (T).name ());
+      YYASSERT (*yytypeid_ == typeid (T));
       YYASSERT (sizeof (T) <= S);
       return *yyas_<T> ();
     }
@@ -213,8 +214,8 @@ namespace yy {
     void
     swap (self_type& other)
     {
-      YYASSERT (yytname_);
-      YYASSERT (yytname_ == other.yytname_);
+      YYASSERT (yytypeid_);
+      YYASSERT (*yytypeid_ == *other.yytypeid_);
       std::swap (as<T> (), other.as<T> ());
     }
 
@@ -244,7 +245,7 @@ namespace yy {
     destroy ()
     {
       as<T> ().~T ();
-      yytname_ = YY_NULLPTR;
+      yytypeid_ = YY_NULLPTR;
     }
 
   private:
@@ -279,7 +280,7 @@ namespace yy {
     } yybuffer_;
 
     /// Whether the content is built: if defined, the name of the stored type.
-    const char *yytname_;
+    const std::type_info *yytypeid_;
   };
 
 
@@ -296,6 +297,7 @@ namespace yy {
 
       // "Identifier"
       // "Numeric"
+      // "Time"
       char dummy2[sizeof(std::string)];
 };
 
@@ -336,15 +338,19 @@ namespace yy {
         INVALID = 271,
         Identifier = 272,
         Numeric = 273,
-        UMINUS = 274
+        Time = 274,
+        UMINUS = 275
       };
     };
 
     /// (External) token type, as returned by yylex.
     typedef token::yytokentype token_type;
 
-    /// Internal symbol number.
+    /// Symbol type: an internal symbol number.
     typedef int symbol_number_type;
+
+    /// The symbol type number to denote an empty symbol.
+    enum { empty_symbol = -2 };
 
     /// Internal symbol number for tokens (subsumed by symbol_number_type).
     typedef unsigned char token_number_type;
@@ -381,7 +387,14 @@ namespace yy {
                     const semantic_type& v,
                     const location_type& l);
 
+      /// Destroy the symbol.
       ~basic_symbol ();
+
+      /// Destroy contents, and record that is empty.
+      void clear ();
+
+      /// Whether empty.
+      bool empty () const;
 
       /// Destructive move, \a s is emptied into this.
       void move (basic_symbol& s);
@@ -412,21 +425,23 @@ namespace yy {
       /// Constructor from (external) token numbers.
       by_type (kind_type t);
 
+      /// Record that this symbol is empty.
+      void clear ();
+
       /// Steal the symbol type from \a that.
       void move (by_type& that);
 
       /// The (internal) type number (corresponding to \a type).
-      /// -1 when this symbol is empty.
+      /// \a empty when empty.
       symbol_number_type type_get () const;
 
       /// The token.
       token_type token () const;
 
-      enum { empty = 0 };
-
       /// The symbol type.
-      /// -1 when this symbol is empty.
-      token_number_type type;
+      /// \a empty_symbol when empty.
+      /// An int, not token_number_type, to be able to store empty_symbol.
+      int type;
     };
 
     /// "External" symbols: returned by the scanner.
@@ -503,6 +518,10 @@ namespace yy {
 
     static inline
     symbol_type
+    make_Time (const std::string& v, const location_type& l);
+
+    static inline
+    symbol_type
     make_UMINUS (const location_type& l);
 
 
@@ -546,9 +565,9 @@ namespace yy {
 
     /// Generate an error message.
     /// \param yystate   the state where the error occurred.
-    /// \param yytoken   the lookahead token type, or yyempty_.
+    /// \param yyla      the lookahead token.
     virtual std::string yysyntax_error_ (state_type yystate,
-                                         symbol_number_type yytoken) const;
+                                         const symbol_type& yyla) const;
 
     /// Compute post-reduction state.
     /// \param yystate   the current state
@@ -651,16 +670,21 @@ namespace yy {
       /// Copy constructor.
       by_state (const by_state& other);
 
+      /// Record that this symbol is empty.
+      void clear ();
+
       /// Steal the symbol type from \a that.
       void move (by_state& that);
 
       /// The (internal) type number (corresponding to \a state).
-      /// "empty" when empty.
+      /// \a empty_symbol when empty.
       symbol_number_type type_get () const;
 
-      enum { empty = 0 };
+      /// The state number used to denote an empty symbol.
+      enum { empty_state = -1 };
 
       /// The state.
+      /// \a empty when empty.
       state_type state;
     };
 
@@ -701,17 +725,16 @@ namespace yy {
     /// Pop \a n symbols the three stacks.
     void yypop_ (unsigned int n = 1);
 
-    // Constants.
+    /// Constants.
     enum
     {
       yyeof_ = 0,
-      yylast_ = 97,     ///< Last index in yytable_.
+      yylast_ = 103,     ///< Last index in yytable_.
       yynnts_ = 3,  ///< Number of nonterminal symbols.
-      yyempty_ = -2,
-      yyfinal_ = 16, ///< Termination state number.
+      yyfinal_ = 17, ///< Termination state number.
       yyterror_ = 1,
       yyerrcode_ = 256,
-      yyntokens_ = 20  ///< Number of tokens.
+      yyntokens_ = 21  ///< Number of tokens.
     };
 
 
@@ -755,9 +778,9 @@ namespace yy {
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
        5,     6,     7,     8,     9,    10,    11,    12,    13,    14,
-      15,    16,    17,    18,    19
+      15,    16,    17,    18,    19,    20
     };
-    const unsigned int user_token_number_max_ = 274;
+    const unsigned int user_token_number_max_ = 275;
     const token_number_type undef_token_ = 2;
 
     if (static_cast<int>(t) <= yyeof_)
@@ -790,12 +813,13 @@ namespace yy {
   {
       switch (other.type_get ())
     {
-      case 22: // expression
+      case 23: // expression
         value.copy< expression::Expression* > (other.value);
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.copy< std::string > (other.value);
         break;
 
@@ -816,12 +840,13 @@ namespace yy {
     (void) v;
       switch (this->type_get ())
     {
-      case 22: // expression
+      case 23: // expression
         value.copy< expression::Expression* > (v);
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.copy< std::string > (v);
         break;
 
@@ -859,8 +884,18 @@ namespace yy {
   inline
   ExpressionParser::basic_symbol<Base>::~basic_symbol ()
   {
+    clear ();
+  }
+
+  template <typename Base>
+  inline
+  void
+  ExpressionParser::basic_symbol<Base>::clear ()
+  {
     // User destructor.
     symbol_number_type yytype = this->type_get ();
+    basic_symbol<Base>& yysym = *this;
+    (void) yysym;
     switch (yytype)
     {
    default:
@@ -870,12 +905,13 @@ namespace yy {
     // Type destructor.
     switch (yytype)
     {
-      case 22: // expression
+      case 23: // expression
         value.template destroy< expression::Expression* > ();
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.template destroy< std::string > ();
         break;
 
@@ -883,6 +919,15 @@ namespace yy {
         break;
     }
 
+    Base::clear ();
+  }
+
+  template <typename Base>
+  inline
+  bool
+  ExpressionParser::basic_symbol<Base>::empty () const
+  {
+    return Base::type_get () == empty_symbol;
   }
 
   template <typename Base>
@@ -893,12 +938,13 @@ namespace yy {
     super_type::move(s);
       switch (this->type_get ())
     {
-      case 22: // expression
+      case 23: // expression
         value.move< expression::Expression* > (s.value);
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.move< std::string > (s.value);
         break;
 
@@ -912,7 +958,7 @@ namespace yy {
   // by_type.
   inline
   ExpressionParser::by_type::by_type ()
-     : type (empty)
+    : type (empty_symbol)
   {}
 
   inline
@@ -927,10 +973,17 @@ namespace yy {
 
   inline
   void
+  ExpressionParser::by_type::clear ()
+  {
+    type = empty_symbol;
+  }
+
+  inline
+  void
   ExpressionParser::by_type::move (by_type& that)
   {
     type = that.type;
-    that.type = empty;
+    that.clear ();
   }
 
   inline
@@ -951,7 +1004,8 @@ namespace yy {
     yytoken_number_[] =
     {
        0,   256,   257,   258,   259,   260,   261,   262,   263,   264,
-     265,   266,   267,   268,   269,   270,   271,   272,   273,   274
+     265,   266,   267,   268,   269,   270,   271,   272,   273,   274,
+     275
     };
     return static_cast<token_type> (yytoken_number_[type]);
   }
@@ -1059,6 +1113,12 @@ namespace yy {
   }
 
   ExpressionParser::symbol_type
+  ExpressionParser::make_Time (const std::string& v, const location_type& l)
+  {
+    return symbol_type (token::Time, v, l);
+  }
+
+  ExpressionParser::symbol_type
   ExpressionParser::make_UMINUS (const location_type& l)
   {
     return symbol_type (token::UMINUS, l);
@@ -1067,7 +1127,7 @@ namespace yy {
 
 
 } // yy
-#line 1071 "expression-parser.hh" // lalr1.cc:372
+#line 1131 "expression-parser.hh" // lalr1.cc:377
 
 
 

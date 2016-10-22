@@ -18,6 +18,8 @@ class Expression {
     // Constants
     kNumeric,
     kString,
+    kTime,
+    kInterval,
 
     // Operators
     kMinus,
@@ -42,6 +44,7 @@ class Expression {
       : type_(type), lhs_(lhs), rhs_(rhs) {}
 
   static Expression* CreateNumeric(const std::string& v);
+  static Expression* CreateTime(const std::string& v);
 
   ExpressionType Type() const { return type_; }
 
@@ -54,6 +57,7 @@ class Expression {
     Value() : type(kInvalid) {}
     Value(const std::string& v) : type(kString), string(v) {}
     Value(const mpfr::mpreal& v) : type(kNumeric), numeric(v) {}
+    Value(ExpressionType type, const mpfr::mpreal& v) : type(type), numeric(v) {}
 
     enum ExpressionType type;
     std::string string;
@@ -67,7 +71,7 @@ class Expression {
   // For kNumeric.
   mpfr::mpreal numeric_;
 
-  // For kString.
+  // For kString and kTime.
   std::string string_;
 
   // First argument.

@@ -1,8 +1,8 @@
-// A Bison parser, made by GNU Bison 3.0.2.
+// A Bison parser, made by GNU Bison 3.0.4.
 
 // Skeleton implementation for Bison LALR(1) parsers in C++
 
-// Copyright (C) 2002-2013 Free Software Foundation, Inc.
+// Copyright (C) 2002-2015 Free Software Foundation, Inc.
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@
 
 // First part of user declarations.
 
-#line 37 "expression-parser.cc" // lalr1.cc:399
+#line 37 "expression-parser.cc" // lalr1.cc:404
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -47,9 +47,9 @@
 
 // User implementation prologue.
 
-#line 51 "expression-parser.cc" // lalr1.cc:407
+#line 51 "expression-parser.cc" // lalr1.cc:412
 // Unqualified %code blocks.
-#line 25 "expression-parser.yy" // lalr1.cc:408
+#line 25 "expression-parser.yy" // lalr1.cc:413
 
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
@@ -60,7 +60,7 @@
 
 #include "expr-parse.h"
 
-#line 64 "expression-parser.cc" // lalr1.cc:408
+#line 64 "expression-parser.cc" // lalr1.cc:413
 
 
 #ifndef YY_
@@ -137,7 +137,7 @@
 #endif // !YYDEBUG
 
 #define yyerrok         (yyerrstatus_ = 0)
-#define yyclearin       (yyempty = true)
+#define yyclearin       (yyla.clear ())
 
 #define YYACCEPT        goto yyacceptlab
 #define YYABORT         goto yyabortlab
@@ -146,7 +146,7 @@
 
 
 namespace yy {
-#line 150 "expression-parser.cc" // lalr1.cc:474
+#line 150 "expression-parser.cc" // lalr1.cc:479
 
   /* Return YYSTR after stripping away unnecessary quotes and
      backslashes, so that it's suitable for yyerror.  The heuristic is
@@ -209,7 +209,7 @@ namespace yy {
   // by_state.
   inline
   ExpressionParser::by_state::by_state ()
-    : state (empty)
+    : state (empty_state)
   {}
 
   inline
@@ -219,10 +219,17 @@ namespace yy {
 
   inline
   void
+  ExpressionParser::by_state::clear ()
+  {
+    state = empty_state;
+  }
+
+  inline
+  void
   ExpressionParser::by_state::move (by_state& that)
   {
     state = that.state;
-    that.state = empty;
+    that.clear ();
   }
 
   inline
@@ -234,7 +241,10 @@ namespace yy {
   ExpressionParser::symbol_number_type
   ExpressionParser::by_state::type_get () const
   {
-    return state == empty ? 0 : yystos_[state];
+    if (state == empty_state)
+      return empty_symbol;
+    else
+      return yystos_[state];
   }
 
   inline
@@ -248,12 +258,13 @@ namespace yy {
   {
       switch (that.type_get ())
     {
-      case 22: // expression
+      case 23: // expression
         value.move< expression::Expression* > (that.value);
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.move< std::string > (that.value);
         break;
 
@@ -262,7 +273,7 @@ namespace yy {
     }
 
     // that is emptied.
-    that.type = empty;
+    that.type = empty_symbol;
   }
 
   inline
@@ -272,12 +283,13 @@ namespace yy {
     state = that.state;
       switch (that.type_get ())
     {
-      case 22: // expression
+      case 23: // expression
         value.copy< expression::Expression* > (that.value);
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         value.copy< std::string > (that.value);
         break;
 
@@ -308,6 +320,10 @@ namespace yy {
     std::ostream& yyoutput = yyo;
     YYUSE (yyoutput);
     symbol_number_type yytype = yysym.type_get ();
+    // Avoid a (spurious) G++ 4.8 warning about "array subscript is
+    // below array bounds".
+    if (yysym.empty ())
+      std::abort ();
     yyo << (yytype < yyntokens_ ? "token" : "nterm")
         << ' ' << yytname_[yytype] << " ("
         << yysym.location << ": ";
@@ -392,9 +408,6 @@ namespace yy {
   int
   ExpressionParser::parse ()
   {
-    /// Whether yyla contains a lookahead.
-    bool yyempty = true;
-
     // State.
     int yyn;
     /// Length of the RHS of the rule being reduced.
@@ -446,7 +459,7 @@ namespace yy {
       goto yydefault;
 
     // Read a lookahead token.
-    if (yyempty)
+    if (yyla.empty ())
       {
         YYCDEBUG << "Reading a token: ";
         try
@@ -459,7 +472,6 @@ namespace yy {
             error (yyexc);
             goto yyerrlab1;
           }
-        yyempty = false;
       }
     YY_SYMBOL_PRINT ("Next token is", yyla);
 
@@ -478,9 +490,6 @@ namespace yy {
         yyn = -yyn;
         goto yyreduce;
       }
-
-    // Discard the token being shifted.
-    yyempty = true;
 
     // Count tokens shifted since error; after three, turn off error status.
     if (yyerrstatus_)
@@ -512,12 +521,13 @@ namespace yy {
          when using variants.  */
         switch (yyr1_[yyn])
     {
-      case 22: // expression
+      case 23: // expression
         yylhs.value.build< expression::Expression* > ();
         break;
 
       case 17: // "Identifier"
       case 18: // "Numeric"
+      case 19: // "Time"
         yylhs.value.build< std::string > ();
         break;
 
@@ -539,127 +549,135 @@ namespace yy {
           switch (yyn)
             {
   case 2:
-#line 63 "expression-parser.yy" // lalr1.cc:847
+#line 64 "expression-parser.yy" // lalr1.cc:859
     {
         context->expression_.reset(yystack_[1].value.as< expression::Expression* > ());
       }
-#line 547 "expression-parser.cc" // lalr1.cc:847
+#line 557 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 3:
-#line 74 "expression-parser.yy" // lalr1.cc:847
+#line 75 "expression-parser.yy" // lalr1.cc:859
     {
         yylhs.value.as< expression::Expression* > () = expression::Expression::CreateNumeric(yystack_[0].value.as< std::string > ());
       }
-#line 555 "expression-parser.cc" // lalr1.cc:847
+#line 565 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 4:
-#line 78 "expression-parser.yy" // lalr1.cc:847
+#line 79 "expression-parser.yy" // lalr1.cc:859
     {
-        std::swap(yylhs.value.as< expression::Expression* > (), yystack_[1].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = expression::Expression::CreateTime(yystack_[0].value.as< std::string > ());
       }
-#line 563 "expression-parser.cc" // lalr1.cc:847
+#line 573 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 5:
-#line 82 "expression-parser.yy" // lalr1.cc:847
+#line 83 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kMinus, yystack_[0].value.as< expression::Expression* > ());
+        std::swap(yylhs.value.as< expression::Expression* > (), yystack_[1].value.as< expression::Expression* > ());
       }
-#line 571 "expression-parser.cc" // lalr1.cc:847
+#line 581 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 6:
-#line 86 "expression-parser.yy" // lalr1.cc:847
+#line 87 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kAdd, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kMinus, yystack_[0].value.as< expression::Expression* > ());
       }
-#line 579 "expression-parser.cc" // lalr1.cc:847
+#line 589 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 7:
-#line 90 "expression-parser.yy" // lalr1.cc:847
+#line 91 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kSubtract, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kAdd, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 587 "expression-parser.cc" // lalr1.cc:847
+#line 597 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 8:
-#line 94 "expression-parser.yy" // lalr1.cc:847
+#line 95 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kMultiply, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kSubtract, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 595 "expression-parser.cc" // lalr1.cc:847
+#line 605 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 9:
-#line 98 "expression-parser.yy" // lalr1.cc:847
+#line 99 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kDivide, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kMultiply, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 603 "expression-parser.cc" // lalr1.cc:847
+#line 613 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 10:
-#line 102 "expression-parser.yy" // lalr1.cc:847
+#line 103 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kModulus, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kDivide, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 611 "expression-parser.cc" // lalr1.cc:847
+#line 621 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 11:
-#line 106 "expression-parser.yy" // lalr1.cc:847
+#line 107 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kExponentiate, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kModulus, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 619 "expression-parser.cc" // lalr1.cc:847
+#line 629 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 12:
-#line 110 "expression-parser.yy" // lalr1.cc:847
+#line 111 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kExponentiate, yystack_[3].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kExponentiate, yystack_[2].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 627 "expression-parser.cc" // lalr1.cc:847
+#line 637 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 13:
-#line 114 "expression-parser.yy" // lalr1.cc:847
+#line 115 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kCos, yystack_[1].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kExponentiate, yystack_[3].value.as< expression::Expression* > (), yystack_[0].value.as< expression::Expression* > ());
       }
-#line 635 "expression-parser.cc" // lalr1.cc:847
+#line 645 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 14:
-#line 118 "expression-parser.yy" // lalr1.cc:847
+#line 119 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kSin, yystack_[1].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kCos, yystack_[1].value.as< expression::Expression* > ());
       }
-#line 643 "expression-parser.cc" // lalr1.cc:847
+#line 653 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 15:
-#line 122 "expression-parser.yy" // lalr1.cc:847
+#line 123 "expression-parser.yy" // lalr1.cc:859
     {
-        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kLog, yystack_[1].value.as< expression::Expression* > ());
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kSin, yystack_[1].value.as< expression::Expression* > ());
       }
-#line 651 "expression-parser.cc" // lalr1.cc:847
+#line 661 "expression-parser.cc" // lalr1.cc:859
     break;
 
   case 16:
-#line 126 "expression-parser.yy" // lalr1.cc:847
+#line 127 "expression-parser.yy" // lalr1.cc:859
+    {
+        yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kLog, yystack_[1].value.as< expression::Expression* > ());
+      }
+#line 669 "expression-parser.cc" // lalr1.cc:859
+    break;
+
+  case 17:
+#line 131 "expression-parser.yy" // lalr1.cc:859
     {
         yylhs.value.as< expression::Expression* > () = new expression::Expression(expression::Expression::kHex, yystack_[1].value.as< expression::Expression* > ());
       }
-#line 659 "expression-parser.cc" // lalr1.cc:847
+#line 677 "expression-parser.cc" // lalr1.cc:859
     break;
 
 
-#line 663 "expression-parser.cc" // lalr1.cc:847
+#line 681 "expression-parser.cc" // lalr1.cc:859
             default:
               break;
             }
@@ -687,8 +705,7 @@ namespace yy {
     if (!yyerrstatus_)
       {
         ++yynerrs_;
-        error (yyla.location, yysyntax_error_ (yystack_[0].state,
-                                           yyempty ? yyempty_ : yyla.type_get ()));
+        error (yyla.location, yysyntax_error_ (yystack_[0].state, yyla));
       }
 
 
@@ -701,10 +718,10 @@ namespace yy {
         // Return failure if at end of input.
         if (yyla.type_get () == yyeof_)
           YYABORT;
-        else if (!yyempty)
+        else if (!yyla.empty ())
           {
             yy_destroy_ ("Error: discarding", yyla);
-            yyempty = true;
+            yyla.clear ();
           }
       }
 
@@ -780,7 +797,7 @@ namespace yy {
     goto yyreturn;
 
   yyreturn:
-    if (!yyempty)
+    if (!yyla.empty ())
       yy_destroy_ ("Cleanup: discarding lookahead", yyla);
 
     /* Do not reclaim the symbols of the rule whose action triggered
@@ -800,7 +817,7 @@ namespace yy {
                  << std::endl;
         // Do not try to display the values of the reclaimed symbols,
         // as their printer might throw an exception.
-        if (!yyempty)
+        if (!yyla.empty ())
           yy_destroy_ (YY_NULLPTR, yyla);
 
         while (1 < yystack_.size ())
@@ -820,9 +837,8 @@ namespace yy {
 
   // Generate an error message.
   std::string
-  ExpressionParser::yysyntax_error_ (state_type yystate, symbol_number_type yytoken) const
+  ExpressionParser::yysyntax_error_ (state_type yystate, const symbol_type& yyla) const
   {
-    std::string yyres;
     // Number of reported tokens (one for the "unexpected", one per
     // "expected").
     size_t yycount = 0;
@@ -836,7 +852,7 @@ namespace yy {
          the only way this function was invoked is if the default action
          is an error action.  In that case, don't check for expected
          tokens because there are none.
-       - The only way there can be no lookahead present (in yytoken) is
+       - The only way there can be no lookahead present (in yyla) is
          if this state is a consistent state with a default action.
          Thus, detecting the absence of a lookahead is sufficient to
          determine that there is no unexpected or expected token to
@@ -856,8 +872,9 @@ namespace yy {
          token that will not be accepted due to an error action in a
          later state.
     */
-    if (yytoken != yyempty_)
+    if (!yyla.empty ())
       {
+        int yytoken = yyla.type_get ();
         yyarg[yycount++] = yytname_[yytoken];
         int yyn = yypact_[yystate];
         if (!yy_pact_value_is_default_ (yyn))
@@ -900,6 +917,7 @@ namespace yy {
 #undef YYCASE_
       }
 
+    std::string yyres;
     // Argument number.
     size_t yyi = 0;
     for (char const* yyp = yyformat; *yyp; ++yyp)
@@ -921,21 +939,21 @@ namespace yy {
   const signed char
   ExpressionParser::yypact_[] =
   {
-      29,    29,    29,     2,     7,    12,    13,    -3,    23,    40,
-      -2,    14,    29,    29,    29,    29,    -3,    -3,    21,    29,
-      29,    29,    29,    29,    -3,    48,    56,    64,    72,    29,
-      14,    86,    86,    14,    14,    79,    -3,    -3,    -3,    -3,
-      14
+      30,    30,    30,     2,     7,     8,    13,    -3,    -3,    17,
+      46,    -2,    15,    30,    30,    30,    30,    -3,    -3,    22,
+      30,    30,    30,    30,    30,    -3,    54,    62,    70,    78,
+      30,    15,    92,    92,    15,    15,    85,    -3,    -3,    -3,
+      -3,    15
   };
 
   const unsigned char
   ExpressionParser::yydefact_[] =
   {
-       0,     0,     0,     0,     0,     0,     0,     3,     0,     0,
-       0,     5,     0,     0,     0,     0,     1,     2,     0,     0,
-       0,     0,     0,     0,     4,     0,     0,     0,     0,     0,
-       8,     6,     7,     9,    10,    11,    13,    14,    15,    16,
-      12
+       0,     0,     0,     0,     0,     0,     0,     3,     4,     0,
+       0,     0,     6,     0,     0,     0,     0,     1,     2,     0,
+       0,     0,     0,     0,     0,     5,     0,     0,     0,     0,
+       0,     9,     7,     8,    10,    11,    12,    14,    15,    16,
+      17,    13
   };
 
   const signed char
@@ -947,61 +965,63 @@ namespace yy {
   const signed char
   ExpressionParser::yydefgoto_[] =
   {
-      -1,     8,     9
+      -1,     9,    10
   };
 
   const unsigned char
   ExpressionParser::yytable_[] =
   {
-      10,    11,    24,    18,    19,    12,    20,    21,    22,    23,
-      13,    25,    26,    27,    28,    14,    15,    30,    31,    32,
-      33,    34,    35,    16,     1,    23,    29,     0,    40,     2,
-       0,     0,     1,     3,     4,     5,     6,     2,     0,     7,
-      17,     3,     4,     5,     6,    18,    19,     7,    20,    21,
-      22,    23,    36,    18,    19,     0,    20,    21,    22,    23,
-      37,    18,    19,     0,    20,    21,    22,    23,    38,    18,
-      19,     0,    20,    21,    22,    23,    39,    18,    19,     0,
-      20,    21,    22,    23,    18,    19,     0,    20,    21,    22,
-      23,    18,     0,     0,     0,    21,    22,    23
+      11,    12,    25,    19,    20,    13,    21,    22,    23,    24,
+      14,    15,    26,    27,    28,    29,    16,    17,    31,    32,
+      33,    34,    35,    36,     0,     1,    24,    30,     0,    41,
+       2,     0,     0,     1,     3,     4,     5,     6,     2,     0,
+       7,     8,     3,     4,     5,     6,    18,     0,     7,     8,
+       0,    19,    20,     0,    21,    22,    23,    24,    37,    19,
+      20,     0,    21,    22,    23,    24,    38,    19,    20,     0,
+      21,    22,    23,    24,    39,    19,    20,     0,    21,    22,
+      23,    24,    40,    19,    20,     0,    21,    22,    23,    24,
+      19,    20,     0,    21,    22,    23,    24,    19,     0,     0,
+       0,    22,    23,    24
   };
 
   const signed char
   ExpressionParser::yycheck_[] =
   {
        1,     2,     4,     5,     6,     3,     8,     9,    10,    11,
-       3,    12,    13,    14,    15,     3,     3,    18,    19,    20,
-      21,    22,    23,     0,     3,    11,     5,    -1,    29,     8,
-      -1,    -1,     3,    12,    13,    14,    15,     8,    -1,    18,
-       0,    12,    13,    14,    15,     5,     6,    18,     8,     9,
-      10,    11,     4,     5,     6,    -1,     8,     9,    10,    11,
-       4,     5,     6,    -1,     8,     9,    10,    11,     4,     5,
+       3,     3,    13,    14,    15,    16,     3,     0,    19,    20,
+      21,    22,    23,    24,    -1,     3,    11,     5,    -1,    30,
+       8,    -1,    -1,     3,    12,    13,    14,    15,     8,    -1,
+      18,    19,    12,    13,    14,    15,     0,    -1,    18,    19,
+      -1,     5,     6,    -1,     8,     9,    10,    11,     4,     5,
        6,    -1,     8,     9,    10,    11,     4,     5,     6,    -1,
-       8,     9,    10,    11,     5,     6,    -1,     8,     9,    10,
-      11,     5,    -1,    -1,    -1,     9,    10,    11
+       8,     9,    10,    11,     4,     5,     6,    -1,     8,     9,
+      10,    11,     4,     5,     6,    -1,     8,     9,    10,    11,
+       5,     6,    -1,     8,     9,    10,    11,     5,    -1,    -1,
+      -1,     9,    10,    11
   };
 
   const unsigned char
   ExpressionParser::yystos_[] =
   {
-       0,     3,     8,    12,    13,    14,    15,    18,    21,    22,
-      22,    22,     3,     3,     3,     3,     0,     0,     5,     6,
-       8,     9,    10,    11,     4,    22,    22,    22,    22,     5,
-      22,    22,    22,    22,    22,    22,     4,     4,     4,     4,
-      22
+       0,     3,     8,    12,    13,    14,    15,    18,    19,    22,
+      23,    23,    23,     3,     3,     3,     3,     0,     0,     5,
+       6,     8,     9,    10,    11,     4,    23,    23,    23,    23,
+       5,    23,    23,    23,    23,    23,    23,     4,     4,     4,
+       4,    23
   };
 
   const unsigned char
   ExpressionParser::yyr1_[] =
   {
-       0,    20,    21,    22,    22,    22,    22,    22,    22,    22,
-      22,    22,    22,    22,    22,    22,    22
+       0,    21,    22,    23,    23,    23,    23,    23,    23,    23,
+      23,    23,    23,    23,    23,    23,    23,    23
   };
 
   const unsigned char
   ExpressionParser::yyr2_[] =
   {
-       0,     2,     2,     1,     3,     2,     3,     3,     3,     3,
-       3,     3,     4,     4,     4,     4,     4
+       0,     2,     2,     1,     1,     3,     2,     3,     3,     3,
+       3,     3,     3,     4,     4,     4,     4,     4
   };
 
 
@@ -1014,15 +1034,15 @@ namespace yy {
   "\"end of file\"", "error", "$undefined", "\"(\"", "\")\"", "\"*\"",
   "\"+\"", "\",\"", "\"-\"", "\"/\"", "\"%\"", "\"^\"", "\"COS\"",
   "\"SIN\"", "\"LOG\"", "\"HEX\"", "INVALID", "\"Identifier\"",
-  "\"Numeric\"", "UMINUS", "$accept", "document", "expression", YY_NULLPTR
+  "\"Numeric\"", "\"Time\"", "UMINUS", "$accept", "document", "expression", YY_NULLPTR
   };
 
 #if YYDEBUG
   const unsigned char
   ExpressionParser::yyrline_[] =
   {
-       0,    62,    62,    73,    77,    81,    85,    89,    93,    97,
-     101,   105,   109,   113,   117,   121,   125
+       0,    63,    63,    74,    78,    82,    86,    90,    94,    98,
+     102,   106,   110,   114,   118,   122,   126,   130
   };
 
   // Print the state stack on the debug stream.
@@ -1057,8 +1077,8 @@ namespace yy {
 
 
 } // yy
-#line 1061 "expression-parser.cc" // lalr1.cc:1155
-#line 130 "expression-parser.yy" // lalr1.cc:1156
+#line 1081 "expression-parser.cc" // lalr1.cc:1167
+#line 135 "expression-parser.yy" // lalr1.cc:1168
 
 void yy::ExpressionParser::error(const location_type& l, const std::string& m) {
 }

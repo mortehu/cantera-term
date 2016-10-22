@@ -52,7 +52,8 @@ class ParseContext;
 %token INVALID
 
 %token <std::string> Identifier "Identifier"
-%token <std::string> Numeric "Numeric"
+%token <std::string> Numeric    "Numeric"
+%token <std::string> Time       "Time"
 
 %type <expression::Expression*> expression
 
@@ -73,6 +74,10 @@ expression
     : "Numeric"
       {
         $$ = expression::Expression::CreateNumeric($1);
+      }
+    | "Time"
+      {
+        $$ = expression::Expression::CreateTime($1);
       }
     | "(" expression ")"
       {
