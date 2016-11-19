@@ -36,6 +36,15 @@ Expression* Expression::CreateTime(const std::string& v) {
     strptime(v.c_str(), "%Y-%m-%d %H:%M:%S", &tmTime);
     result->numeric_ = mktime(&tmTime);
   }
+  else if (v.size() == 5 || v.size() == 8)
+  {
+    const auto now = time(nullptr);
+    tm tmTime;
+    memset(&tmTime, 0, sizeof(tmTime));
+    localtime_r(&now, &tmTime);
+    strptime(v.c_str(), "%H:%M:%S", &tmTime);
+    result->numeric_ = mktime(&tmTime);
+  }
   return result;
 }
 

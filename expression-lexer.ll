@@ -30,6 +30,7 @@ loc.step();
 "^" return yy::ExpressionParser::make_CIRCUMFLEX(loc);
 
 [0-9][0-9][0-9][0-9]-[01][0123456789]-[0123][0123456789](\ [012][0123456789]:[012345][0123456789](:[012345][0123456789])?)? return yy::ExpressionParser::make_Time(yytext, loc);
+[012][0123456789]:[012345][0123456789](:[012345][0123456789])? return yy::ExpressionParser::make_Time(yytext, loc);
 now    return yy::ExpressionParser::make_Time(yytext, loc);
 e      return yy::ExpressionParser::make_Numeric(yytext, loc);
 pi     return yy::ExpressionParser::make_Numeric(yytext, loc);
