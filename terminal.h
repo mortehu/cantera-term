@@ -1,10 +1,10 @@
 #ifndef TERMINAL_H_
 #define TERMINAL_H_ 1
 
+#include <string.h>
 #include <functional>
 #include <memory>
 #include <set>
-#include <string.h>
 #include <string>
 #include <vector>
 
@@ -52,6 +52,8 @@ class Terminal {
 
   struct Color {
     Color() : r(), g(), b() {}
+
+    Color(uint32_t rgb) : r(rgb >> 16), g(rgb >> 8), b(rgb) {}
 
     Color(uint8_t r, uint8_t g, uint8_t b) : r(r), g(g), b(b) {}
 
@@ -171,7 +173,7 @@ class Terminal {
   Screen screens_[2];
   Screen* current_screen_;
 
-  Color ansi_colors_[16];
+  Color ansi_colors_[256];
   unsigned int ansi_attribute_;
   Attr attribute_;
 
