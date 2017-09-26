@@ -236,17 +236,19 @@ void draw_gl_30(const Terminal::State& state, const FONT_Data* font) {
   glUniform2f(glGetUniformLocation(shader.handle, "uniform_RcpWindowSize"),
               1.0f / X11_window_width, 1.0f / X11_window_height);
 
-  const auto ascent = FONT_Ascent(font);
   const auto lineHeight = FONT_LineHeight(font);
   const auto spaceWidth = FONT_SpaceWidth(font);
 
   bool in_selection = (state.selection_begin > state.width * state.height &&
                        state.selection_end < state.width * state.height);
-  int y = ascent;
-
   FONT_Glyph underscore;
   uint16_t underscore_u, underscore_v;
   GLYPH_Get('_', &underscore, &underscore_u, &underscore_v);
+
+  // Underscore must be inside line box.
+  const auto ascent = std::min(FONT_Ascent(font), lineHeight - underscore.height + underscore.y);
+
+  int y = ascent;
 
   for (size_t row = 0; row < state.height; ++row) {
     const auto* line = &state.chars[row * state.width];
