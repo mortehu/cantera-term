@@ -536,8 +536,14 @@ int x11_process_events() {
 
           size = terminal->history_size * terminal->Size().ws_col;
 
-          x = event.xbutton.x / FONT_SpaceWidth(font);
-          y = event.xbutton.y / FONT_LineHeight(font);
+          x = std::max(0,
+                       std::min(terminal->Size().ws_col - 1,
+                                event.xbutton.x /
+                                    static_cast<int>(FONT_SpaceWidth(font))));
+          y = std::max(0,
+                       std::min(terminal->Size().ws_row - 1,
+                                event.xbutton.y /
+                                    static_cast<int>(FONT_LineHeight(font))));
 
           size_t new_select_end = y * terminal->Size().ws_col + x;
 
