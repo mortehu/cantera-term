@@ -1,8 +1,11 @@
+dist: trusty
+
 sudo: false
 
 addons:
   apt:
     packages:
+      - g++-6
       - libfreetype6-dev
       - libglew-dev
       - libmpfr-dev
