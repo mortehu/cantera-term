@@ -4,14 +4,19 @@ sudo: false
 
 addons:
   apt:
+    sources:
+      - ubuntu-toolchain-r-test
     packages:
-      - g++-6
+      - g++-7
       - libfreetype6-dev
       - libglew-dev
       - libmpfr-dev
       - libxft-dev
       - libxrender-dev
       - lintian
+    env:
+      - CC=gcc-7
+      - CXX=g++-7
 
 language: cpp
 
