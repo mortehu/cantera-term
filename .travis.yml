@@ -14,10 +14,10 @@ addons:
       - libxft-dev
       - libxrender-dev
       - lintian
-    env:
-      - CC=gcc-7
-      - CXX=g++-7
 
 language: cpp
+
+compiler:
+  - gcc-7
 
 script: ./configure --disable-maintainer-mode && make && VERBOSE=1 make check
