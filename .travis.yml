@@ -1,15 +1,25 @@
+dist: trusty
+
 sudo: false
 
 addons:
   apt:
+    sources:
+      - ubuntu-toolchain-r-test
     packages:
+      - g++-7
       - libfreetype6-dev
       - libglew-dev
       - libmpfr-dev
       - libxft-dev
       - libxrender-dev
       - lintian
+    env:
+      - CXX=g++-7
 
-language: cpp
+language: c
+
+compiler:
+  - gcc-7
 
 script: ./configure --disable-maintainer-mode && make && VERBOSE=1 make check
