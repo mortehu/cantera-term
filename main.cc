@@ -331,15 +331,16 @@ static void WriteStringToTTY(const char* string) {
   WriteToTTY(string, strlen(string));
 }
 
-static void WaitForDeadChildren(void) {
+static bool WaitForDeadChildren() {
   pid_t child_pid;
   int status;
 
   while (0 < (child_pid = waitpid(-1, &status, WNOHANG))) {
-    if (child_pid == pid) {
-      exit(EXIT_SUCCESS);
-    }
+    if (child_pid == pid)
+      return true;
   }
+
+  return false;
 }
 
 void HandleKeyPress(KeySym key_sym, const char* text, size_t len,
@@ -488,12 +489,10 @@ int x11_process_events() {
 
   SetupKeyCallbacks();
 
-  while (!done) {
+  while (!done && !WaitForDeadChildren()) {
     XNextEvent(X11_display, &event);
 
     if (XFilterEvent(&event, X11_window)) continue;
-
-    WaitForDeadChildren();
 
     switch (event.type) {
       case KeyPress:
@@ -938,5 +937,5 @@ int main(int argc, char** argv) {
 
   if (-1 == x11_process_events()) return EXIT_FAILURE;
 
-  return EXIT_SUCCESS;
+  _Exit(EXIT_SUCCESS);
 }
