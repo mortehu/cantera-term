@@ -20,7 +20,6 @@ AM_YFLAGS = --defines=expression-parser.hh
 
 cantera_term_SOURCES = \
   $(BUILT_SOURCES) \
-  3rd_party/mpfrc++/mpreal.h \
   base/file.cc \
   base/file.h \
   command.cc \
