@@ -10,6 +10,7 @@ bool ParseContext::FindAndEval(const std::string& input,
                                uint16_t flags) {
   ParseContext context;
 
+  // Loop over every suffix either from the beginning or after a space.
   for (std::string::size_type i = 0; i < input.length(); ++i) {
     if (isspace(input[i])) continue;
 
