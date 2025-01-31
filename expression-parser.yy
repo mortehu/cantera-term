@@ -18,7 +18,7 @@ class ParseContext;
 }  // namespace expression
 }
 
-%param { expression::ParseContext *context }
+%param { expression::ParseContext *ctx }
 
 %locations
 %code
@@ -62,7 +62,7 @@ class ParseContext;
 document
     : expression END
       {
-        context->expression_.reset($1);
+        ctx->expression_.reset($1);
       }
     ;
 

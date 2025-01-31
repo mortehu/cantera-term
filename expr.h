@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-#include "3rd_party/mpfrc++/mpreal.h"
+#include "mpreal.h"
 
 namespace expression {
 

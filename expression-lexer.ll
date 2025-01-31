@@ -45,7 +45,7 @@ hex    return yy::ExpressionParser::make_HEX(loc);
 [A-Za-z_][A-Za-z0-9_.]*  return yy::ExpressionParser::make_Identifier(yytext, loc);
 {blank}+                 loc.step();
 [\n]+                    loc.lines(yyleng); loc.step();
-.                        { context->SetError(loc, "Invalid character"); return yy::ExpressionParser::make_INVALID(loc); }
+.                        { ctx->SetError(loc, "Invalid character"); return yy::ExpressionParser::make_INVALID(loc); }
 <<EOF>>                  return yy::ExpressionParser::make_END(loc);
 %%
 

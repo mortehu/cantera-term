@@ -46,7 +46,7 @@ class ParseContext {
 }  // namespace expression
 
 #define YY_DECL \
-  yy::ExpressionParser::symbol_type yylex(expression::ParseContext* context)
+  yy::ExpressionParser::symbol_type yylex(expression::ParseContext* ctx)
 
 YY_DECL;
 

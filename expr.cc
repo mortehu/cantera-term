@@ -3,7 +3,6 @@
 #include <mpreal.h>
 #include <cassert>
 
-#include "3rd_party/mpfrc++/mpreal.h"
 #include "base/string.h"
 
 namespace expression {
