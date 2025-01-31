@@ -14,7 +14,7 @@ CONVERT = @CONVERT@
 BUILT_SOURCES = expression-parser.hh location.hh position.hh stack.hh
 
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
-AM_CXXFLAGS = $(AM_CFLAGS)
+AM_CXXFLAGS = $(AM_CFLAGS) -fpermissive
 AM_CPPFLAGS = -I/usr/include/freetype2
 AM_YFLAGS = --defines=expression-parser.hh
 

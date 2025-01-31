@@ -897,6 +897,9 @@ int main(int argc, char** argv) {
   font_weight =
       tree_get_integer_default(config.get(), "terminal.font-weight", 200);
 
+  X11_window_width = tree_get_integer_default(config.get(), "terminal.width", 800);
+  X11_window_height = tree_get_integer_default(config.get(), "terminal.height", 600);
+
   signal(SIGPIPE, SIG_IGN);
   signal(SIGALRM, SIG_IGN);
 
