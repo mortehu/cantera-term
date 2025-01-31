@@ -7,7 +7,8 @@ namespace expression {
 bool ParseContext::FindAndEval(const std::string& input,
                                std::string::size_type* offset,
                                std::string* result,
-                               uint16_t flags) {
+                               uint16_t flags,
+                               const Terminal::State* state) {
   ParseContext context;
 
   // Loop over every suffix either from the beginning or after a space.
@@ -21,7 +22,7 @@ bool ParseContext::FindAndEval(const std::string& input,
 
     std::unique_ptr<Expression> expr(context.ParseExpression(suffix));
 
-    if (expr && expr->ToString(result)) {
+    if (expr && expr->ToString(result, state)) {
       if ((flags & kIgnoreTrivial) && expr->IsTrivial()) {
         result->clear();
         return false;

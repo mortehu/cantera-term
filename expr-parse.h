@@ -8,6 +8,7 @@
 
 #include "expr.h"
 #include "expression-parser.hh"
+#include "terminal.h"
 
 namespace expression {
 
@@ -23,7 +24,8 @@ class ParseContext {
   // on error.
   static bool FindAndEval(const std::string& input,
                           std::string::size_type* offset, std::string* result,
-                          uint16_t flags = 0);
+                          uint16_t flags = 0,
+                          const Terminal::State* state = nullptr);
 
   void SetError(const yy::ExpressionParser::location_type& l,
                 const std::string& error);

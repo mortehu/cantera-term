@@ -44,6 +44,7 @@ class ParseContext;
   SLASH      "/"
   PERCENT    "%"
   CIRCUMFLEX "^"
+  QUESTION   "/?/"
   COS        "COS"
   SIN        "SIN"
   LOG        "LOG"
@@ -78,6 +79,10 @@ expression
     | "Time"
       {
         $$ = expression::Expression::CreateTime($1);
+      }
+    | QUESTION
+      {
+        $$ = expression::Expression::CreateQuestion();
       }
     | "(" expression ")"
       {

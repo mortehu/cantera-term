@@ -47,7 +47,7 @@ Expression* Expression::CreateTime(const std::string& v) {
   return result;
 }
 
-bool Expression::ToString(std::string* result) const {
+bool Expression::ToString(std::string* result, const Terminal::State* draw_state) const {
   Value value = Eval();
 
   switch (value.type) {
@@ -115,6 +115,49 @@ bool Expression::ToString(std::string* result) const {
       if (first) buf << '0';
 
       result->assign(buf.str());
+    } break;
+
+    case kQuestion: {
+      std::string prompt;
+      if (!draw_state) return false;
+
+      for (size_t row = 0; row < draw_state->height; ++row) {
+        const auto* line = &draw_state->chars[row * draw_state->width];
+        //const auto* attrline = &draw_state->attr[row * draw_state->width];
+
+        for (size_t col = 0; col < draw_state->width; ++col) {
+          if (row == draw_state->cursor_y && col == draw_state->cursor_x) goto done;
+
+          // `selection_begin' might be greater than `selection_end' if our history
+          // window straddles the end of the history buffer.
+          if (row * draw_state->width + col == draw_state->selection_begin) prompt += "<!begin_selection>";
+          if (row * draw_state->width + col == draw_state->selection_end) prompt = "<!end_selection>";
+
+          if (!line[col])
+          {
+            prompt.push_back(' ');
+          }
+          else
+          {
+            prompt.push_back(line[col]);
+          }
+        }
+
+        // Remove trailing spaces.
+        while (!prompt.empty() && prompt.back() == ' ') prompt.pop_back();
+        prompt.push_back('\n');
+      }
+
+done:
+      // Remove trailing "/?/".
+      if (prompt.size() >= 3 && 0 == prompt.compare(prompt.size() - 3, 3, "/?/"))
+      {
+        prompt.resize(prompt.size() - 3);
+      }
+
+      // TODO: Send prompt to API.
+
+      result->assign("...");
     } break;
 
     default:
@@ -187,6 +230,8 @@ Expression::Value Expression::Eval() const {
     case kHex:
       if (lhs.type != kNumeric) return {};
       return StringPrintf("0x%lx", lhs.numeric.toULong());
+    case kQuestion:
+      return {kQuestion};
   }
 
   return {};

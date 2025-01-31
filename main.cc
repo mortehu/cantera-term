@@ -747,7 +747,8 @@ int x11_process_events() {
           expression_result.clear();
           expression::ParseContext::FindAndEval(
               new_expression, &expression_offset, &expression_result,
-              expression::ParseContext::kIgnoreTrivial);
+              expression::ParseContext::kIgnoreTrivial,
+              &draw_state);
           last_expression = new_expression;
         } else if (new_expression.empty()) {
           last_expression.clear();

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "mpreal.h"
+#include "terminal.h"
 
 namespace expression {
 
@@ -14,6 +15,8 @@ class Expression {
  public:
   enum ExpressionType {
     kInvalid,
+
+    kQuestion,
 
     // Constants
     kNumeric,
@@ -45,10 +48,11 @@ class Expression {
 
   static Expression* CreateNumeric(const std::string& v);
   static Expression* CreateTime(const std::string& v);
+  static Expression* CreateQuestion() { return new Expression(kQuestion); }
 
   ExpressionType Type() const { return type_; }
 
-  bool ToString(std::string* result) const;
+  bool ToString(std::string* result, const Terminal::State* draw_state) const;
 
   bool IsTrivial() const;
 
@@ -58,6 +62,7 @@ class Expression {
     Value(const std::string& v) : type(kString), string(v) {}
     Value(const mpfr::mpreal& v) : type(kNumeric), numeric(v) {}
     Value(ExpressionType type, const mpfr::mpreal& v) : type(type), numeric(v) {}
+    Value(ExpressionType type) : type(type) {}
 
     enum ExpressionType type;
     std::string string;

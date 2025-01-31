@@ -28,6 +28,7 @@ loc.step();
 "/" return yy::ExpressionParser::make_SLASH(loc);
 "%" return yy::ExpressionParser::make_PERCENT(loc);
 "^" return yy::ExpressionParser::make_CIRCUMFLEX(loc);
+"/?/" return yy::ExpressionParser::make_QUESTION(loc);
 
 [0-9][0-9][0-9][0-9]-[01][0123456789]-[0123][0123456789](\ [012][0123456789]:[012345][0123456789](:[012345][0123456789])?)? return yy::ExpressionParser::make_Time(yytext, loc);
 [012][0123456789]:[012345][0123456789](:[012345][0123456789])? return yy::ExpressionParser::make_Time(yytext, loc);
