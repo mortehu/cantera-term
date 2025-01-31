@@ -594,6 +594,9 @@ int x11_process_events() {
             if (event.xbutton.state & ControlMask) {
               terminal->FindRange(Terminal::kRangeWordOrURL,
                                  &terminal->select_begin, &terminal->select_end);
+            } else if (event.xbutton.state & ShiftMask) {
+              terminal->FindRange(Terminal::kRangeLine,
+                                 &terminal->select_begin, &terminal->select_end);
             }
 
             XClearArea(X11_display, X11_window, 0, 0, 0, 0, True);

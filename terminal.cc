@@ -1212,6 +1212,18 @@ bool Terminal::FindRange(RangeType range_type, size_t* begin,
   int ch;
 
   switch (range_type) {
+    case Terminal::kRangeLine: {
+      i = *begin;
+      *begin -= (*begin % size_.ws_col); // Start of the line
+
+      i = *end;
+      *end = ((*end / size_.ws_col) + 1) * size_.ws_col; // End of the line (next line start)
+
+      // No need to check for empty range for line selection,
+      // as selecting a line will always select at least the line itself.
+      return true;
+    }
+
     case Terminal::kRangeWordOrURL:
       i = *begin;
 

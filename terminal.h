@@ -44,8 +44,9 @@ struct KeyInfo : std::pair<unsigned int, unsigned int> {
 class Terminal {
  public:
   enum RangeType {
-    kRangeWordOrURL,
+    kRangeLine,
     kRangeParenthesis,
+    kRangeWordOrURL,
   };
 
   typedef wchar_t CharacterType;
