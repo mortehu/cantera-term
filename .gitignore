@@ -41,3 +41,9 @@
 /missing
 /test-driver
 /ylwrap
+/expression-lexer.cc
+/expression-parser.cc
+/expression-parser.hh
+/location.hh
+/position.hh
+/stack.hh
