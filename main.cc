@@ -55,7 +55,8 @@ namespace {
 int print_version;
 int print_help;
 
-struct option long_options[] = {{"version", no_argument, &print_version, 1},
+struct option long_options[] = {{"tty-log", required_argument, 0, 'L'},
+                                {"version", no_argument, &print_version, 1},
                                 {"help", no_argument, &print_help, 1},
                                 {0, 0, 0, 0}};
 
@@ -262,7 +263,7 @@ void X11_Clear(void) {
   clear_cond.notify_one();
 }
 
-static void TTYReadThread() {
+static void TTYReadThread(int logfd) {
   unsigned char buf[4096];
   ssize_t result;
   size_t fill = 0;
@@ -287,6 +288,10 @@ static void TTYReadThread() {
     }
 
     if (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK) break;
+
+    if (logfd != -1) {
+      write(logfd, buf, fill);
+    }
 
     if (!buffer_mutex.try_lock()) {
       // We couldn't get the lock straight away.  If the buffer is not full,
@@ -834,12 +839,20 @@ int main(int argc, char** argv) {
   int i;
   const char* home;
   char *palette_str, *token;
+  int logfd = -1;
 
   setlocale(LC_ALL, "en_US.UTF-8");
 
-  while ((i = getopt_long(argc, argv, "", long_options, 0)) != -1) {
+  while ((i = getopt_long(argc, argv, "L:", long_options, 0)) != -1) {
     switch (i) {
       case 0:
+        break;
+
+      case 'L':
+
+        if (-1 == (logfd = open(optarg, O_WRONLY | O_CREAT | O_TRUNC, 0666)))
+          err(EXIT_FAILURE, "Failed to open log file `%s'", optarg);
+
         break;
 
       case '?':
@@ -854,6 +867,8 @@ int main(int argc, char** argv) {
     printf(
         "Usage: %s [OPTION]... [COMMAND [ARGUMENT]...]\n"
         "\n"
+        "  -L, --tty-log=FILE  log all data sent to and received from the tty to "
+        "                      FILE\n"
         "      --help     display this help and exit\n"
         "      --version  display version information\n"
         "\n"
@@ -939,7 +954,7 @@ int main(int argc, char** argv) {
 
   init_gl_30();
 
-  std::thread(TTYReadThread).detach();
+  std::thread(TTYReadThread, logfd).detach();
   std::thread(X11ClearThread).detach();
 
   if (-1 == x11_process_events()) return EXIT_FAILURE;
