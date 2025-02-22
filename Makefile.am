@@ -16,7 +16,7 @@ BUILT_SOURCES = expression-parser.hh location.hh position.hh stack.hh
 AM_CFLAGS = -g -Wall -pthread -fPIC $(PACKAGES_CFLAGS)
 AM_CXXFLAGS = $(AM_CFLAGS) -fpermissive
 AM_CPPFLAGS = -I/usr/include/freetype2
-AM_YFLAGS = --defines=expression-parser.hh -Wno-yacc
+AM_YFLAGS = --defines=expression-parser.hh
 
 cantera_term_SOURCES = \
   $(BUILT_SOURCES) \
