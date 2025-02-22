@@ -368,6 +368,22 @@ void Terminal::ProcessData(const void* buf, size_t count) {
       case 1:
 
         switch (*begin) {
+          case '7':
+
+            escape = 0;
+            savedx_ = current_screen_->cursor_x;
+            savedy_ = current_screen_->cursor_y;
+
+            break;
+
+          case '8':
+
+            escape = 0;
+            current_screen_->cursor_x = savedx_;
+            current_screen_->cursor_y = savedy_;
+
+            break;
+
           case 'D':
 
             escape = 0;
