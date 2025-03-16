@@ -256,6 +256,12 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
             break;
 
+          case '\\':
+
+            escape = 0;
+
+            break;
+
           case '\b':
 
             if (current_screen_->cursor_x > 0) --current_screen_->cursor_x;
@@ -368,6 +374,12 @@ void Terminal::ProcessData(const void* buf, size_t count) {
       case 1:
 
         switch (*begin) {
+          case '\\':
+
+            escape = 0;
+
+            break;
+
           case '7':
 
             escape = 0;
@@ -488,9 +500,11 @@ void Terminal::ProcessData(const void* buf, size_t count) {
 
       default:
 
-        if (param[0] == -1)
+        if (*begin == '\\') {
           escape = 0;
-        else if (param[0] == -2) {
+        } else if (param[0] == -1) {
+          escape = 0;
+        } else if (param[0] == -2) {
           /* Handle ESC ] Ps ; Pt BEL */
 
           if (*begin == '\007') {
