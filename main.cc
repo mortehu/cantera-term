@@ -670,6 +670,10 @@ int x11_process_events() {
         unsigned long bytes_after;
         unsigned char* prop;
 
+        if (terminal->bracketed_paste) {
+          WriteStringToTTY("\033[200~");
+        }
+
         selection = event.xselection.selection;
 
         result = XGetWindowProperty(X11_display, X11_window, selection, 0, 0,
@@ -694,6 +698,10 @@ int x11_process_events() {
         WriteToTTY(prop, nitems);
 
         XFree(prop);
+
+        if (terminal->bracketed_paste) {
+          WriteStringToTTY("\033[201~");
+        }
       } break;
 
       case SelectionClear:

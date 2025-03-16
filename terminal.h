@@ -145,6 +145,8 @@ class Terminal {
 
   bool focused;
 
+  bool bracketed_paste{};
+
   unsigned int history_scroll;
 
  private:

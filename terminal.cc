@@ -564,6 +564,9 @@ void Terminal::ProcessData(const void* buf, size_t count) {
                     SetScreen(1);
                   }
                   break;
+                case 2004:
+                  bracketed_paste = true;
+                  break;
               }
             }
           } else if (*begin == 'l') {
@@ -577,6 +580,9 @@ void Terminal::ProcessData(const void* buf, size_t count) {
                   break;
                 case 1049:
                   SetScreen(0);
+                  break;
+                case 2004:
+                  bracketed_paste = false;
                   break;
               }
             }
