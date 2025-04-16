@@ -112,6 +112,11 @@ Terminal::Terminal(std::function<void(const void*, size_t)>&& write_function)
 void Terminal::Init(unsigned int width, unsigned int height,
                     unsigned int space_width, unsigned int line_height,
                     size_t scroll_extra) {
+  ansi_attribute_ = ATTR_WHITE;
+  attribute_.fg = ansi_colors_[7];
+  attribute_.bg = ansi_colors_[0];
+  attribute_.extra = 0;
+
   size_.ws_col = width / space_width;
   size_.ws_row = height / line_height;
   size_.ws_xpixel = width;
@@ -120,14 +125,15 @@ void Terminal::Init(unsigned int width, unsigned int height,
   history_size = size_.ws_row + scroll_extra;
 
   for (size_t i = 0; i < 2; ++i) {
-    screens_[i].chars.reset(new CharacterType[size_.ws_col * history_size]());
-    screens_[i].attr.reset(new Attr[size_.ws_col * history_size]());
-  }
+    size_t n = size_.ws_col * history_size;
+    screens_[i].chars.reset(new CharacterType[n]);
+    screens_[i].attr .reset(new Attr[n]);
 
-  ansi_attribute_ = ATTR_WHITE;
-  attribute_.fg = ansi_colors_[7];
-  attribute_.bg = ansi_colors_[0];
-  attribute_.extra = 0;
+    std::fill(&screens_[i].chars[0],
+              &screens_[i].chars[n], L' ');
+    std::fill(&screens_[i].attr[0],
+              &screens_[i].attr[n], EffectiveAttribute());
+  }
 
   scrollbottom = size_.ws_row;
 
@@ -157,8 +163,14 @@ void Terminal::Resize(unsigned int width, unsigned int height,
       std::unique_ptr<wchar_t[]> oldchars = std::move(screens_[i].chars);
       std::unique_ptr<Attr[]> oldattr = std::move(screens_[i].attr);
 
-      screens_[i].chars.reset(new wchar_t[size_.ws_col * history_size]());
-      screens_[i].attr.reset(new Attr[size_.ws_col * history_size]());
+      size_t n = size_.ws_col * history_size;
+      screens_[i].chars.reset(new wchar_t[n]);
+      screens_[i].attr .reset(new Attr[n]);
+
+      std::fill(&screens_[i].chars[0],
+                &screens_[i].chars[n], L' ');
+      std::fill(&screens_[i].attr[0],
+                &screens_[i].attr[n], EffectiveAttribute());
 
       scrollbottom = rows;
 
