@@ -323,6 +323,15 @@ static void WriteToTTY(const void* data, size_t len) {
                    len - off);
 
     if (result < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        struct pollfd pfd{terminal_fd, POLLOUT, 0};
+        if (poll(&pfd, 1, -1) < 0) {
+          done = 1;
+          break;
+        }
+        continue;
+      }
+
       done = 1;
 
       break;
